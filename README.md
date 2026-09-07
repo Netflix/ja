@@ -17,23 +17,16 @@ The OpenJDK Project has [paved the on-ramp](https://openjdk.org/projects/amber/d
 
 Create a `ja`-enabled development JDK from a JDK 25 or later installation with `lib/src.zip` and either JMOD files or a runtime built with [`--enable-linkable-runtime`](https://openjdk.org/jeps/493). Make the source JDK available through `JAVA_HOME` or `PATH`.
 
-On macOS and Linux, download the installer from the repository and run it:
+On macOS and Linux:
 
 ```sh
-curl --fail --location --output install.sh \
-  https://raw.githubusercontent.com/Netflix/ja/main/install.sh
-chmod +x install.sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh | bash
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Invoke-WebRequest `
-  -Uri https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 `
-  -OutFile install.ps1
-Unblock-File .\install.ps1
-.\install.ps1
+irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
 The default installation is discoverable by common development tools. On macOS it is a user JDK bundle under `~/Library/Java/JavaVirtualMachines`; on Linux and Windows it is under `~/.jdks`, following the IntelliJ IDEA convention also recognized by Gradle.
@@ -45,21 +38,25 @@ The installer does not modify shell configuration. It prints activation steps ma
 Pass an output directory to use a custom location instead:
 
 ```sh
-./install.sh /path/to/output
+curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
+  bash -s -- /path/to/output
 ```
 
 ```powershell
-.\install.ps1 -Output C:\path\to\output
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1))) `
+  -Output C:\path\to\output
 ```
 
 Set `JA_VERSION` on macOS and Linux, or pass `-JaVersion` on Windows, to install an exact version instead of the latest release:
 
 ```sh
-JA_VERSION=0.17.0 ./install.sh
+curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
+  JA_VERSION=0.17.0 bash
 ```
 
 ```powershell
-.\install.ps1 -JaVersion 0.17.0
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1))) `
+  -JaVersion 0.17.0
 ```
 
 Take `ja` for a spin by installing an application:
