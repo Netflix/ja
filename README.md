@@ -15,17 +15,24 @@ The OpenJDK Project has [paved the on-ramp](https://openjdk.org/projects/amber/d
 > [!IMPORTANT]
 > This project is currently in preview. We'd love to hear your feedback! Use Issues for bugs and Discussions for feedback and suggestions.
 
-Create a `ja`-enabled development JDK from a JDK 25 or later installation with `jmod` files and `lib/src.zip`. Make the source JDK available through `JAVA_HOME` or `PATH`.
+Create a `ja`-enabled development JDK from a JDK 25 or later installation with `lib/src.zip` and either JMOD files or a runtime built with [`--enable-linkable-runtime`](https://openjdk.org/jeps/493). Make the source JDK available through `JAVA_HOME` or `PATH`.
 
-On macOS and Linux:
+On macOS and Linux, download the installer from the repository and run it:
 
 ```sh
+curl --fail --location --output install.sh \
+  https://raw.githubusercontent.com/Netflix/ja/main/install.sh
+chmod +x install.sh
 ./install.sh
 ```
 
 On Windows PowerShell:
 
 ```powershell
+Invoke-WebRequest `
+  -Uri https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 `
+  -OutFile install.ps1
+Unblock-File .\install.ps1
 .\install.ps1
 ```
 

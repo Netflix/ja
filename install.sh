@@ -22,7 +22,7 @@ configured_java_home="${JAVA_HOME:-}"
 java_on_path="$(type -P java || true)"
 java_properties=""
 
-jig_version="${JIG_VERSION:-0.13.0}"
+jig_version="${JIG_VERSION:-0.13.2}"
 ja_version="${JA_VERSION:-}"
 if [[ -n "$configured_java_home" ]]; then
     source_java_home="$configured_java_home"
@@ -52,8 +52,16 @@ case "$java_vm_name" in
 esac
 
 release="$source_java_home/release"
-if [[ ! -x "$java" || ! -f "$release" || ! -d "$source_java_home/jmods" || ! -f "$source_java_home/lib/src.zip" ]]; then
-    echo "Java must be a JDK 25 or later installation with a release file, JMODs, and lib/src.zip" >&2
+jlink="$source_java_home/bin/jlink"
+if [[ ! -x "$java" || ! -x "$jlink" || ! -f "$release" || ! -f "$source_java_home/lib/src.zip" ]]; then
+    echo "Java must be a JDK 25 or later installation with jlink, a release file, and lib/src.zip" >&2
+    exit 1
+fi
+jdk_module_path=""
+if [[ -d "$source_java_home/jmods" ]]; then
+    jdk_module_path="$source_java_home/jmods"
+elif ! LC_ALL=C "$jlink" --help 2>&1 | grep -Fq "Linking from run-time image enabled"; then
+    echo "Java must provide JMODs or be built with --enable-linkable-runtime" >&2
     exit 1
 fi
 java_version="$(awk -F= '$1 == "JAVA_VERSION" { gsub(/^"|"$/, "", $2); print $2; exit }' "$release")"
@@ -125,7 +133,7 @@ curl --fail --location --output "$jig" \
 jig_command=(
     "$java"
     -Duser.home="$jig_home"
-    --module-path "$jig"
+    --upgrade-module-path "$jig"
     --module com.netflix.tools.jig/com.netflix.tools.jig.Jig
 )
 if [[ -z "$ja_version" ]]; then
@@ -137,24 +145,50 @@ if [[ -z "$ja_version" ]]; then
     fi
 fi
 
-ja_arguments="$work/ja.args"
+resolved_arguments="$work/resolved.args"
 "${jig_command[@]}" \
-    --module-path "$jig" \
     --add-requires "com.netflix.tools.ja@$ja_version" \
-    --args runtime > "$ja_arguments"
-printf '%s\n' --module com.netflix.tools.ja/com.netflix.tools.ja.Ja >> "$ja_arguments"
+    --prefer-jmod \
+    --target-platform CURRENT \
+    --compile-time \
+    --resolve-options module-path,upgrade-module-path \
+    > "$resolved_arguments"
 
-mkdir -p "$(dirname "$ja_home")"
-link_arguments=(
-    "com.netflix.tools.ja@$ja_version"
-    --include-static --include-sources
-    --add-modules ALL-MODULE-PATH
-)
-if [[ "$openj9" == false ]]; then
-    link_arguments+=(--generate-cds-archive)
+module_path=""
+upgrade_module_path=""
+while IFS= read -r option && IFS= read -r value; do
+    case "$option" in
+        --module-path) module_path="$value" ;;
+        --upgrade-module-path) upgrade_module_path="$value" ;;
+        *) echo "Unexpected Jig argument: $option" >&2; exit 1 ;;
+    esac
+done < "$resolved_arguments"
+if [[ -n "$jdk_module_path" ]]; then
+    module_path="$jdk_module_path${module_path:+:$module_path}"
 fi
-link_arguments+=(--output "$ja_home")
-"$java" -Duser.home="$jig_home" @"$ja_arguments" link "${link_arguments[@]}"
+if [[ -n "$upgrade_module_path" ]]; then
+    module_path="$upgrade_module_path${module_path:+:$module_path}"
+fi
+if [[ -z "$module_path" ]]; then
+    echo "Jig did not provide the module path required by jlink" >&2
+    exit 1
+fi
+
+link_options=()
+if [[ "$openj9" == false ]]; then
+    link_options+=(--generate-cds-archive)
+fi
+mkdir -p "$(dirname "$ja_home")"
+"$jlink" --module-path "$module_path" --add-modules ALL-MODULE-PATH "${link_options[@]}" --output "$ja_home"
+cp "$source_java_home/lib/src.zip" "$ja_home/lib/src.zip"
+
+if [[ -d "$source_java_home/jmods" ]]; then
+    mkdir -p "$ja_home/jmods"
+    cp "$source_java_home/jmods/"*.jmod "$ja_home/jmods/"
+    find "$jig_home" -type f -name '*.jmod' -exec cp {} "$ja_home/jmods/" \;
+fi
+mkdir -p "$ja_home/lib/ja/modules"
+find "$jig_home" -type f -name '*.jar' -exec cp {} "$ja_home/lib/ja/modules/" \;
 if [[ "$openj9" == true ]]; then
     for options in "$ja_home/conf/com.netflix.tools.launcher/"*.args; do
         [[ -f "$options" ]] || continue

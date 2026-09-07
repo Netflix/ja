@@ -11,7 +11,7 @@
 # the License.
 
 param(
-    [string] $JigVersion = "0.13.0",
+    [string] $JigVersion = "0.13.2",
     [string] $JaVersion,
     [string] $Output
 )
@@ -63,11 +63,22 @@ $OpenJ9 = -not [string]::IsNullOrWhiteSpace($JavaVmName) -and
     $JavaVmName -match "(?i)OpenJ9"
 
 $Release = Join-Path $SourceJavaHome "release"
+$Jlink = Join-Path $SourceJavaHome "bin\jlink.exe"
+$Sources = Join-Path $SourceJavaHome "lib\src.zip"
 if (-not (Test-Path -PathType Leaf $Java) -or
+        -not (Test-Path -PathType Leaf $Jlink) -or
         -not (Test-Path -PathType Leaf $Release) -or
-        -not (Test-Path -PathType Container (Join-Path $SourceJavaHome "jmods")) -or
-        -not (Test-Path -PathType Leaf (Join-Path $SourceJavaHome "lib\src.zip"))) {
-    throw "Java must be a JDK 25 or later installation with a release file, JMODs, and lib/src.zip"
+        -not (Test-Path -PathType Leaf $Sources)) {
+    throw "Java must be a JDK 25 or later installation with jlink, a release file, and lib/src.zip"
+}
+$JdkModulePath = Join-Path $SourceJavaHome "jmods"
+if (-not (Test-Path -PathType Container $JdkModulePath)) {
+    $JlinkHelp = & $Jlink --help 2>&1
+    if ($LASTEXITCODE -ne 0 -or
+            ($JlinkHelp -join "`n") -notmatch "Linking from run-time image enabled") {
+        throw "Java must provide JMODs or be built with --enable-linkable-runtime"
+    }
+    $JdkModulePath = $null
 }
 $JavaVersionLine = Get-Content $Release |
     Where-Object { $_ -match "^JAVA_VERSION=" } |
@@ -121,7 +132,7 @@ try {
 
     $JigArguments = @(
         "-Duser.home=$JigHome",
-        "--module-path", $Jig,
+        "--upgrade-module-path", $Jig,
         "--module", "com.netflix.tools.jig/com.netflix.tools.jig.Jig"
     )
     if ([string]::IsNullOrWhiteSpace($JaVersion)) {
@@ -132,20 +143,40 @@ try {
         }
     }
 
-    $JaArguments = Join-Path $Work "ja.args"
     $ResolvedArguments = @(& $Java @JigArguments `
-        --module-path $Jig `
         --add-requires "com.netflix.tools.ja@$JaVersion" `
-        --args runtime)
+        --prefer-jmod `
+        --target-platform CURRENT `
+        --compile-time `
+        --resolve-options module-path,upgrade-module-path)
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to resolve Ja"
     }
-    $ResolvedArguments += "--module"
-    $ResolvedArguments += "com.netflix.tools.ja/com.netflix.tools.ja.Ja"
-    [IO.File]::WriteAllLines(
-        $JaArguments,
-        [string[]] $ResolvedArguments,
-        [Text.UTF8Encoding]::new($false))
+    $ModulePath = $null
+    $UpgradeModulePath = $null
+    for ($Index = 0; $Index -lt $ResolvedArguments.Count; $Index += 2) {
+        if ($Index + 1 -ge $ResolvedArguments.Count) {
+            throw "Jig returned an option without a value: $($ResolvedArguments[$Index])"
+        }
+        switch ($ResolvedArguments[$Index]) {
+            "--module-path" { $ModulePath = $ResolvedArguments[$Index + 1] }
+            "--upgrade-module-path" { $UpgradeModulePath = $ResolvedArguments[$Index + 1] }
+            default { throw "Unexpected Jig argument: $($ResolvedArguments[$Index])" }
+        }
+    }
+    $ModulePathEntries = @()
+    if (-not [string]::IsNullOrWhiteSpace($UpgradeModulePath)) {
+        $ModulePathEntries += $UpgradeModulePath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($JdkModulePath)) {
+        $ModulePathEntries += $JdkModulePath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ModulePath)) {
+        $ModulePathEntries += $ModulePath
+    }
+    if ($ModulePathEntries.Count -eq 0) {
+        throw "Jig did not provide the module path required by jlink"
+    }
 
     $OutputParent = Split-Path -Parent $Output
     if (-not [string]::IsNullOrEmpty($OutputParent)) {
@@ -153,18 +184,30 @@ try {
     }
 
     $LinkArguments = @(
-        "com.netflix.tools.ja@$JaVersion",
-        "--include-static", "--include-sources",
+        "--module-path", ($ModulePathEntries -join [IO.Path]::PathSeparator),
         "--add-modules", "ALL-MODULE-PATH"
     )
     if (-not $OpenJ9) {
         $LinkArguments += "--generate-cds-archive"
     }
     $LinkArguments += @("--output", $Output)
-    & $Java "-Duser.home=$JigHome" "@$JaArguments" link @LinkArguments
+    & $Jlink @LinkArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to link the Ja JDK"
     }
+    Copy-Item -LiteralPath $Sources -Destination (Join-Path $Output "lib\src.zip")
+
+    if (-not [string]::IsNullOrWhiteSpace($JdkModulePath)) {
+        $OutputJmods = Join-Path $Output "jmods"
+        New-Item -ItemType Directory -Path $OutputJmods | Out-Null
+        Copy-Item -Path (Join-Path $JdkModulePath "*.jmod") -Destination $OutputJmods
+        Get-ChildItem -Path $JigHome -Recurse -File -Filter "*.jmod" |
+            Copy-Item -Destination $OutputJmods
+    }
+    $OutputModules = Join-Path $Output "lib\ja\modules"
+    New-Item -ItemType Directory -Force -Path $OutputModules | Out-Null
+    Get-ChildItem -Path $JigHome -Recurse -File -Filter "*.jar" |
+        Copy-Item -Destination $OutputModules
     if ($OpenJ9) {
         $LauncherConfiguration = Join-Path $Output "conf\com.netflix.tools.launcher"
         foreach ($Options in Get-ChildItem -Path $LauncherConfiguration -Filter "*.args") {
