@@ -202,6 +202,16 @@ class JaInvocationTest {
     }
 
     @Test
+    void missingSourceModulesExplainsHowToSelectAWorkingDirectory() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> JaInvocation.parse(temporaryDirectory, new String[] {"compile"}));
+
+        assertEquals("No source module found from " + temporaryDirectory
+                + "; run from within a module, src, or its parent",
+                failure.getMessage());
+    }
+
+    @Test
     void suppliedWorkingDirectoryControlsModuleSourcePathDiscovery() throws IOException {
         Path moduleRoot = temporaryDirectory.resolve("module-root");
         module(moduleRoot.resolve("src"), "com.example.app");

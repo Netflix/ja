@@ -244,7 +244,8 @@ public record JaInvocation(
                 && !(command instanceof Tool)
                 && !(command instanceof Tools)
                 && moduleSourcePath.isEmpty()) {
-            throw new IllegalArgumentException("No module source path was found");
+            throw new IllegalArgumentException("No source module found from " + selectedWorkingDirectory
+                    + "; run from within a module, src, or its parent");
         }
         if (command instanceof Require(var request)) {
             if (moduleSourcePath.isEmpty()) {
