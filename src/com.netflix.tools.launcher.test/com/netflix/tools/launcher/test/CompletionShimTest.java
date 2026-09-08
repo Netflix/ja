@@ -46,6 +46,17 @@ class CompletionShimTest {
     }
 
     @Test
+    void zshDisplaysCandidateValuesAlongsideDescriptions() {
+        String shim = CompletionBundle.builder()
+                .add("probe")
+                .build()
+                .render(CompletionShell.ZSH);
+
+        assertTrue(shim.contains("displays+=(\"$value -- $description\")"), shim);
+        assertTrue(shim.contains("compadd -d displays -- \"${values[@]}\""), shim);
+    }
+
+    @Test
     void composesDynamicRegistrationsByCommandName() {
         String shim = CompletionBundle.builder()
                 .add("first")

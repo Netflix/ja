@@ -13,7 +13,7 @@
 
 @FUNCTION@() {
     local current="${words[CURRENT]}"
-    local -a arguments values descriptions
+    local -a arguments values displays
     if (( CURRENT > 2 )); then
         arguments=("${words[@]:1:$((CURRENT - 2))}")
     fi
@@ -21,8 +21,12 @@
     while IFS=$'\t' read -r value description; do
         [[ "$value" == :* ]] && continue
         values+=("$value")
-        descriptions+=("$description")
+        if [[ -n "$description" ]]; then
+            displays+=("$value -- $description")
+        else
+            displays+=("$value")
+        fi
     done < <(command @COMMAND@ __complete "${arguments[@]}" "$current" 2>/dev/null)
-    compadd -d descriptions -- "${values[@]}"
+    compadd -d displays -- "${values[@]}"
 }
 compdef @FUNCTION@ @COMMAND@
