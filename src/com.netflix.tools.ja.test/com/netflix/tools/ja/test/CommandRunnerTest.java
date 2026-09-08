@@ -112,15 +112,6 @@ class CommandRunnerTest {
             "module-path",
             "module=main",
             "upgrade-module-path");
-    private static final Set<String> LINK_OPTIONS = Set.of(
-            "add-exports",
-            "add-modules",
-            "add-opens",
-            "enable-final-field-mutation",
-            "enable-native-access",
-            "enable-preview",
-            "module-path",
-            "upgrade-module-path");
     private static final Set<String> CONFIGURATION_OPTIONS = Set.of("add-modules", "module-path", "upgrade-module-path");
 
     @TempDir
@@ -833,106 +824,6 @@ class CommandRunnerTest {
         assertEquals(0, result);
         assertEquals(List.of("--module-source-path", "src", "--module", "com.example.first,com.example.second"), browserArguments);
         assertEquals(Optional.of("java.lang.String"), browsedType.get());
-    }
-
-    @Test
-    void linkResolvesCurrentPlatformJmodsForAReleasedTarget() throws Exception {
-        var commandLine = JaInvocation.parse(
-                temporaryDirectory,
-                new String[] {"link", "com.example.tool@1.2.3", "--include-static", "--add-modules", "ALL-MODULE-PATH", "--output",
-                        "image"});
-        Path toolJmod = Files.writeString(temporaryDirectory.resolve("com.example.tool.jmod"), "tool");
-        Path optionalJmod = Files.writeString(temporaryDirectory.resolve("com.example.optional.jmod"), "optional");
-        var resolutions = new ArrayList<String>();
-        var jlinkArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
-                "jig",
-                (output, arguments) -> {
-                    assertTrue(arguments.contains("--prefer-jmod"));
-                    assertTrue(arguments.contains("--target-platform"));
-                    assertTrue(arguments.contains("CURRENT"));
-                    assertTrue(arguments.contains("com.example.tool@1.2.3"));
-                    String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    resolutions.add(options);
-                    output.print("--module-path\n"
-                            + toolJmod
-                            + (arguments.contains("--compile-time") ? File.pathSeparator + optionalJmod : "")
-                            + "\n--add-modules\ncom.example.tool\n--enable-preview\n--enable-native-access\ncom.example.tool\n"
-                            + "--enable-final-field-mutation\ncom.example.tool\n--add-opens\njava.base/"
-                            + "java.lang=com.example.tool\n--add-exports\njdk.compiler/com.sun.tools.javac.api=com.example.tool\n");
-                    return 0;
-                }),
-                tool("jlink",
-                        (output, arguments) -> {
-                            jlinkArguments.addAll(arguments);
-                            return 0;
-                        }));
-
-        int result = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> null)
-                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
-                        new PrintStream(new ByteArrayOutputStream()));
-
-        assertEquals(0, result);
-        assertEquals(List.of(optionList(LINK_OPTIONS)), resolutions);
-        assertTrue(jlinkArguments.contains("ALL-MODULE-PATH"));
-        assertEquals(
-                Set.of("--enable-preview", "--enable-native-access=com.example.tool", "--enable-final-field-mutation=com.example.tool", "--add-opens=java.base/java.lang=com.example.tool", "--add-exports=jdk.compiler/com.sun.tools.javac.api=com.example.tool"),
-                Set.of(jlinkArguments.get(jlinkArguments.indexOf("--add-options") + 1).split(" ")));
-        assertFalse(jlinkArguments.contains("--enable-native-access"));
-        assertFalse(jlinkArguments.contains("--add-exports"));
-        assertTrue(jlinkArguments.stream()
-                .anyMatch(argument -> argument.contains(optionalJmod.toString())));
-        assertFalse(jlinkArguments.contains("--include-static"));
-    }
-
-    @Test
-    void linkUsesTheFilteredExplodedViewOfSourceModules() throws Exception {
-        Path source = Files.createDirectories(temporaryDirectory.resolve("src/com.example.application"));
-        Files.writeString(source.resolve("module-info.java"),
-                """
-                module com.example.application {
-                    requires static org.junit.platform.engine;
-                }
-                """);
-        Path engine = TestModules.writeJar(temporaryDirectory.resolve("junit-platform-engine.jar"), "org.junit.platform.engine");
-        TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"link", "--output", temporaryDirectory.resolve("image").toString()});
-        ToolServices tools = ToolServices.of(tool(
-                "jig",
-                (output, arguments) -> {
-                    Path application = Files.createDirectories(workspace.modules().resolve("com.example.application"));
-                    TestModules.writeModuleInfo(application, "com.example.application", Set.of("org.junit.platform.engine"));
-                    Path packageDirectory = Files.createDirectories(application.resolve("com/example/application"));
-                    Files.writeString(packageDirectory.resolve("Main.class"), "application");
-                    Files.writeString(packageDirectory.resolve("MainTest.class"), "test");
-                    Path testPackage = Files.createDirectories(packageDirectory.resolve("test"));
-                    Files.writeString(testPackage.resolve("Fixture.class"), "fixture");
-                    Files.writeString(testPackage.resolve("fixture.properties"), "fixture");
-                    String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    output.print("--module-path\n" + workspace.modules());
-                    if (options.equals(optionList(COMPILE_OPTIONS))) {
-                        output.print(File.pathSeparator + engine);
-                    }
-                    output.print("\n--add-modules\ncom.example.application\n");
-                    return 0;
-                }),
-                tool(
-                        "jlink",
-                        (output, arguments) -> {
-                            Path application = ToolArguments.moduleLocation("com.example.application", arguments).orElseThrow();
-                            assertTrue(Files.isDirectory(application), arguments.toString());
-                            assertTrue(Files.exists(application.resolve("com/example/application/Main.class")));
-                            assertFalse(Files.exists(application.resolve("com/example/application/MainTest.class")));
-                            assertFalse(Files.exists(application.resolve("com/example/application/test/Fixture.class")));
-                            assertFalse(Files.exists(application.resolve("com/example/application/test/fixture.properties")));
-                            return 0;
-                        }));
-
-        int result = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> workspace)
-                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
-                        new PrintStream(new ByteArrayOutputStream()));
-
-        assertEquals(0, result);
     }
 
     @Test

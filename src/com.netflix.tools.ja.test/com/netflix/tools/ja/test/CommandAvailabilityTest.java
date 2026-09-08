@@ -23,12 +23,10 @@ import com.netflix.tools.ja.BuiltinCommand;
 import com.netflix.tools.ja.Command;
 import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Doc;
-import com.netflix.tools.ja.Command.Link;
 import com.netflix.tools.ja.Command.Source;
 import com.netflix.tools.ja.CommandAvailability;
 import com.netflix.tools.ja.DocRequest.Terminal;
 import com.netflix.tools.ja.JaInvocation;
-import com.netflix.tools.ja.LinkRequest;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
@@ -87,16 +85,6 @@ class CommandAvailabilityTest {
                 () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
 
         assertEquals("source is unavailable; missing tool: jist", failure.getMessage());
-    }
-
-    @Test
-    void reportsAParameterizedWorkflowToolDependency() {
-        var commandLine = commandLine(new Link(new LinkRequest(Optional.of("com.example.app@1.0.0"), false, false)));
-
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
-
-        assertEquals("link is unavailable; missing tool: jlink", failure.getMessage());
     }
 
     @Test

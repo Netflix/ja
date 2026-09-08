@@ -218,7 +218,9 @@ public final class Ja {
                         new CompletionRequest(delegated.orElseThrow(), request.current()));
             }
         }
-        return COMMAND_LINE.complete(new CompletionRequest(prepared, request.current()));
+        return COMMAND_LINE.complete(new CompletionRequest(prepared, request.current())).stream()
+                .filter(completion -> !completion.value().equals("completion"))
+                .toList();
     }
 
     private static boolean completesTagValue(BuiltinCommand command, List<String> arguments) {
@@ -277,10 +279,6 @@ public final class Ja {
                                .operand("SYMBOL|TYPE", "Java source symbol or type", Cardinality.ZERO_OR_ONE)
                                .build();
             case SOURCE -> commandLine.operand("SYMBOL", "Java package, type, member, or source symbol", Cardinality.EXACTLY_ONE).build();
-            case LINK ->
-                    commandLine.options(JaOptions.linkOptions())
-                               .operand("APPLICATION", "Module or package reference", Cardinality.ZERO_OR_ONE)
-                               .build();
             case INSTALL ->
                     commandLine.options(JaOptions.installOptions())
                                .operand("APPLICATION", "Module or package reference", Cardinality.ZERO_OR_ONE)

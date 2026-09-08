@@ -28,7 +28,6 @@ import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Doc;
 import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
-import com.netflix.tools.ja.Command.Link;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
 import com.netflix.tools.ja.Command.Source;
@@ -76,8 +75,6 @@ public enum BuiltinCommand {
     JAR("jar", HelpGroup.BUILD, "Create or update a modular JAR", workflow(requiresProvider("jar")),
             project("module-path", "upgrade-module-path", "main-class", "module-version")),
     MOD("mod", HelpGroup.BUILD, "Create a JMOD archive", workflow(requiresProvider("jmod")), ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS),
-    LINK("link", HelpGroup.BUILD, "Create a runtime image",
-            workflow(requiresProvider("jlink")), ToolProjections.LINK),
     INSTALL("install", HelpGroup.BUILD, "Install an application command",
             workflow(requiresProvider("jlink")), ToolProjections.COMPLETE_JAVA),
     MAVEN(
@@ -141,7 +138,6 @@ public enum BuiltinCommand {
             case Init _ -> Optional.of(INIT);
             case Require _ -> Optional.of(REQUIRE);
             case Install _ -> Optional.of(INSTALL);
-            case Link _ -> Optional.of(LINK);
             case Run _ -> Optional.of(RUN);
             case Doc _ -> Optional.of(DOC);
             case Source _ -> Optional.of(SOURCE);

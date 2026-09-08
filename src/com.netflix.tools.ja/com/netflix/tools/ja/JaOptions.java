@@ -75,10 +75,6 @@ final class JaOptions {
                         .build());
     }
 
-    static Group linkOptions() {
-        return group(ToolOption.flag("--include-static", "Include static requirements"), ToolOption.flag("--include-sources", "Include JDK and module sources"));
-    }
-
     static Group installOptions() {
         return group(ToolOption.option("--name", "NAME", "Set the installed command name"), ToolOption.flag("--force", "Replace an existing command"), ToolOption.flag("--include-static", "Include static requirements"),
                 ToolOption.option("--output", "PATH", "Write the runtime image to PATH"));

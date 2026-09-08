@@ -78,7 +78,6 @@ class JaHelpTest {
                   assemble     Assemble module artifacts
                   jar          Create or update a modular JAR
                   mod          Create a JMOD archive
-                  link         Create a runtime image
                   install      Install an application command
                   maven        Export Maven projects or install and deploy modules
 
@@ -123,7 +122,6 @@ class JaHelpTest {
         assertFalse(available.contains("  fmt          Format source\n"), help);
         assertTrue(help.contains("Unavailable commands:\n"), help);
         assertTrue(help.contains("  fmt is unavailable; missing tool: jfmt\n"), help);
-        assertTrue(help.contains("  link is unavailable; missing tool: jlink\n"), help);
         assertTrue(help.contains("  install is unavailable; missing tool: jlink\n"), help);
     }
 

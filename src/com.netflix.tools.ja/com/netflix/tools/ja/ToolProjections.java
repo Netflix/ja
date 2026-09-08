@@ -50,8 +50,6 @@ final class ToolProjections {
 
     static final Projection COMPLETE_RUNTIME_WITH_ACCESS = new Projection(union(COMPLETE_RUNTIME_OPTIONS, ACCESS_OPTIONS, Set.of("enable-preview")), false, true);
 
-    static final Projection LINK = COMPLETE_RUNTIME_WITH_ACCESS;
-
     static final Projection JAVA = java(RUNTIME_OPTIONS);
 
     static final Projection COMPLETE_JAVA = java(COMPLETE_RUNTIME_OPTIONS);

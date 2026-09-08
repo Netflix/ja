@@ -27,7 +27,6 @@ import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Doc;
 import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
-import com.netflix.tools.ja.Command.Link;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
 import com.netflix.tools.ja.Command.Source;
@@ -122,8 +121,6 @@ public record JaInvocation(
             command = new Init(parseInitRequest(arguments, commandArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.INSTALL))) {
             command = new Install(parseInstallRequest(selectedWorkingDirectory, arguments, commandArguments));
-        } else if (command.equals(new Builtin(BuiltinCommand.LINK))) {
-            command = new Link(parseLinkRequest(arguments, commandArguments, toolArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.REQUIRE))) {
             command = new Require(parseRequireRequest(arguments, commandArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.DOC))) {
@@ -207,13 +204,9 @@ public record JaInvocation(
 
         boolean init = command instanceof Init;
         boolean install = command instanceof Install;
-        boolean link = command instanceof Link;
         boolean sourceInstall = command instanceof Install(var request) && request.target().isEmpty();
-        boolean sourceLink = command instanceof Link(var request) && request.target().isEmpty();
         Optional<ModuleSourcePath> moduleSourcePath = Optional.empty();
-        if ((!init && !install && !link)
-                || sourceInstall
-                || sourceLink) {
+        if ((!init && !install) || sourceInstall) {
             boolean parseDescriptors = !command.equals(new Builtin(BuiltinCommand.COMPILE));
             moduleSourcePath = ModuleSourcePath.discover(selectedWorkingDirectory, parseDescriptors);
             if (moduleSourcePath.isPresent()) {
@@ -246,13 +239,11 @@ public record JaInvocation(
                 throw new IllegalArgumentException("install requires a source module: " + rootModules.getFirst());
             }
         }
-        if ((!init
-                        && !install
-                        && !link
-                        && !(command instanceof Tool)
-                        && !(command instanceof Tools)
-                        && moduleSourcePath.isEmpty())
-                || (link && sourceLink && moduleSourcePath.isEmpty())) {
+        if (!init
+                && !install
+                && !(command instanceof Tool)
+                && !(command instanceof Tools)
+                && moduleSourcePath.isEmpty()) {
             throw new IllegalArgumentException("No module source path was found");
         }
         if (command instanceof Require(var request)) {
@@ -392,27 +383,6 @@ public record JaInvocation(
             throw new IllegalArgumentException("doc requires a symbol or --browse");
         }
         return new Terminal(target);
-    }
-
-    private static LinkRequest parseLinkRequest(String[] arguments, int firstArgument, List<String> toolArguments) {
-        Optional<String> target = Optional.empty();
-        boolean includeStatic = false;
-        boolean includeSources = false;
-        int index = firstArgument;
-        if (index < arguments.length && !arguments[index].startsWith("-")) {
-            target = Optional.of(arguments[index++]);
-        }
-        for (; index < arguments.length; index++) {
-            String argument = arguments[index];
-            if (argument.equals("--include-static")) {
-                includeStatic = true;
-            } else if (argument.equals("--include-sources")) {
-                includeSources = true;
-            } else {
-                toolArguments.add(argument);
-            }
-        }
-        return new LinkRequest(target, includeStatic, includeSources);
     }
 
     private static String moduleSelection(String option, String argument) {

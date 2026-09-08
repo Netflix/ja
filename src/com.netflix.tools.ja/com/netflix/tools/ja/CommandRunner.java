@@ -198,11 +198,6 @@ public final class CommandRunner {
                 resolutionArguments.addAll(applicationTarget.orElseThrow()
                         .resolutionArguments());
             }
-            if (commandLine.command() instanceof Command.Link) {
-                resolutionArguments.add("--prefer-jmod");
-                resolutionArguments.add("--target-platform");
-                resolutionArguments.add("CURRENT");
-            }
             var initialToolResolution = selectedToolRunner.supports(commandLine)
                     ? Optional.of(selectedToolRunner.initialResolution(commandLine))
                     : Optional.<ToolRunner.ResolutionRequest>empty();
@@ -223,11 +218,8 @@ public final class CommandRunner {
                 resolutionArguments = new ArrayList<>(initialToolResolution.orElseThrow()
                         .arguments(resolutionArguments));
             }
-            var includeStatic = switch (commandLine.command()) {
-                case Command.Install(var request) -> request.includeStatic();
-                case Command.Link(var request) -> request.includeStatic();
-                default -> false;
-            };
+            var includeStatic = commandLine.command() instanceof Command.Install(var request)
+                    && request.includeStatic();
             List<String> configurationArguments = List.of();
             Optional<ToolRunner.PreparedInvocation> toolInvocation = Optional.empty();
             if (initialToolResolution.filter(ToolRunner.ResolutionRequest::resolveActivation).isPresent()) {
@@ -255,7 +247,8 @@ public final class CommandRunner {
                 explicitLaunchArguments.add(target.orElseThrow());
                 launchArguments = List.copyOf(explicitLaunchArguments);
             }
-            var filtersSourceModules = commandLine.moduleSourcePath().isPresent() && (commandLine.command() instanceof Command.Install || commandLine.command() instanceof Command.Link);
+            var filtersSourceModules = commandLine.moduleSourcePath().isPresent()
+                    && commandLine.command() instanceof Command.Install;
             List<String> filteringCompileArguments = filtersSourceModules ? moduleResolver.resolve(resolutionArguments, ToolProjections.JAVAC, in, err) : List.of();
             var resolved = configurationArguments.isEmpty() ? new ResolvedToolArguments(launchArguments, Set.of(), Map.of()) : ResolvedToolArguments.resolve(launchArguments, configurationArguments, layer);
             if (applicationTarget.flatMap(ApplicationTarget::version).isPresent()) {
@@ -378,11 +371,6 @@ public final class CommandRunner {
                     out,
                     err);
         }
-        if (commandLine.command() instanceof Command.Link(var request)) {
-            return new LinkCommand(tools, Path.of(System.getProperty("java.home")), selectedCatalog.definitions())
-                    .run(request, commandLine.moduleSourcePath(), filteringCompileArguments, resolved.arguments(),
-                            commandLine.toolArguments(), in, out, err);
-        }
         if (commandLine.command() instanceof Command.Install(var request)) {
             return new InstallCommand(tools, selectedCatalog.definitions(), installer)
                     .run(commandLine, request, resolved, filteringCompileArguments, applicationTarget, in,
@@ -399,11 +387,9 @@ public final class CommandRunner {
     }
 
     private static Optional<String> applicationTarget(JaInvocation commandLine) {
-        return switch (commandLine.command()) {
-            case Command.Install(var request) -> request.target();
-            case Command.Link(var request) -> request.target();
-            default -> Optional.empty();
-        };
+        return commandLine.command() instanceof Command.Install(var request)
+                ? request.target()
+                : Optional.empty();
     }
 
     private Optional<ScopedTools> toolsOnModulePath(JaInvocation commandLine, ToolCatalog catalog, InputStream in,
@@ -495,7 +481,6 @@ public final class CommandRunner {
                         || builtin == BuiltinCommand.SOURCE
                         || builtin == BuiltinCommand.JAR
                         || builtin == BuiltinCommand.MOD
-                        || builtin == BuiltinCommand.LINK
                         || builtin == BuiltinCommand.INSTALL
                         || builtin == BuiltinCommand.ASSEMBLE
                         || builtin == BuiltinCommand.MAVEN);
@@ -552,7 +537,6 @@ public final class CommandRunner {
             case Command.Init _ -> false;
             case Command.Require _ -> false;
             case Command.Install _ -> false;
-            case Command.Link _ -> false;
             case Command.Run _ -> false;
             case Command.Doc _ -> false;
             case Command.Source _ -> false;

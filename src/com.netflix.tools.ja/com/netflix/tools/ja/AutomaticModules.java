@@ -84,16 +84,6 @@ final class AutomaticModules {
         err.println("Automatic modules require java.se, increasing the installed application size.");
     }
 
-    static void requireLinkable(List<String> arguments) {
-        Set<String> modules = find(arguments);
-        if (modules.isEmpty()) {
-            return;
-        }
-        var message = new StringBuilder("Automatic modules cannot be linked into runtime images:");
-        modules.forEach(module -> message.append("\n  ").append(module));
-        throw new IllegalArgumentException(message.toString());
-    }
-
     static void warnExport(String module, Set<String> dependencies, boolean omitJmod,
                            PrintStream err) {
         printModules("warning: " + module + " requires automatic modules with filename-derived names:",

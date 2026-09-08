@@ -101,8 +101,8 @@ class JaToolTest {
         var described = assertInstanceOf(JaTool.class, ja);
 
         assertEquals(
-                List.of("compile", "completion"),
-                described.commandLine().complete(List.of("co")).stream()
+                List.of("compile"),
+                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolServices.of()).stream()
                         .map(completion -> completion.value())
                         .toList());
         assertEquals(
@@ -110,7 +110,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(20,
+        assertEquals(19,
                 described.commandLine()
                          .commands()
                          .size());
@@ -134,7 +134,6 @@ class JaToolTest {
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "describe").parse("--add-modules", "java.sql"));
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "jar").parse("--create"));
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "mod").parse("--module-version", "1"));
-        assertThrows(IllegalArgumentException.class, () -> commandLine(described, "link").parse("--output", "image"));
         assertTrue(commandLine(described, "test").parse("--all")
                 .contains(option(commandLine(described, "test"), "--all")));
         CommandLine assemble = commandLine(described, "assemble");
@@ -250,6 +249,14 @@ class JaToolTest {
 
         assertEquals(2, result.exitCode());
         assertEquals("ja: Unknown command: unknown\n", result.error());
+    }
+
+    @Test
+    void rejectsRemovedLinkCommand() {
+        Result result = run("link", "--output", "image");
+
+        assertEquals(2, result.exitCode());
+        assertEquals("ja: Unknown command: link\n", result.error());
     }
 
     @Test

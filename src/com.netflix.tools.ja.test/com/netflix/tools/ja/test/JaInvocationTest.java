@@ -25,7 +25,6 @@ import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Doc;
 import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
-import com.netflix.tools.ja.Command.Link;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
 import com.netflix.tools.ja.Command.Source;
@@ -36,7 +35,6 @@ import com.netflix.tools.ja.DocRequest.Terminal;
 import com.netflix.tools.ja.InitRequest;
 import com.netflix.tools.ja.InstallRequest;
 import com.netflix.tools.ja.JaInvocation;
-import com.netflix.tools.ja.LinkRequest;
 import com.netflix.tools.ja.ModuleSourcePath;
 import com.netflix.tools.ja.RequireRequest;
 import com.netflix.tools.ja.RequireRequest.Dependency;
@@ -402,39 +400,11 @@ class JaInvocationTest {
     }
 
     @Test
-    void targetPlatformAfterTheCommandIsAToolArgument() throws IOException {
-        module(temporaryDirectory.resolve("src"), "com.example.app");
-
-        var commandLine = JaInvocation.parse(temporaryDirectory,
-                new String[] {"link", "--target-platform", "macos-aarch64", "--output", "image"});
-
-        assertEquals(
-                List.of("--module-source-path", temporaryDirectory.resolve("src").toString(),
-                        "-m", "com.example.app"),
-                commandLine.resolutionArguments());
-        assertEquals(List.of("--target-platform", "macos-aarch64", "--output", "image"), commandLine.toolArguments());
-    }
-
-    @Test
-    void parsesReleasedModuleLinkWithoutSourceDiscovery() throws IOException {
-        var commandLine = JaInvocation.parse(
-                temporaryDirectory,
-                new String[] {"link", "com.netflix.tools.ja@1.2.3", "--include-static", "--include-sources", "--add-modules", "ALL-MODULE-PATH",
-                        "--output", "image"});
-
-        assertEquals(
-                new Link(new LinkRequest(Optional.of("com.netflix.tools.ja@1.2.3"), true, true)),
-                commandLine.command());
-        assertEquals(List.of("--add-modules", "ALL-MODULE-PATH", "--output", "image"), commandLine.toolArguments());
-        assertEquals(Optional.empty(), commandLine.moduleSourcePath());
-    }
-
-    @Test
     void rejectsJigResolutionFlags() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory, new String[] {"--prefer-jmod", "link", "--output", "image"}));
+                () -> JaInvocation.parse(temporaryDirectory, new String[] {"--prefer-jmod", "compile"}));
 
         assertEquals("Unknown ja option: --prefer-jmod", failure.getMessage());
     }

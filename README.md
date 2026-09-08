@@ -530,35 +530,19 @@ ja -C src/com.example.tool mod \
 
 ## Link runtime images
 
-Create a runtime image for the current source application:
+Run the JDK's `jlink` tool directly to create a runtime image for the current source application. `ja` supplies the selected modules and their module path:
 
 ```sh
-ja link --output /path/to/image
+ja tool jlink --output /path/to/image
 ```
 
-A released application can be linked by module name and version:
+Standard `jlink` options are accepted. For example, include every observable module:
 
 ```sh
-ja link com.example.application@1.2.3 --output /path/to/image
-```
-
-Standard `jlink` options are also accepted. For example, include every observable module:
-
-```sh
-ja link com.example.application@1.2.3 \
+ja tool jlink \
   --add-modules ALL-MODULE-PATH \
   --output /path/to/image
 ```
-
-Static requirements are omitted by default. Include them with `--include-static`:
-
-```sh
-ja link --include-static --output /path/to/image
-```
-
-Use `--include-sources` to copy the linking JDK's `lib/src.zip` into the image.
-
-Automatic modules cannot be linked into runtime images. `ja link` reports them as an error.
 
 ## Install applications
 

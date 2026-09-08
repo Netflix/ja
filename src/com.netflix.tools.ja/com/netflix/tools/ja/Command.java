@@ -36,8 +36,6 @@ public sealed interface Command {
 
     record Install(InstallRequest request) implements Command {}
 
-    record Link(LinkRequest request) implements Command {}
-
     record Run(Optional<String> target) implements Command {}
 
     record Doc(DocRequest request) implements Command {}
