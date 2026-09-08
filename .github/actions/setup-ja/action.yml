@@ -15,9 +15,8 @@ description: Add the ja and jig native toolchain to a Zulu JDK
 
 inputs:
   ja-version:
-    description: ja version
+    description: Ja version; defaults to the version in the action tag
     required: false
-    default: 0.17.2
 
 outputs:
   java-home:
@@ -31,16 +30,26 @@ runs:
       id: configuration
       shell: bash
       env:
-        JA_VERSION: ${{ inputs.ja-version }}
+        ACTION_REF: ${{ github.action_ref }}
+        REQUESTED_JA_VERSION: ${{ inputs.ja-version }}
       run: |
+        if [[ -n "$REQUESTED_JA_VERSION" ]]; then
+          ja_version="$REQUESTED_JA_VERSION"
+        elif [[ "$ACTION_REF" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$ ]]; then
+          ja_version="${BASH_REMATCH[1]}"
+        else
+          echo "ja-version is required when the action is not referenced by a version tag" >&2
+          exit 2
+        fi
         if command -v sha256sum >/dev/null; then
           fingerprint="$(sha256sum "$JAVA_HOME/release" | cut -d' ' -f1)"
         else
           fingerprint="$(shasum -a 256 "$JAVA_HOME/release" | cut -d' ' -f1)"
         fi
-        java_home="$RUNNER_TOOL_CACHE/ja/$fingerprint/$JA_VERSION"
+        java_home="$RUNNER_TOOL_CACHE/ja/$fingerprint/$ja_version"
+        echo "ja-version=$ja_version" >> "$GITHUB_OUTPUT"
         echo "java-home=$java_home" >> "$GITHUB_OUTPUT"
-        echo "cache-key=ja-toolchain-v2-${RUNNER_OS}-${RUNNER_ARCH}-${fingerprint}-${JA_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "cache-key=ja-toolchain-v2-${RUNNER_OS}-${RUNNER_ARCH}-${fingerprint}-${ja_version}" >> "$GITHUB_OUTPUT"
 
     - name: Restore ja toolchain
       id: cache
@@ -56,7 +65,7 @@ runs:
         "$GITHUB_ACTION_PATH/link.sh"
         "$JAVA_HOME"
         "${{ steps.configuration.outputs.java-home }}"
-        "${{ inputs.ja-version }}"
+        "${{ steps.configuration.outputs.ja-version }}"
 
     - name: Select ja toolchain
       shell: bash
