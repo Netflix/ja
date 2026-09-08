@@ -18,6 +18,9 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 > [!IMPORTANT]
 > This project and its bundled tools are currently in preview. We are collecting all preview feedback here: use [Issues](https://github.com/Netflix/ja/issues) to report problems and [Discussions](https://github.com/Netflix/ja/discussions) for feedback, questions, and suggestions.
 
+> [!NOTE]
+> Netflix engineers should use the internally bundled toolchain rather than installing `ja` or its tools separately.
+
 Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/).
 
 On macOS and Linux:
