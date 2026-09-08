@@ -53,8 +53,10 @@ class ToolCatalogTest {
                                 "jshell",
                                 "junit")),
                 () -> "Missing selected tool definitions: " + definitions);
-        assertEquals(Optional.of("com.netflix.tools.jmh"),
-                catalog.definition("jmh").activation());
+        ToolDefinition jmh = catalog.definition("jmh");
+        assertEquals(Optional.of("org.openjdk.jmh.core"), jmh.activation());
+        assertEquals(Optional.of("com.netflix.tools.jmh"), jmh.module());
+        assertEquals(Optional.of("0.17.5"), jmh.version());
         ToolDefinition probe = catalog.definition("configured-probe");
         assertEquals(Optional.empty(), probe.module());
         assertEquals(Set.of("module-path", "module=list"), probe.options());
@@ -99,7 +101,7 @@ class ToolCatalogTest {
     private static ToolDefinition definition(String name, String activation) throws Exception {
         String properties = "module=com.example."
                 + name
-                + "\nversion=1.0\n"
+                + "@1.0\n"
                 + (activation == null ? "" : "activation=" + activation + "\n");
         return ToolDefinition.read(name, new ByteArrayInputStream(properties.getBytes(StandardCharsets.UTF_8)));
     }

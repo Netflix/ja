@@ -35,13 +35,14 @@ class ToolDefinitionTest {
     void readsProviderTool() throws Exception {
         ToolDefinition definition = definition("jist",
                 """
-                        module=com.netflix.tools.jist
-                        version=1.0
+                        module=com.netflix.tools.jist@1.0
                         options=module-path,module-source-path,module=list
                         compile-time=true
                         """);
 
         assertEquals(Launch.PROVIDER, definition.launch());
+        assertEquals(Optional.of("com.netflix.tools.jist"), definition.module());
+        assertEquals(Optional.of("1.0"), definition.version());
         assertEquals(Set.of("module-path", "module-source-path", "module=list"), definition.options());
         assertTrue(definition.compileTime());
         assertFalse(definition.validateRuntimeAccess());
@@ -82,15 +83,27 @@ class ToolDefinitionTest {
     }
 
     @Test
-    void explicitVersionOverridesActivationVersion() throws Exception {
+    void moduleVersionOverridesActivationVersion() throws Exception {
         ToolDefinition definition = definition("formatter",
                 """
                         activation=java.compiler
-                        module=com.example.formatter
-                        version=2.0.0
+                        module=com.example.formatter@2.0.0
                         """);
 
+        assertEquals(Optional.of("com.example.formatter"), definition.module());
+        assertEquals(Optional.of("2.0.0"), definition.version());
         assertEquals("2.0.0", definition.resolveVersion(Optional.of(Version.parse("25"))));
+    }
+
+    @Test
+    void rejectsConflictingToolVersions() {
+        var failure = assertThrows(IllegalArgumentException.class, () -> definition("formatter",
+                """
+                        module=com.example.formatter@2.0.0
+                        version=2.1.0
+                        """));
+
+        assertEquals("Tool version is specified in both module and version", failure.getMessage());
     }
 
     @Test

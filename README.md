@@ -199,13 +199,13 @@ module com.example.application.test {
 }
 ```
 
-Benchmarks follow the same pattern. Add the JMH tool as a static requirement when benchmarks live with the implementation:
+Benchmarks follow the same pattern. Add JMH as a static requirement when benchmarks live with the implementation:
 
 ```sh
-ja require --static com.netflix.tools.jmh
+ja require --static org.openjdk.jmh.core
 ```
 
-The tool supplies the JMH API as well as the runner. Use an ordinary requirement on `com.netflix.tools.jmh` in a dedicated benchmark module.
+The requirement activates the benchmark runner. Use an ordinary requirement on `org.openjdk.jmh.core` in a dedicated benchmark module.
 
 ### JMOD layout
 
@@ -379,13 +379,13 @@ JUnit runner output uses a compact summary by default and includes failure detai
 
 ## Run benchmarks
 
-First, add the JMH tool to the module containing the benchmarks. This is a one-time setup step:
+First, add JMH to the module containing the benchmarks. This is a one-time setup step:
 
 ```sh
-ja require --static com.netflix.tools.jmh
+ja require --static org.openjdk.jmh.core
 ```
 
-The requirement supplies the JMH API and activates the benchmark runner:
+The requirement activates the benchmark runner:
 
 ```sh
 ja bench
@@ -393,7 +393,7 @@ ja bench com.example.application.ApplicationBenchmark
 ja bench com.example.application.ApplicationBenchmark.starts
 ```
 
-Use an ordinary `ja require com.netflix.tools.jmh` instead for a dedicated benchmark module. The tool discovers benchmarks from activated root modules, generates the JMH harness, and runs it without requiring a separate generated-source build. Name one or more classes or methods to select them. Use `ja tool jmh` for JMH options and native selector syntax.
+Use an ordinary `ja require org.openjdk.jmh.core` instead for a dedicated benchmark module. The tool discovers benchmarks from activated root modules, generates the JMH harness, and runs it without requiring a separate generated-source build. Name one or more classes or methods to select them. Use `ja tool jmh` for JMH options and native selector syntax.
 
 ## Format source
 
@@ -677,7 +677,7 @@ This metadata makes `junit` applicable when `org.junit.platform.engine` is prese
 
 Include `verbose` in `options` when the tool accepts `--verbose`. Ja passes its global `--verbose` switch to tools that declare this support or expose it through `OptionChecker`.
 
-Use `provider` when the service name differs from the metadata name. Use `version` to select a fixed provider version; otherwise the version of the activation module is used.
+Use `provider` when the service name differs from the metadata name. Append `@version` to `module` to select a fixed provider version; otherwise the version of the activation module is used.
 
 ### Native launcher
 

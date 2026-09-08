@@ -15,7 +15,7 @@
 module com.netflix.tools.jmh {
     opens com.netflix.tools.jmh to org.junit.platform.commons;
 
-    requires transitive org.openjdk.jmh.core; // @1.37
+    requires org.openjdk.jmh.core; // @1.37
     requires org.openjdk.jmh.generator.asm; // @1.37
     requires org.openjdk.jmh.generator.bytecode; // @1.37
     requires org.openjdk.jmh.generator.reflection; // @1.37

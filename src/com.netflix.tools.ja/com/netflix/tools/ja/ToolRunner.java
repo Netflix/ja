@@ -481,24 +481,35 @@ public final class ToolRunner {
                                    InputStream in,
                                    PrintStream out,
                                    PrintStream err) throws IOException {
+        var executionController = controller;
+        var executionLayer = layer;
+        var executionTools = tools;
+        boolean providerAvailable = executionTools.contains(definition.provider());
         var module =
-                definition.module()
-                        .or(() -> tools.moduleName(definition.provider()))
+                (providerAvailable ? executionTools.moduleName(definition.provider()) : definition.module())
+                        .or(() -> definition.module())
                         .orElseThrow(() ->
                                 new IllegalArgumentException("Tool " + definition.name() + " is not installed and has no module"));
         List<String> resolutionArguments;
-        if (commandLine.moduleSourcePath().isPresent()) {
+        if (providerAvailable && commandLine.moduleSourcePath().isPresent()) {
             var scopedArguments = new ArrayList<>(commandLine.resolutionArguments());
             scopedArguments.add("-m");
             scopedArguments.add(module);
             scopedArguments.add("--verify-module-hashes");
             resolutionArguments = scopedArguments;
         } else {
-            resolutionArguments =
-                    List.of("--add-requires",
-                            module
-                                    + "@"
-                                    + definition.resolveVersion(definition.activation().flatMap(resolved::moduleVersion)));
+            String moduleRequirement = module
+                    + "@"
+                    + definition.resolveVersion(definition.activation().flatMap(resolved::moduleVersion));
+            if (commandLine.moduleSourcePath().isPresent()) {
+                var scopedArguments = new ArrayList<>(ResolutionArguments.rootsAsAddedModules(commandLine.resolutionArguments()));
+                scopedArguments.add("--add-requires");
+                scopedArguments.add(moduleRequirement);
+                scopedArguments.add("--verify-module-hashes");
+                resolutionArguments = scopedArguments;
+            } else {
+                resolutionArguments = List.of("--add-requires", moduleRequirement);
+            }
         }
         var runtimeArguments =
                 new ModuleResolver(tools)
@@ -508,18 +519,15 @@ public final class ToolRunner {
                                          true),
                                  in,
                                  err);
-        var executionController = controller;
-        var executionLayer = layer;
-        var executionTools = tools;
-        if (executionController == null) {
+        if (!executionTools.contains(definition.provider())) {
             var paths = ToolArguments.modulePath(runtimeArguments);
             var finder = ModuleFinder.of(paths.toArray(java.nio.file.Path[]::new));
             var configuration =
                     Configuration.resolve(finder,
-                                          List.of(layer.configuration()),
+                                          List.of(executionLayer.configuration()),
                                           ModuleFinder.of(),
                                           Set.of(module));
-            executionController = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(layer), ClassLoader.getSystemClassLoader());
+            executionController = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(executionLayer), ClassLoader.getSystemClassLoader());
             executionLayer = executionController.layer();
             executionTools = tools.withAdditional(ToolServices.load(executionLayer, Set.of(module)));
         }

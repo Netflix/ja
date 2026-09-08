@@ -442,18 +442,19 @@ public final class CommandRunner {
         scopedCatalog.definitions().stream()
                 .map(ToolDefinition::name)
                 .filter(name -> catalog.find(name).isPresent())
-                .filter(name -> scopedServices == null || !providesActivatedTool(catalog.definition(name), scopedCatalog.definition(name), scopedServices))
+                .filter(name -> scopedServices == null || !providesDeclaredTool(catalog.definition(name), scopedCatalog.definition(name), scopedServices))
                 .findFirst()
                 .ifPresent(name -> {
                     throw new IllegalArgumentException("Duplicate tool: " + name);
                 });
     }
 
-    private static boolean providesActivatedTool(ToolDefinition definition,
+    private static boolean providesDeclaredTool(ToolDefinition definition,
             ToolDefinition scopedDefinition,
             ToolServices scopedServices) {
+        var providerModule = scopedServices.moduleName(scopedDefinition.provider());
         return definition.provider().equals(scopedDefinition.provider())
-                && definition.activation().equals(scopedServices.moduleName(scopedDefinition.provider()));
+                && (definition.activation().equals(providerModule) || definition.module().equals(providerModule));
     }
 
     private static JavaLauncher verbose(JavaLauncher launcher, PrintStream log) {

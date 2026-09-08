@@ -62,6 +62,25 @@ public record ToolDefinition(String name,
         }
     }
 
+    private record ModuleReference(String name, Optional<String> version) {
+        private ModuleReference {
+            ModuleDescriptor.newModule(name).build();
+            version.ifPresent(ModuleDescriptor.Version::parse);
+        }
+
+        private static ModuleReference parse(String value) {
+            int separator = value.lastIndexOf('@');
+            if (separator < 0) {
+                return new ModuleReference(value, Optional.empty());
+            }
+            if (separator == 0 || separator == value.length() - 1) {
+                throw new IllegalArgumentException("module expects <module> or <module>@<version>");
+            }
+            return new ModuleReference(value.substring(0, separator),
+                    Optional.of(value.substring(separator + 1)));
+        }
+    }
+
     public ToolDefinition(String name,
                           Launch launch,
                           Optional<String> activation,
@@ -149,10 +168,16 @@ public record ToolDefinition(String name,
         var properties = new Properties();
         properties.load(new InputStreamReader(input, StandardCharsets.UTF_8));
         var launch = optional(properties, "launch").map(Launch::parse).orElse(Launch.PROVIDER);
-        var module = optional(properties, "module");
+        var moduleReference = optional(properties, "module").map(ModuleReference::parse);
+        var module = moduleReference.map(ModuleReference::name);
         var provider = optional(properties, "provider").orElse(name);
         var activation = optional(properties, "activation");
-        var version = optional(properties, "version");
+        var moduleVersion = moduleReference.flatMap(ModuleReference::version);
+        var declaredVersion = optional(properties, "version");
+        if (moduleVersion.isPresent() && declaredVersion.isPresent()) {
+            throw new IllegalArgumentException("Tool version is specified in both module and version");
+        }
+        var version = moduleVersion.or(() -> declaredVersion);
         var options = Set.copyOf(commaSeparatedValues(properties, "options"));
         boolean compileTime = booleanProperty(properties, "compile-time");
         boolean validateRuntimeAccess = booleanProperty(properties, "validate-runtime-access");

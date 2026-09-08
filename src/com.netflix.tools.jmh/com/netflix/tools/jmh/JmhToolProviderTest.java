@@ -98,7 +98,7 @@ public class JmhToolProviderTest {
         Files.writeString(source.resolve("com.example.benchmark/module-info.java"),
                 """
                 module com.example.benchmark {
-                    requires static com.netflix.tools.jmh;
+                    requires static org.openjdk.jmh.core;
                 }
                 """);
         Files.writeString(packageDirectory.resolve("ExampleBenchmark.java"),

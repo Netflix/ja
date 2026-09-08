@@ -45,14 +45,14 @@ import java.util.stream.Collectors;
 import javax.tools.OptionChecker;
 
 public final class JmhToolProvider implements ToolProvider, OptionChecker {
-    private static final String ACTIVATION_MODULE = "com.netflix.tools.jmh";
+    private static final String PROVIDER_MODULE = "com.netflix.tools.jmh";
     private static final String CORE_MODULE = "org.openjdk.jmh.core";
     private static final String GENERATOR_MODULE = "org.openjdk.jmh.generator.bytecode";
     private static final String GENERATOR_MAIN = "org.openjdk.jmh.generators.bytecode.JmhBytecodeGenerator";
     private static final String RUNNER_MAIN = "org.openjdk.jmh.Main";
     private static final String JDK_UNSUPPORTED = "jdk.unsupported";
     private static final Set<String> TOOL_MODULES = Set.of(
-            ACTIVATION_MODULE,
+            PROVIDER_MODULE,
             "jopt.simple",
             "org.apache.commons.math3",
             "org.objectweb.asm",
@@ -252,7 +252,7 @@ public final class JmhToolProvider implements ToolProvider, OptionChecker {
         for (Path path : distinct(invocation.upgradeModulePath(), invocation.modulePath())) {
             Optional<ModuleReference> reference = ModuleFinder.of(path).find(module);
             if (reference.isPresent() && reference.orElseThrow().descriptor().requires().stream()
-                    .anyMatch(require -> require.name().equals(ACTIVATION_MODULE))) {
+                    .anyMatch(require -> require.name().equals(CORE_MODULE))) {
                 return true;
             }
         }

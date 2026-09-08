@@ -310,7 +310,10 @@ class CommandRunnerTest {
         var output = new ByteArrayOutputStream();
         var error = new ByteArrayOutputStream();
 
-        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of()), () -> null)
+        ToolDefinition sourceProbe = ToolDefinition.read("source-probe", new ByteArrayInputStream(
+                "activation=com.example.application\nmodule=com.example.tool@2.0\nprovider=source-probe\n"
+                        .getBytes(StandardCharsets.UTF_8)));
+        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(sourceProbe)), () -> null)
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(output),
                         new PrintStream(error));
 
@@ -327,6 +330,82 @@ class CommandRunnerTest {
                 execution.get(execution.indexOf("--resolve-options") + 1));
         assertTrue(execution.contains("--validate-runtime-access"));
         assertEquals(modules.resolve("com.example.tool").toUri() + "\nexplicit\n", output.toString());
+    }
+
+    @Test
+    void resolvesAVersionedProviderForAnActivatedSourceModule() throws Exception {
+        Path supportSources = temporaryDirectory.resolve("support-sources");
+        Path framework = Files.createDirectories(supportSources.resolve("com.example.framework"));
+        Files.writeString(framework.resolve("module-info.java"), "module com.example.framework {}\n");
+        Path toolModule = Files.createDirectories(supportSources.resolve("com.example.tool"));
+        Files.writeString(toolModule.resolve("module-info.java"),
+                """
+                module com.example.tool {
+                    provides java.util.spi.ToolProvider with com.example.Probe;
+                }
+                """);
+        Path toolPackage = Files.createDirectories(toolModule.resolve("com/example"));
+        Files.writeString(toolPackage.resolve("Probe.java"),
+                """
+                package com.example;
+
+                public final class Probe implements java.util.spi.ToolProvider {
+                    public String name() { return "probe"; }
+                    public int run(java.io.PrintWriter out, java.io.PrintWriter err,
+                                   String... arguments) {
+                        for (String argument : arguments) out.println(argument);
+                        return 0;
+                    }
+                }
+                """);
+        Path modules = temporaryDirectory.resolve("modules");
+        int supportCompilation = ToolProvider.findFirst("javac")
+                .orElseThrow()
+                .run(System.out, System.err, "--module-source-path", supportSources.toString(), "-d",
+                        modules.toString(), "--module", "com.example.framework,com.example.tool", "-proc:none");
+        assertEquals(0, supportCompilation);
+
+        Path projectSources = temporaryDirectory.resolve("project/src");
+        Path application = Files.createDirectories(projectSources.resolve("com.example.application"));
+        Files.writeString(application.resolve("module-info.java"),
+                """
+                module com.example.application {
+                    requires static com.example.framework;
+                }
+                """);
+        int applicationCompilation = ToolProvider.findFirst("javac")
+                .orElseThrow()
+                .run(System.out, System.err, "--module-path", modules.toString(), "--module-source-path",
+                        projectSources.toString(), "-d", modules.toString(), "--module", "com.example.application", "-proc:none");
+        assertEquals(0, applicationCompilation);
+
+        var commandLine = JaInvocation.parse(application, new String[] {"tool", "probe", "explicit"});
+        var jigInvocations = new ArrayList<List<String>>();
+        var tools = ToolServices.of(tool("jig",
+                (output, arguments) -> {
+                    jigInvocations.add(List.copyOf(arguments));
+                    if (arguments.contains("--compile-time")) {
+                        output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.application,com.example.framework\n");
+                    } else if (joinedPair(arguments, "--add-requires", "com.example.tool@2.0")) {
+                        output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.tool\n");
+                    } else {
+                        output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.application\n");
+                    }
+                    return 0;
+                }));
+        ToolDefinition probe = ToolDefinition.read("probe", new ByteArrayInputStream(
+                "activation=com.example.framework\nmodule=com.example.tool@2.0\nprovider=probe\noptions=module-path,add-modules\n"
+                        .getBytes(StandardCharsets.UTF_8)));
+        var output = new ByteArrayOutputStream();
+        var error = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(probe)), () -> null)
+                .run(commandLine, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(error));
+
+        assertEquals(0, result, error.toString());
+        assertTrue(jigInvocations.stream()
+                .anyMatch(arguments -> joinedPair(arguments, "--add-requires", "com.example.tool@2.0")));
+        assertTrue(output.toString().endsWith("explicit\n"));
     }
 
     @Test
@@ -2363,6 +2442,15 @@ class CommandRunnerTest {
             }
         }
         throw new IllegalArgumentException("No source path for " + module);
+    }
+
+    private static boolean joinedPair(List<String> arguments, String option, String value) {
+        for (int i = 0; i + 1 < arguments.size(); i++) {
+            if (arguments.get(i).equals(option) && arguments.get(i + 1).equals(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<String> optionValues(List<String> arguments, String shortOption, String longOption) {
