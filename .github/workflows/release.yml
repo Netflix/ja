@@ -45,43 +45,36 @@ jobs:
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
       - name: Link bootstrap ja development JDK
-        run: >-
-          .github/scripts/link-ja-development-jdk.sh
-          "$JAVA_HOME"
-          "$BOOTSTRAP_JAVA_HOME"
-          "$BOOTSTRAP_JA_VERSION"
+        run: |
+          .github/scripts/link-ja-development-jdk.sh \
+            "$JAVA_HOME" \
+            "$BOOTSTRAP_JAVA_HOME" \
+            "$BOOTSTRAP_JA_VERSION"
+          echo "$BOOTSTRAP_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Build native launchers with Zig
         run: src/launcher/build.sh
 
       - name: Test source with bootstrap ja
-        run: >-
-          "$BOOTSTRAP_JAVA_HOME/bin/ja"
-          run -m com.netflix.tools.ja/com.netflix.tools.ja.Ja --
-          test --all
+        run: ja test --all
 
       - name: Build ja with bootstrap ja
-        run: >-
-          "$BOOTSTRAP_JAVA_HOME/bin/ja"
-          maven install --module-version "$BUILD_VERSION"
+        run: ja maven install --module-version "$BUILD_VERSION"
 
       - name: Link built ja development JDK
-        run: >-
-          .github/scripts/link-ja-development-jdk.sh
-          "$JAVA_HOME"
-          "$BUILT_JAVA_HOME"
-          "$BUILD_VERSION"
+        run: |
+          .github/scripts/link-ja-development-jdk.sh \
+            "$JAVA_HOME" \
+            "$BUILT_JAVA_HOME" \
+            "$BUILD_VERSION"
+          echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Test source with built ja
-        run: >-
-          "$BUILT_JAVA_HOME/bin/ja"
-          run -m com.netflix.tools.ja/com.netflix.tools.ja.Ja --
-          test --all
+        run: ja test --all
 
       - name: Publish to Maven Central with built ja
         run: >-
-          "$BUILT_JAVA_HOME/bin/ja"
-          maven deploy-central
+          ja maven deploy-central
           --module-version "$BUILD_VERSION"
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.ORG_SONATYPE_USERNAME }}
