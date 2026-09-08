@@ -13,10 +13,10 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 - Format source, find declarations and usages, browse APIs, and reuse compilation work across tools
 - Keep output concise so coding agents can work effectively without losing important errors
 
-## Installation
-
 > [!IMPORTANT]
 > This project and its bundled tools are currently in preview. We are collecting all preview feedback here: use [Issues](https://github.com/Netflix/ja/issues) to report problems and [Discussions](https://github.com/Netflix/ja/discussions) for feedback, questions, and suggestions.
+
+## Installation
 
 > [!NOTE]
 > Netflix engineers should use the internally bundled toolchain rather than installing `ja` or its tools separately.
