@@ -180,6 +180,21 @@ class JaToolTest {
     }
 
     @Test
+    void completesSourceAndDocumentationSymbolsWithJist() {
+        var tools = ToolServices.load(Ja.class
+                .getModule()
+                .getLayer());
+
+        for (String command : List.of("source", "doc")) {
+            assertTrue(
+                    Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
+                            .map(Completion::value)
+                            .anyMatch("java.lang.String"::equals),
+                    command);
+        }
+    }
+
+    @Test
     void composesAvailableToolCompletions() {
         Result result = run("completion", "powershell");
 
