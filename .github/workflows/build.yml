@@ -25,8 +25,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     env:
-      BOOTSTRAP_JA_VERSION: 0.17.4
-      BUILD_VERSION: 0.17.4-build.${{ github.run_id }}
+      BOOTSTRAP_JA_VERSION: 0.17.5
+      BUILD_VERSION: 0.17.6-build.${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
 
@@ -38,6 +38,7 @@ jobs:
 
       - name: Configure build
         run: |
+          echo "ARTIFACTS=$RUNNER_TEMP/ja-artifacts" >> "$GITHUB_ENV"
           echo "BOOTSTRAP_JAVA_HOME=$RUNNER_TEMP/ja-bootstrap" >> "$GITHUB_ENV"
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
@@ -53,15 +54,19 @@ jobs:
         run: src/launcher/build.sh
 
       - name: Test source with bootstrap ja
-        run: ja test --all
+        run: >-
+          ja run -m com.netflix.tools.ja/com.netflix.tools.ja.Ja --
+          test --all
 
-      - name: Build ja with bootstrap ja
-        run: ja maven install --module-version "$BUILD_VERSION"
+      - name: Assemble ja distribution with bootstrap ja
+        run: ja assemble --jmod --module-version "$BUILD_VERSION" "$ARTIFACTS"
 
       - name: Link built ja development JDK
         run: |
-          .github/scripts/link-ja-development-jdk.sh \
+          .github/scripts/link-assembled-ja-development-jdk.sh \
             "$JAVA_HOME" \
+            "$BOOTSTRAP_JAVA_HOME" \
+            "$ARTIFACTS" \
             "$BUILT_JAVA_HOME" \
             "$BUILD_VERSION"
           echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"

@@ -84,8 +84,10 @@ jar_path="${jar_arguments[1]}"
     --generate-cds-archive \
     --output "$output_java_home"
 
-# Keep the linkable JDK and source archive, and retain JARs for ja install/link operations.
+# Keep the linkable JDK and source archive, and retain resolved artifacts for subsequent assembly and linking.
 cp -Rp "$source_java_home/jmods" "$output_java_home/jmods"
+IFS=: read -r -a jmods <<< "$jmod_path"
+cp -p "${jmods[@]}" "$output_java_home/jmods/"
 cp -p "$source_java_home/lib/src.zip" "$output_java_home/lib/src.zip"
 mkdir -p "$output_java_home/lib/ja/modules"
 IFS=: read -r -a jars <<< "$jar_path"
