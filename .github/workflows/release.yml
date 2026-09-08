@@ -28,7 +28,7 @@ jobs:
     environment: Maven Central
     runs-on: ubuntu-latest
     env:
-      BOOTSTRAP_JA_VERSION: 0.17.5
+      BOOTSTRAP_JA_VERSION: 0.17.6
     steps:
       - uses: actions/checkout@v6
 

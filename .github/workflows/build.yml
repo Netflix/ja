@@ -25,8 +25,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     env:
-      BOOTSTRAP_JA_VERSION: 0.17.5
-      BUILD_VERSION: 0.17.6-build.${{ github.run_id }}
+      BOOTSTRAP_JA_VERSION: 0.17.6
+      BUILD_VERSION: 0.17.7-build.${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
 

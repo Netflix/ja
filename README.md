@@ -65,6 +65,19 @@ curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
   -JaVersion 0.17.0
 ```
 
+### Custom JDK distributions
+
+Ja and its bundled tools are published as JMODs as well as JARs. To build your own Ja-enabled JDK, resolve the complete JMOD graph for one target platform and link it alongside the system JMODs from a JDK 25 or later:
+
+```sh
+jlink \
+  --module-path "$JAVA_HOME/jmods:/path/to/resolved/jmods" \
+  --add-modules ALL-MODULE-PATH \
+  --output /path/to/ja-jdk
+```
+
+The `com.netflix.tools.launcher` module creates the `ja`, `jig`, and other bundled commands in the resulting image. The [minimal bootstrap script used by the setup action](.github/actions/setup-ja/link.sh) shows the complete process: it downloads a single Jig JAR, resolves the platform-specific Ja JMOD graph, and invokes `jlink`.
+
 Take `ja` for a spin by installing an application:
 
 ```console
@@ -79,6 +92,33 @@ $ cowsay 'Holy cow, Java modules!'
                 ||----w |
                 ||     ||
 ```
+
+## Continuous integration
+
+The [minimal bootstrap script](.github/actions/setup-ja/link.sh) can be used as a reference for other continuous integration systems on macOS and Linux. It requires only a full JDK and links a Ja-enabled JDK from the published JMODs without first installing Ja.
+
+### GitHub Actions
+
+The setup action links and caches that Ja-enabled development JDK, selects it through `JAVA_HOME`, and adds its commands to `PATH`:
+
+```yaml
+steps:
+  - uses: actions/checkout@v6
+
+  - name: Set up Zulu JDK
+    uses: actions/setup-java@v5
+    with:
+      distribution: zulu
+      java-version-file: .java-version
+
+  - name: Set up ja
+    uses: Netflix/ja/.github/actions/setup-ja@v0.17.7
+
+  - name: Test
+    run: ja test --all
+```
+
+A versioned action reference selects the same Ja distribution version, so no separate version input is needed. When pinning the action to a branch or commit instead, pass `ja-version` explicitly.
 
 ## Quick start
 

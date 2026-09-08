@@ -69,9 +69,16 @@ fi
     --add-modules ALL-MODULE-PATH \
     --generate-cds-archive \
     --output "$output_java_home"
+
+# Retain the inputs needed to link a source tool's assembled JMOD back into this toolchain.
+mkdir -p "$output_java_home/jmods"
+cp -p "$source_java_home/jmods/"*.jmod "$output_java_home/jmods/"
+IFS=: read -r -a jmods <<< "${resolved[1]}"
+cp -p "${jmods[@]}" "$output_java_home/jmods/"
 cp -p "$source_java_home/lib/src.zip" "$output_java_home/lib/src.zip"
 
 [[ -x "$output_java_home/bin/ja" && -x "$output_java_home/bin/jig" ]]
+[[ -f "$output_java_home/jmods/java.base.jmod" ]]
 [[ -f "$output_java_home/lib/src.zip" ]]
 "$output_java_home/bin/java" --list-modules | grep -Fqx "com.netflix.tools.ja@$ja_version"
 "$output_java_home/bin/java" --list-modules | grep -Eq '^com\.netflix\.tools\.jig@'

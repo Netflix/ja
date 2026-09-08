@@ -49,7 +49,7 @@ runs:
         java_home="$RUNNER_TOOL_CACHE/ja/$fingerprint/$ja_version"
         echo "ja-version=$ja_version" >> "$GITHUB_OUTPUT"
         echo "java-home=$java_home" >> "$GITHUB_OUTPUT"
-        echo "cache-key=ja-toolchain-v2-${RUNNER_OS}-${RUNNER_ARCH}-${fingerprint}-${ja_version}" >> "$GITHUB_OUTPUT"
+        echo "cache-key=ja-toolchain-v3-${RUNNER_OS}-${RUNNER_ARCH}-${fingerprint}-${ja_version}" >> "$GITHUB_OUTPUT"
 
     - name: Restore ja toolchain
       id: cache

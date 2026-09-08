@@ -1,0 +1,54 @@
+# Copyright 2026 Netflix, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+
+name: Link assembled tool
+description: Replace a bundled tool with its assembled JMOD in the current Ja toolchain
+
+inputs:
+  artifacts:
+    description: Directory containing artifacts produced by ja assemble --jmod
+    required: true
+  module:
+    description: Java module to replace
+    required: true
+
+outputs:
+  java-home:
+    description: Linked development JDK containing the assembled tool
+    value: ${{ steps.configuration.outputs.java-home }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure linked toolchain
+      id: configuration
+      shell: bash
+      env:
+        MODULE: ${{ inputs.module }}
+      run: echo "java-home=$RUNNER_TEMP/ja-built-$MODULE" >> "$GITHUB_OUTPUT"
+
+    - name: Link assembled tool
+      shell: bash
+      run: >-
+        "$GITHUB_ACTION_PATH/link.sh"
+        "$JAVA_HOME"
+        "${{ inputs.artifacts }}"
+        "${{ inputs.module }}"
+        "${{ steps.configuration.outputs.java-home }}"
+
+    - name: Select linked toolchain
+      shell: bash
+      env:
+        BUILT_JAVA_HOME: ${{ steps.configuration.outputs.java-home }}
+      run: |
+        echo "JAVA_HOME=$BUILT_JAVA_HOME" >> "$GITHUB_ENV"
+        echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
