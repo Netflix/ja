@@ -33,6 +33,7 @@ import javax.tools.OptionChecker;
 import com.netflix.module.ModuleRuntimeAccess;
 import com.netflix.module.ModuleRuntimeAccessOptions;
 import com.netflix.tools.launcher.ModuleOptions;
+import com.netflix.tools.launcher.ToolLauncher;
 
 /**
  * Runs a discovered tool with only the resolved module arguments accepted by
@@ -467,11 +468,68 @@ public final class ToolRunner {
                     out,
                     err);
         }
-        return tools.run(definition.provider(),
-                         in,
-                         out,
-                         err,
-                         arguments.toArray(String[]::new));
+        return runDirectProvider(definition, arguments, in, out, err);
+    }
+
+    private int runDirectProvider(ToolDefinition definition,
+                                  List<String> toolArguments,
+                                  InputStream in,
+                                  PrintStream out,
+                                  PrintStream err) throws IOException {
+        var module = directTools.moduleName(definition.provider())
+                .or(() -> definition.module());
+        if (module.isEmpty() || !declaresRuntimeAccess(module.orElseThrow())) {
+            return tools.run(definition.provider(),
+                    in,
+                    out,
+                    err,
+                    toolArguments.toArray(String[]::new));
+        }
+        var runtimeArguments =
+                new ModuleResolver(tools)
+                        .resolve(List.of("--add-modules", module.orElseThrow()),
+                                providerRuntimeProjection(),
+                                in,
+                                err);
+        if (runtimeAccessIsEffective(layer, runtimeArguments)) {
+            return tools.run(definition.provider(),
+                    in,
+                    out,
+                    err,
+                    toolArguments.toArray(String[]::new));
+        }
+        // A controller cannot grant access from a module in a parent layer. Launching the
+        // provider applies boot-layer access before any of its classes are loaded.
+        return launchProvider(definition.provider(), runtimeArguments, toolArguments, in, out, err);
+    }
+
+    private boolean declaresRuntimeAccess(String module) throws IOException {
+        var resolved = layer.configuration().findModule(module).orElse(null);
+        return resolved != null
+                && ModuleRuntimeAccess.read(resolved.reference())
+                        .filter(access -> !access.isEmpty())
+                        .isPresent();
+    }
+
+    private int launchProvider(String provider,
+                               List<String> runtimeArguments,
+                               List<String> toolArguments,
+                               InputStream in,
+                               PrintStream out,
+                               PrintStream err) throws IOException {
+        var arguments = new ArrayList<>(runtimeArguments);
+        arguments.add("--module");
+        arguments.add(ToolLauncher.class.getModule().getName() + "/" + ToolLauncher.class.getName());
+        arguments.add(provider);
+        arguments.addAll(toolArguments);
+        return javaLauncher.run(arguments, in, out, err);
+    }
+
+    private static ModuleResolver.Projection providerRuntimeProjection() {
+        return new ModuleResolver.Projection(
+                Set.of("module-path", "add-modules", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"),
+                false,
+                true);
     }
 
     private int runModularProvider(JaInvocation commandLine,
@@ -503,9 +561,7 @@ public final class ToolRunner {
         var runtimeArguments =
                 new ModuleResolver(tools)
                         .resolve(resolutionArguments,
-                                 new ModuleResolver.Projection(Set.of("module-path", "add-modules", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"),
-                                         false,
-                                         true),
+                                 providerRuntimeProjection(),
                                  in,
                                  err);
         var executionController = controller;
@@ -527,13 +583,34 @@ public final class ToolRunner {
             throw new IllegalArgumentException("Module " + module + " does not provide tool " + definition.provider());
         }
         if (!configureLayer(executionController, executionLayer, runtimeArguments)) {
-            throw new IllegalArgumentException("Tool runtime requirements cannot be applied to its module layer");
+            return launchProvider(definition.provider(), runtimeArguments, toolArguments, in, out, err);
         }
         return executionTools.run(definition.provider(),
                 in,
                 out,
                 err,
                 toolArguments.toArray(String[]::new));
+    }
+
+    @SuppressWarnings("restricted")
+    static boolean runtimeAccessIsEffective(ModuleLayer layer, List<String> arguments) {
+        var access = ModuleRuntimeAccess.parseArguments(arguments);
+        if (!access.enableFinalFieldMutation().isEmpty())
+            return false;
+        for (String name : access.enableNativeAccess()) {
+            var module = layer.findModule(name).orElse(null);
+            if (module == null || !module.isNativeAccessEnabled())
+                return false;
+        }
+        for (var export : access.addExports()) {
+            if (!hasAccess(layer, export, false))
+                return false;
+        }
+        for (var open : access.addOpens()) {
+            if (!hasAccess(layer, open, true))
+                return false;
+        }
+        return true;
     }
 
     @SuppressWarnings("restricted")
@@ -564,19 +641,28 @@ public final class ToolRunner {
         return true;
     }
 
-    private static boolean addAccess(ModuleLayer.Controller controller,
-            ModuleLayer layer,
+    private static boolean hasAccess(ModuleLayer layer,
             ModuleRuntimeAccessOptions.PackageAccess access,
             boolean open) {
         var source = layer.findModule(access.sourceModule()).orElse(null);
         var target = layer.findModule(access.targetModule()).orElse(null);
+        return source != null
+                && target != null
+                && (open
+                        ? source.isOpen(access.packageName(), target)
+                        : source.isExported(access.packageName(), target));
+    }
+
+    private static boolean addAccess(ModuleLayer.Controller controller,
+            ModuleLayer layer,
+            ModuleRuntimeAccessOptions.PackageAccess access,
+            boolean open) {
+        if (hasAccess(layer, access, open))
+            return true;
+        var source = layer.findModule(access.sourceModule()).orElse(null);
+        var target = layer.findModule(access.targetModule()).orElse(null);
         if (source == null || target == null)
             return false;
-        boolean present = open
-                ? source.isOpen(access.packageName(), target)
-                : source.isExported(access.packageName(), target);
-        if (present)
-            return true;
         if (source.getLayer() != layer)
             return false;
         if (open) {

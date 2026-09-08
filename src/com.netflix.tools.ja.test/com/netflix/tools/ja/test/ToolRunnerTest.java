@@ -28,6 +28,7 @@ import java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute;
 import java.lang.classfile.attribute.RuntimeVisibleParameterAnnotationsAttribute;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
+import java.lang.module.Configuration;
 import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +39,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
@@ -45,6 +47,8 @@ import java.util.jar.JarOutputStream;
 import java.util.spi.ToolProvider;
 import javax.tools.OptionChecker;
 
+import com.netflix.module.ModuleRuntimeAccess;
+import com.netflix.module.ModuleRuntimeAccessOptions;
 import com.netflix.tools.ja.BuiltinCommand;
 import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Tool;
@@ -171,6 +175,108 @@ class ToolRunnerTest {
 
         assertEquals(0, result);
         assertEquals(List.of("--module-path", "modules", "--add-modules", "com.example.app", "--default", "explicit"), runWith);
+    }
+
+    @Test
+    void launchesADirectProviderWithItsDeclaredRuntimeAccess(@TempDir Path directory) throws Exception {
+        var moduleName = "com.example.runtime.tool";
+        var sources = directory.resolve("src");
+        var source = Files.createDirectories(sources.resolve(moduleName));
+        Files.writeString(source.resolve("module-info.java"),
+                """
+                module com.example.runtime.tool {
+                    provides java.util.spi.ToolProvider with com.example.Probe;
+                }
+                """);
+        var packageDirectory = Files.createDirectories(source.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Probe.java"),
+                """
+                package com.example;
+                public final class Probe implements java.util.spi.ToolProvider {
+                    public String name() { return "runtime-probe"; }
+                    public int run(java.io.PrintWriter out, java.io.PrintWriter err,
+                                   String... arguments) {
+                        throw new AssertionError("provider must run in a Java process");
+                    }
+                }
+                """);
+        var modules = directory.resolve("modules");
+        assertEquals(
+                0,
+                ToolProvider.findFirst("javac")
+                        .orElseThrow()
+                        .run(System.out, System.err, "--module-source-path", sources.toString(), "-d",
+                                modules.toString(), "--module", moduleName, "-proc:none"));
+        var moduleInfo = modules.resolve(moduleName).resolve("module-info.class");
+        var access = ModuleRuntimeAccessOptions.newBuilder()
+                .addExports("jdk.compiler", "com.sun.tools.javac.api", moduleName)
+                .build();
+        Files.write(moduleInfo, ModuleRuntimeAccess.write(Files.readAllBytes(moduleInfo), access));
+
+        var finder = ModuleFinder.of(modules);
+        var configuration = Configuration.resolve(finder, List.of(testLayer().configuration()), ModuleFinder.of(),
+                Set.of(moduleName));
+        var controller = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(testLayer()), ClassLoader.getSystemClassLoader());
+        var provider = ServiceLoader.load(controller.layer(), ToolProvider.class).stream()
+                .filter(candidate -> candidate.type()
+                        .getModule()
+                        .getName()
+                        .equals(moduleName))
+                .map(ServiceLoader.Provider::get)
+                .findFirst()
+                .orElseThrow();
+        var jigArguments = new ArrayList<String>();
+        var jig = new ToolProvider() {
+            @Override
+            public String name() {
+                return "jig";
+            }
+
+            @Override
+            public int run(PrintWriter out, PrintWriter err, String... arguments) {
+                jigArguments.addAll(List.of(arguments));
+                out.println("--add-exports");
+                out.println("jdk.compiler/com.sun.tools.javac.api=" + moduleName);
+                out.println("--add-modules");
+                out.println(moduleName);
+                return 0;
+            }
+        };
+        var tools = ToolServices.of(jig, provider);
+        var definition = new ToolDefinition(
+                "runtime-probe",
+                Launch.PROVIDER,
+                Optional.empty(),
+                Optional.of(moduleName),
+                "runtime-probe",
+                Optional.of("1"),
+                Set.of(),
+                List.of());
+        var launchedWith = new ArrayList<String>();
+        var runner = new ToolRunner(
+                controller.layer(),
+                tools,
+                new ToolCatalog(List.of(definition)),
+                (arguments, in, out, err) -> {
+                    launchedWith.addAll(arguments);
+                    return 23;
+                });
+
+        int result = runner.run(
+                toolCommandLine("runtime-probe", List.of("explicit")),
+                List.of(),
+                new ResolvedToolArguments(List.of(), Set.of(), Map.of()),
+                InputStream.nullInputStream(),
+                System.out,
+                System.err);
+
+        assertEquals(23, result);
+        assertTrue(joinedPair(jigArguments, "--add-modules", moduleName));
+        assertTrue(jigArguments.contains("--validate-runtime-access"));
+        assertEquals(
+                List.of("--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName, "--add-modules", moduleName, "--module",
+                        "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher", "runtime-probe", "explicit"),
+                launchedWith);
     }
 
     @Test
