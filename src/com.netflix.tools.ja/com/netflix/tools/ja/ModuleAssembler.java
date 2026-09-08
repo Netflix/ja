@@ -71,8 +71,8 @@ final class ModuleAssembler {
     ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
-        this.jars = new JarPackager(tools, definitions);
-        this.jmods = new JmodPackager(tools, definitions);
+        this.jars = new JarPackager(tools);
+        this.jmods = new JmodPackager(tools);
     }
 
     int assemble(

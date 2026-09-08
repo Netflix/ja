@@ -58,13 +58,13 @@ class CommandAvailabilityTest {
     }
 
     @Test
-    void reportsTheJarWorkflowDependency() {
-        var commandLine = commandLine(BuiltinCommand.JAR);
+    void reportsAssemblyWorkflowDependencies() {
+        var commandLine = commandLine(BuiltinCommand.ASSEMBLE);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
 
-        assertEquals("jar is unavailable; missing tool: jar", failure.getMessage());
+        assertEquals("assemble is unavailable; missing tools: jar, javadoc", failure.getMessage());
     }
 
     @Test

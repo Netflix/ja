@@ -72,10 +72,7 @@ public enum BuiltinCommand {
             "Assemble module artifacts",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
             Projection.EMPTY),
-    JAR("jar", HelpGroup.BUILD, "Create or update a modular JAR", workflow(requiresProvider("jar")),
-            project("module-path", "upgrade-module-path", "main-class", "module-version")),
-    MOD("mod", HelpGroup.BUILD, "Create a JMOD archive", workflow(requiresProvider("jmod")), ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS),
-    INSTALL("install", HelpGroup.BUILD, "Install an application command",
+    INSTALL("install", HelpGroup.BUILD, "Install a module as a command",
             workflow(requiresProvider("jlink")), ToolProjections.COMPLETE_JAVA),
     MAVEN(
             "maven",

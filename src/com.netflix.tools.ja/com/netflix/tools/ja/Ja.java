@@ -281,15 +281,14 @@ public final class Ja {
             case SOURCE -> commandLine.operand("SYMBOL", "Java package, type, member, or source symbol", Cardinality.EXACTLY_ONE).build();
             case INSTALL ->
                     commandLine.options(JaOptions.installOptions())
-                               .operand("APPLICATION", "Module or package reference", Cardinality.ZERO_OR_ONE)
+                               .operand("MODULE|PACKAGE-URL", "Module or package reference", Cardinality.ZERO_OR_ONE)
                                .build();
             case BENCH -> commandLine.operand("CLASS[.METHOD]", "Select benchmark classes or methods", Cardinality.ZERO_OR_MORE).build();
             case ASSEMBLE ->
                     commandLine.options(JaOptions.assembleOptions())
                                .operand("DIRECTORY", "Artifact directory", Cardinality.EXACTLY_ONE)
                                .build();
-            case GENERATE, FMT, LIST, JAR, MOD ->
-                    commandLine.build();
+            case GENERATE, FMT, LIST -> commandLine.build();
             case MAVEN -> mavenCommandLine(commandLine);
         };
     }

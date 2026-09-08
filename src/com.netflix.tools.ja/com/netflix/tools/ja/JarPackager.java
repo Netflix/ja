@@ -24,46 +24,14 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Runs the JDK JAR tool with filtered module content. */
+/** Creates binary module JAR artifacts. */
 final class JarPackager {
     record Result(int exitCode, boolean automatic) {}
 
     private final ToolServices tools;
-    private final List<ToolDefinition> definitions;
 
-    JarPackager(ToolServices tools, List<ToolDefinition> definitions) {
+    JarPackager(ToolServices tools) {
         this.tools = tools;
-        this.definitions = List.copyOf(definitions);
-    }
-
-    int run(
-            List<String> rootModules,
-            List<String> compileArguments,
-            List<String> resolvedArguments,
-            List<String> dependencyArguments,
-            List<String> jarArguments,
-            Path workingDirectory,
-            InputStream in,
-            PrintStream out,
-            PrintStream err)
-            throws IOException {
-        if (mutates(jarArguments) && rootModules.size() == 1) {
-            var moduleName = rootModules.getFirst();
-            var source = ToolArguments.moduleLocation(moduleName, resolvedArguments);
-            if (source.isPresent()) {
-                try (var content = FilteredModuleContent.prepare(moduleName, compileArguments, resolvedArguments, definitions)) {
-                    return packageModule(
-                            resolvedArguments,
-                            dependencyArguments,
-                            replaceDirectory(jarArguments, source.orElseThrow(), content.path(), workingDirectory),
-                            in,
-                            out,
-                            err);
-                }
-            }
-        }
-        return packageModule(resolvedArguments, dependencyArguments, jarArguments,
-                in, out, err);
     }
 
     Result createExact(
@@ -100,74 +68,16 @@ final class JarPackager {
             if (result != 0) {
                 return new Result(result, false);
             }
-            var derivedNames = AutomaticModules.findDerivedNames(runtimeArguments);
-            if (!derivedNames.isEmpty()) {
+            var automaticModules = AutomaticModules.find(runtimeArguments);
+            if (!automaticModules.isEmpty()) {
                 AutomaticModuleArchives.rewrite(staged, moduleName);
-                AutomaticModules.warnExport(moduleName, derivedNames, omitJmod, err);
+                AutomaticModules.warnExport(moduleName, automaticModules, omitJmod, err);
             }
             publish(staged, archive);
-            return new Result(0, !derivedNames.isEmpty());
+            return new Result(0, !automaticModules.isEmpty());
         } finally {
             Files.deleteIfExists(staged);
         }
-    }
-
-    private int packageModule(List<String> resolvedArguments, List<String> dependencyArguments, List<String> jarArguments,
-            InputStream in, PrintStream out, PrintStream err) {
-        if (mutates(jarArguments)) {
-            AutomaticModules.warn(dependencyArguments, err);
-        }
-        return runJar(resolvedArguments, jarArguments, in, out, err);
-    }
-
-    private static List<String> replaceDirectory(List<String> arguments, Path source, Path replacement,
-            Path workingDirectory) {
-        var replaced = new ArrayList<>(arguments);
-        Path expected = source.toAbsolutePath().normalize();
-        for (int i = 0; i + 1 < replaced.size(); i++) {
-            if (!replaced.get(i).equals("-C")) {
-                continue;
-            }
-            Path selected = workingDirectory.resolve(replaced.get(i + 1))
-                    .toAbsolutePath()
-                    .normalize();
-            if (selected.equals(expected)) {
-                replaced.set(i + 1, replacement.toString());
-            }
-            i++;
-        }
-        return List.copyOf(replaced);
-    }
-
-    static boolean mutates(List<String> arguments) {
-        for (String argument : arguments) {
-            if (argument.equals("--create")
-                    || argument.equals("-c")
-                    || argument.equals("--update")
-                    || argument.equals("-u")) {
-                return true;
-            }
-        }
-        if (arguments.isEmpty()) {
-            return false;
-        }
-        String legacy = legacyOptions(arguments.getFirst());
-        return legacy != null && (legacy.startsWith("c") || legacy.startsWith("u"));
-    }
-
-    private int runJar(List<String> resolvedArguments, List<String> jarArguments, InputStream in,
-                       PrintStream out, PrintStream err) {
-        var arguments = new ArrayList<>(resolvedArguments);
-        arguments.addAll(jarArguments);
-        return tools.run("jar", in, out, err, arguments.toArray(String[]::new));
-    }
-
-    private static String legacyOptions(String argument) {
-        String options = argument;
-        if (options.startsWith("-") && !options.startsWith("--")) {
-            options = options.substring(1);
-        }
-        return options.matches("[ctxuivfemM0pP]+") ? options : null;
     }
 
     private static void publish(Path source, Path destination) throws IOException {

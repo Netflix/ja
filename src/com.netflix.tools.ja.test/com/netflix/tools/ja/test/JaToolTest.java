@@ -110,7 +110,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(19,
+        assertEquals(17,
                 described.commandLine()
                          .commands()
                          .size());
@@ -132,8 +132,6 @@ class JaToolTest {
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "generate").parse("-Astyle=records"));
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "list").parse("--add-modules", "java.sql"));
         assertThrows(IllegalArgumentException.class, () -> commandLine(described, "describe").parse("--add-modules", "java.sql"));
-        assertThrows(IllegalArgumentException.class, () -> commandLine(described, "jar").parse("--create"));
-        assertThrows(IllegalArgumentException.class, () -> commandLine(described, "mod").parse("--module-version", "1"));
         assertTrue(commandLine(described, "test").parse("--all")
                 .contains(option(commandLine(described, "test"), "--all")));
         CommandLine assemble = commandLine(described, "assemble");

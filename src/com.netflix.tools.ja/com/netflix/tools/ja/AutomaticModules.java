@@ -14,20 +14,15 @@
 
 package com.netflix.tools.ja;
 
-import java.io.IOException;
 import java.io.PrintStream;
-import java.io.UncheckedIOException;
 import java.lang.module.FindException;
 import java.lang.module.ModuleFinder;
-import java.lang.module.ModuleReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Predicate;
-import java.util.jar.JarFile;
 
 /**
  * Finds automatic modules in resolved arguments and reports their
@@ -37,14 +32,6 @@ final class AutomaticModules {
     private AutomaticModules() {}
 
     static Set<String> find(List<String> arguments) {
-        return find(arguments, reference -> true);
-    }
-
-    static Set<String> findDerivedNames(List<String> arguments) {
-        return find(arguments, reference -> !hasExplicitName(reference));
-    }
-
-    private static Set<String> find(List<String> arguments, Predicate<ModuleReference> include) {
         var names = new TreeSet<String>();
         for (Path path : ToolArguments.applicationModulePath(arguments)) {
             if (isJmod(path)) {
@@ -53,7 +40,6 @@ final class AutomaticModules {
             try {
                 ModuleFinder.of(path).findAll().stream()
                         .filter(reference -> reference.descriptor().isAutomatic())
-                        .filter(include)
                         .map(reference -> reference.descriptor().name())
                         .forEach(names::add);
             } catch (FindException _) {
@@ -61,10 +47,6 @@ final class AutomaticModules {
             }
         }
         return Collections.unmodifiableSortedSet(names);
-    }
-
-    static void warn(List<String> arguments, PrintStream err) {
-        warn(find(arguments), err);
     }
 
     static void warn(Set<String> modules, PrintStream err) {
@@ -86,8 +68,7 @@ final class AutomaticModules {
 
     static void warnExport(String module, Set<String> dependencies, boolean omitJmod,
                            PrintStream err) {
-        printModules("warning: " + module + " requires automatic modules with filename-derived names:",
-                dependencies, err);
+        printModules("warning: " + module + " requires automatic modules:", dependencies, err);
         err.println(module + " will be exported as an automatic module.");
         if (omitJmod) {
             err.println("The " + module + " jmod artifact will be omitted.");
@@ -97,24 +78,6 @@ final class AutomaticModules {
     private static void printModules(String heading, Set<String> modules, PrintStream err) {
         err.println(heading);
         modules.forEach(module -> err.println("  " + module));
-    }
-
-    private static boolean hasExplicitName(ModuleReference reference) {
-        var location = reference.location();
-        if (location.isEmpty() || !"file".equalsIgnoreCase(location.orElseThrow()
-                .getScheme())) {
-            return false;
-        }
-        Path archive = Path.of(location.orElseThrow());
-        if (!Files.isRegularFile(archive)) {
-            return false;
-        }
-        try (var jar = new JarFile(archive.toFile())) {
-            var manifest = jar.getManifest();
-            return manifest != null && manifest.getMainAttributes().getValue("Automatic-Module-Name") != null;
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not inspect automatic module " + archive, e);
-        }
     }
 
     private static boolean isJmod(Path path) {

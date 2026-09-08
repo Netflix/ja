@@ -327,7 +327,7 @@ class AssembleTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void assemblyDependsOnWhetherAnAutomaticDependencyHasAnExplicitName(boolean explicitName, @TempDir Path directory) throws Exception {
+    void assemblyExportsAnAutomaticModuleForAnyAutomaticDependency(boolean explicitName, @TempDir Path directory) throws Exception {
         Path source = sourceModule(directory, "com.example.app");
         Files.writeString(source.resolve("module-info.java"),
                 """
@@ -335,7 +335,7 @@ class AssembleTest {
                     requires org.example.library;
                 }
                 """);
-        Path automatic = explicitName ? writeAutomaticJar(directory.resolve("org.example.library-1.2.3.jar"), "org.example.library") : TestModules.writeAutomaticJar(directory.resolve("org.example.library-1.2.3.jar"));
+        Path automatic = explicitName ? writeAutomaticJar(directory.resolve("legacy-library-1.2.3.jar"), "org.example.library") : TestModules.writeAutomaticJar(directory.resolve("org.example.library-1.2.3.jar"));
         ToolProvider jig = tool(
                 "jig",
                 (output, arguments) -> {
@@ -378,35 +378,29 @@ class AssembleTest {
                 .find("com.example.app")
                 .orElseThrow()
                 .descriptor();
-        Path jmod = artifact.resolveSibling("com.example.app.jmod");
-        if (explicitName) {
-            assertFalse(descriptor.isAutomatic());
-            assertTrue(descriptor.requires().stream()
-                    .anyMatch(requirement -> requirement.name().equals("org.example.library")));
-            assertTrue(Files.isRegularFile(jmod));
-            assertEquals("", errors.toString());
-        } else {
-            assertTrue(descriptor.isAutomatic());
-            try (var archive = new JarFile(artifact.toFile())) {
-                assertNull(archive.getEntry("module-info.class"));
-                assertEquals("com.example.app",
-                        archive.getManifest()
-                               .getMainAttributes()
-                               .getValue("Automatic-Module-Name"));
+        assertTrue(descriptor.isAutomatic());
+        try (var archive = new JarFile(artifact.toFile())) {
+            assertNull(archive.getEntry("module-info.class"));
+            assertEquals("com.example.app",
+                    archive.getManifest()
+                           .getMainAttributes()
+                           .getValue("Automatic-Module-Name"));
+            if (!explicitName) {
                 assertEquals("com.example.Provider\n", new String(archive.getInputStream(archive.getEntry("META-INF/services/java.util.spi.ToolProvider"))
                         .readAllBytes(),
-                                StandardCharsets.UTF_8));
+                        StandardCharsets.UTF_8));
             }
-            assertFalse(Files.exists(jmod));
-            assertEquals(
-                    """
-                    warning: com.example.app requires automatic modules with filename-derived names:
-                      org.example.library
-                    com.example.app will be exported as an automatic module.
-                    The com.example.app jmod artifact will be omitted.
-                    """,
-                    errors.toString().replace(System.lineSeparator(), "\n"));
         }
+        Path jmod = artifact.resolveSibling("com.example.app.jmod");
+        assertFalse(Files.exists(jmod));
+        assertEquals(
+                """
+                warning: com.example.app requires automatic modules:
+                  org.example.library
+                com.example.app will be exported as an automatic module.
+                The com.example.app jmod artifact will be omitted.
+                """,
+                errors.toString().replace(System.lineSeparator(), "\n"));
     }
 
     @Test

@@ -54,11 +54,9 @@ final class JmodPackager {
     }
 
     private final ToolServices tools;
-    private final List<ToolDefinition> definitions;
 
-    JmodPackager(ToolServices tools, List<ToolDefinition> definitions) {
+    JmodPackager(ToolServices tools) {
         this.tools = tools;
-        this.definitions = List.copyOf(definitions);
     }
 
     boolean creates(Artifacts artifacts) {
@@ -100,66 +98,6 @@ final class JmodPackager {
             }
         }
         return 0;
-    }
-
-    int create(
-            List<String> rootModules,
-            List<String> compileArguments,
-            List<String> runtimeArguments,
-            List<String> jmodArguments,
-            Path workingDirectory,
-            InputStream in,
-            PrintStream out,
-            PrintStream err)
-            throws IOException {
-        if (rootModules.size() != 1) {
-            throw new IllegalArgumentException("mod requires exactly one source module");
-        }
-        if (jmodArguments.isEmpty()) {
-            throw new IllegalArgumentException("mod requires a destination after --");
-        }
-        String moduleName = rootModules.getFirst();
-        if (!tools.contains("jmod")) {
-            throw new IllegalArgumentException("Tool jmod is not installed");
-        }
-        try (var content = FilteredModuleContent.prepare(moduleName, compileArguments, runtimeArguments, definitions)) {
-            return create(moduleName, content.path(), runtimeArguments, jmodArguments, workingDirectory,
-                    in, out, err);
-        }
-    }
-
-    private int create(
-            String moduleName,
-            Path filteredModule,
-            List<String> runtimeArguments,
-            List<String> jmodArguments,
-            Path workingDirectory,
-            InputStream in,
-            PrintStream out,
-            PrintStream err)
-            throws IOException {
-        var arguments = new ArrayList<String>();
-        arguments.add("create");
-        arguments.add("--class-path");
-        arguments.add(filteredModule.toString());
-        if (runtimeArguments.isEmpty()) {
-            arguments.addAll(jmodArguments);
-        } else {
-            Discovery discovery = ToolCommands.discover(moduleName, ToolArguments.modulePath(runtimeArguments));
-            Set<String> commands = discovery.commands();
-            if (commands.isEmpty()) {
-                arguments.addAll(jmodArguments);
-            } else {
-                var retainedArguments = new ArrayList<String>();
-                Path existingConfiguration = removeConfiguration(jmodArguments, retainedArguments, workingDirectory);
-                Path configuration = LauncherRuntimeOptions.stage(filteredModule.getParent().resolve("jmod-conf"), existingConfiguration,
-                        commands, discovery.warmupCommands(), runtimeArguments);
-                arguments.add("--config");
-                arguments.add(configuration.toString());
-                arguments.addAll(retainedArguments);
-            }
-        }
-        return tools.run("jmod", in, out, err, arguments.toArray(String[]::new));
     }
 
     private int create(
@@ -250,31 +188,5 @@ final class JmodPackager {
             arguments.add(option);
             arguments.add(directory.toString());
         }
-    }
-
-    private static Path removeConfiguration(List<String> arguments, List<String> retained, Path workingDirectory) {
-        Path configuration = null;
-        for (int i = 0; i < arguments.size(); i++) {
-            String argument = arguments.get(i);
-            String value = null;
-            if (argument.equals("--config")) {
-                if (++i >= arguments.size()) {
-                    throw new IllegalArgumentException("--config requires a directory");
-                }
-                value = arguments.get(i);
-            } else if (argument.startsWith("--config=")) {
-                value = argument.substring("--config=".length());
-            } else {
-                retained.add(argument);
-            }
-            if (value == null) {
-                continue;
-            }
-            if (configuration != null) {
-                throw new IllegalArgumentException("--config may only be specified once");
-            }
-            configuration = workingDirectory.resolve(value).normalize();
-        }
-        return configuration;
     }
 }

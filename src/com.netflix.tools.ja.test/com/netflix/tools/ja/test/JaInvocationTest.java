@@ -526,6 +526,17 @@ class JaInvocationTest {
     }
 
     @Test
+    void archiveToolsAreNotTopLevelCommands() throws IOException {
+        module(temporaryDirectory.resolve("src"), "com.example.app");
+
+        for (String name : List.of("jar", "mod")) {
+            var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {name}));
+
+            assertEquals("Unknown command: " + name, failure.getMessage());
+        }
+    }
+
+    @Test
     void parsesBareToolCommand() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
@@ -533,25 +544,6 @@ class JaInvocationTest {
 
         assertEquals(new Tools(), commandLine.command());
         assertEquals(List.of(), commandLine.toolArguments());
-    }
-
-    @Test
-    void passesJmodCreateArgumentsWithoutASeparator() throws IOException {
-        module(temporaryDirectory.resolve("src"), "com.example.tool");
-
-        var commandLine = JaInvocation.parse(
-                temporaryDirectory.resolve("src/com.example.tool"),
-                new String[] {"mod", "--module-version", "1.2.3", "--target-platform", "macos-aarch64", "--config",
-                        "-m", "build/com.example.tool.jmod"});
-
-        assertEquals(
-                List.of("--module-source-path", temporaryDirectory.resolve("src").toString(),
-                        "-m", "com.example.tool"),
-                commandLine.resolutionArguments());
-        assertEquals(
-                List.of("--module-version", "1.2.3", "--target-platform", "macos-aarch64", "--config", "-m",
-                        "build/com.example.tool.jmod"),
-                commandLine.toolArguments());
     }
 
     @Test

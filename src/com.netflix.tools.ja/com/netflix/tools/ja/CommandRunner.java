@@ -126,10 +126,6 @@ public final class CommandRunner {
             ModuleInitializer.initialize(commandLine.workingDirectory(), request);
             return 0;
         }
-        if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.JAR)) && !JarPackager.mutates(commandLine.toolArguments())) {
-            return tools.run("jar", in, out, err,
-                    commandLine.toolArguments().toArray(String[]::new));
-        }
         var catalog = usesToolCatalog(commandLine) ? catalogProvider.load().withDiscovered(tools) : new ToolCatalog(List.of());
         boolean moduleHashesAlreadyVerified = loadsScopedTools(commandLine, catalog);
         var scopedTools = moduleHashesAlreadyVerified ? toolsOnModulePath(commandLine, catalog, in, err).orElse(null) : null;
@@ -259,20 +255,6 @@ public final class CommandRunner {
                                          .orElseThrow());
             }
 
-            if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.JAR))) {
-                List<String> dependencyArguments = resolved.arguments();
-                List<String> compileArguments = moduleResolver.resolve(resolutionArguments, ToolProjections.JAVAC, in, err);
-                return new JarPackager(tools, selectedCatalog.definitions()).run(
-                        commandLine.rootModules(),
-                        compileArguments,
-                        resolved.arguments(),
-                        dependencyArguments,
-                        commandLine.toolArguments(),
-                        commandLine.workingDirectory(),
-                        in,
-                        out,
-                        err);
-            }
             if (toolInvocation.isPresent()) {
                 return selectedToolRunner.run(commandLine,
                         toolInvocation.orElseThrow(),
@@ -347,18 +329,6 @@ public final class CommandRunner {
         }
         if (commandLine.command() instanceof Command.Source(var symbol)) {
             return new SourceCommand(tools).run(symbol, resolved.arguments(), in, out, err);
-        }
-        if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.MOD))) {
-            var compileArguments = moduleResolver.resolve(resolutionArguments, ToolProjections.JAVAC, in, err);
-            return new JmodPackager(tools, selectedCatalog.definitions()).create(
-                    commandLine.rootModules(),
-                    compileArguments,
-                    resolved.arguments(),
-                    commandLine.toolArguments(),
-                    commandLine.workingDirectory(),
-                    in,
-                    out,
-                    err);
         }
         if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.GENERATE))) {
             return new SourceGenerator(tools).generate(
@@ -480,8 +450,6 @@ public final class CommandRunner {
                 && (builtin.execution() instanceof BuiltinCommand.Execution.ToolBacked
                         || builtin == BuiltinCommand.DOC
                         || builtin == BuiltinCommand.SOURCE
-                        || builtin == BuiltinCommand.JAR
-                        || builtin == BuiltinCommand.MOD
                         || builtin == BuiltinCommand.INSTALL
                         || builtin == BuiltinCommand.ASSEMBLE
                         || builtin == BuiltinCommand.MAVEN);
@@ -497,9 +465,6 @@ public final class CommandRunner {
         }
         if (!(commandLine.command() instanceof Command.Builtin(var builtin))) {
             return false;
-        }
-        if (builtin == BuiltinCommand.JAR || builtin == BuiltinCommand.MOD) {
-            return true;
         }
         if (!(builtin.execution() instanceof BuiltinCommand.Execution.ToolBacked(var tool))) {
             return false;
@@ -532,7 +497,7 @@ public final class CommandRunner {
 
     private static boolean usesTemporaryOutput(JaInvocation commandLine) {
         return switch (commandLine.command()) {
-            case Command.Builtin(var builtin) -> builtin == BuiltinCommand.MOD || builtin == BuiltinCommand.GENERATE;
+            case Command.Builtin(var builtin) -> builtin == BuiltinCommand.GENERATE;
             case Command.Tool _ -> false;
             case Command.Tools _ -> false;
             case Command.Init _ -> false;

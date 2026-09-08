@@ -24,7 +24,6 @@ import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -55,7 +54,6 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -92,15 +90,6 @@ class CommandRunnerTest {
             "module-path",
             "module=main",
             "patch-module",
-            "upgrade-module-path");
-    private static final Set<String> COMPLETE_RUNTIME_ACCESS_OPTIONS = Set.of(
-            "add-exports",
-            "add-modules",
-            "add-opens",
-            "enable-final-field-mutation",
-            "enable-native-access",
-            "enable-preview",
-            "module-path",
             "upgrade-module-path");
     private static final Set<String> COMPLETE_LAUNCH_OPTIONS = Set.of(
             "add-exports",
@@ -981,98 +970,6 @@ class CommandRunnerTest {
     }
 
     @Test
-    void nonMutatingJarOperationDoesNotResolveTheProject() throws Exception {
-        Path source = Files.createDirectories(temporaryDirectory.resolve("src/com.example.app"));
-        Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
-        Files.writeString(source.resolve("Broken.java"), "not Java\n");
-        Path artifact = temporaryDirectory.resolve("app.jar");
-        var commandLine = JaInvocation.parse(temporaryDirectory,
-                new String[] {"jar", "--list", "--file", artifact.toString()});
-        var jarArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig", (_, _) -> {
-            throw new AssertionError("jar listing must not resolve the project");
-        }),
-                tool("jar",
-                        (_, arguments) -> {
-                            jarArguments.addAll(arguments);
-                            return 17;
-                        }));
-
-        int result = new CommandRunner(ModuleLayer.boot(), tools, () -> {
-            throw new AssertionError("jar listing must not load the tool catalog");
-        },
-                () -> null)
-                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
-                        new PrintStream(new ByteArrayOutputStream()));
-
-        assertEquals(17, result);
-        assertEquals(List.of("--list", "--file", artifact.toString()), jarArguments);
-    }
-
-    @Test
-    void jarKeepsExplicitModuleMetadataWhenADependencyIsAutomatic() throws Exception {
-        Path source = Files.createDirectories(temporaryDirectory.resolve("src/com.example.app"));
-        Files.writeString(source.resolve("module-info.java"),
-                """
-                module com.example.app {
-                    requires org.example.library;
-                }
-                """);
-        Path classes = Files.createDirectories(temporaryDirectory.resolve("classes"));
-        TestModules.writeModuleInfo(classes, "com.example.app", "org.example.library");
-        Path packageDirectory = Files.createDirectories(classes.resolve("com/example"));
-        Files.writeString(packageDirectory.resolve("App.class"), "application");
-        Path dependency = TestModules.writeAutomaticJar(temporaryDirectory.resolve("org.example.library-1.2.3.jar"));
-        Path artifact = temporaryDirectory.resolve("app.jar");
-        var commandLine = JaInvocation.parse(
-                temporaryDirectory,
-                new String[] {"jar", "--create", "--file", artifact.toString(), "-C",
-                        classes.toString(), "."});
-        ToolProvider jar = ToolProvider.findFirst("jar").orElseThrow();
-        var jarOutputs = new ArrayList<Path>();
-        var projections = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
-                (output, arguments) -> {
-                    String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    projections.add(options);
-                    if (List.of(options.split(",")).contains("module-path")) {
-                        output.print("--module-path\n" + dependency + "\n");
-                    }
-                    return 0;
-                }),
-                tool("jar",
-                        (output, arguments) -> {
-                            jarOutputs.add(Path.of(arguments.get(arguments.indexOf("--file") + 1)));
-                            return jar.run(output, output, arguments.toArray(String[]::new));
-                        }));
-        var errors = new ByteArrayOutputStream();
-
-        int result = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> null)
-                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
-                        new PrintStream(errors));
-
-        assertEquals(0, result, errors.toString());
-        assertEquals(List.of(artifact), jarOutputs);
-        assertTrue(
-                projections.contains("main-class,module-path,module-version,upgrade-module-path"),
-                projections.toString());
-        try (var archive = new JarFile(artifact.toFile())) {
-            assertTrue(archive.getEntry("module-info.class") != null);
-            assertTrue(archive.getEntry("com/example/App.class") != null);
-        }
-        var descriptor = ModuleFinder.of(artifact)
-                .find("com.example.app")
-                .orElseThrow()
-                .descriptor();
-        assertTrue(descriptor.requires().stream()
-                .anyMatch(requirement -> requirement.name().equals("org.example.library")));
-        assertTrue(errors.toString().contains("dependencies resolved as automatic modules"),
-                errors.toString());
-        assertTrue(errors.toString().contains("org.example.library"),
-                errors.toString());
-    }
-
-    @Test
     void reliesOnTheModuleGraphForJigAvailability() {
         assertDoesNotThrow(
                 () -> new CommandRunner(ModuleLayer.boot(), ToolServices.of(), new ToolCatalog(List.of()),
@@ -1557,140 +1454,6 @@ class CommandRunnerTest {
 
         assertEquals(0, result);
         assertEquals(0, compilerRuns.get());
-    }
-
-    @Test
-    void modPackagesTheModuleMaterializedByJig() throws Exception {
-        Path sourcePath = temporaryDirectory.resolve("src");
-        Path module = Files.createDirectories(sourcePath.resolve("com.example.tool"));
-        Files.writeString(module.resolve("module-info.java"),
-                """
-                /** @enableNativeAccess com.example.tool */
-                module com.example.tool {
-                    requires static com.example.testing;
-                    provides java.util.spi.ToolProvider with com.example.Probe;
-                }
-                """);
-        Path packageDirectory = Files.createDirectories(module.resolve("com/example"));
-        Files.writeString(packageDirectory.resolve("Probe.java"),
-                """
-                package com.example;
-                public final class Probe implements java.util.spi.ToolProvider {
-                    public String name() { return "probe"; }
-                    public int run(java.io.PrintWriter out, java.io.PrintWriter err,
-                                   String... arguments) { return 0; }
-                }
-                """);
-        Files.writeString(packageDirectory.resolve("ProbeTest.java"),
-                """
-                package com.example;
-                public final class ProbeTest {
-                    public static final class Nested {}
-                }
-                """);
-        Path supportPackage = Files.createDirectories(module.resolve("com/example/test"));
-        Files.writeString(supportPackage.resolve("Fixture.java"),
-                """
-                package com.example.test;
-                public final class Fixture {}
-                """);
-        Files.writeString(supportPackage.resolve("fixture.properties"), "fixture=true\n");
-        var metadata = Files.createDirectories(module.resolve("META-INF/com.netflix.tools/tools"));
-        Files.writeString(metadata.resolve("testing.properties"),
-                """
-                activation=com.example.testing
-                provider=probe
-                class-suffix=Test
-                package-suffix=test
-                """);
-        Path dependencyModules = Files.createDirectories(temporaryDirectory.resolve("dependencies"));
-        Path testingModule = Files.createDirectories(dependencyModules.resolve("com.example.testing"));
-        TestModules.writeModuleInfo(testingModule, "com.example.testing");
-        Path output = temporaryDirectory.resolve("com.example.tool.jmod");
-        var commandLine = JaInvocation.parse(
-                temporaryDirectory,
-                new String[] {"mod", "--module-version", "1.2.3", "--target-platform", "macos-aarch64",
-                        output.toString()});
-        TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
-        var jmodArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
-                (writer, arguments) -> {
-                    String capabilities = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    if (capabilities.equals("module-path") || capabilities.equals(optionList(COMPLETE_RUNTIME_ACCESS_OPTIONS)) || capabilities.equals(optionList(CONFIGURATION_OPTIONS))) {
-                        int compilation = ToolProvider.findFirst("javac")
-                                .orElseThrow()
-                                .run(
-                                        writer,
-                                        writer,
-                                        "--module-source-path",
-                                        "com.example.tool=" + module,
-                                        "--module-path",
-                                        dependencyModules.toString(),
-                                        "-d",
-                                        workspace.modules().toString(),
-                                        "--module",
-                                        "com.example.tool",
-                                        "-proc:none");
-                        assertEquals(0, compilation);
-                        var compiledMetadata = Files.createDirectories(workspace.modules().resolve("com.example.tool/META-INF/com.netflix.tools/tools"));
-                        Files.copy(metadata.resolve("testing.properties"), compiledMetadata.resolve("testing.properties"), StandardCopyOption.REPLACE_EXISTING);
-                        Path compiledSupport = Files.createDirectories(workspace.modules().resolve("com.example.tool/com/example/test"));
-                        Files.copy(supportPackage.resolve("fixture.properties"), compiledSupport.resolve("fixture.properties"), StandardCopyOption.REPLACE_EXISTING);
-                        Files.writeString(workspace.modules().resolve("com.example.tool/com/example/Patched.class"), "complete");
-                        writer.print("--module-path\n");
-                        writer.print(workspace.modules());
-                        if (!capabilities.equals(optionList(COMPLETE_RUNTIME_ACCESS_OPTIONS))) {
-                            writer.print(File.pathSeparator + dependencyModules);
-                        }
-                        writer.print("\n");
-                        if (capabilities.equals(optionList(CONFIGURATION_OPTIONS))) {
-                            writer.print("--add-modules\ncom.example.testing,com.example.tool\n");
-                        }
-                        if (capabilities.equals(optionList(COMPLETE_RUNTIME_ACCESS_OPTIONS))) {
-                            writer.print("--enable-preview\n--enable-native-access\ncom.example.tool\n");
-                        }
-                    } else {
-                        assertEquals(optionList(COMPILE_OPTIONS), capabilities);
-                        assertTrue(arguments.contains("--compile-time"));
-                        writer.print("--module-path\n" + workspace.modules() + File.pathSeparator + dependencyModules + "\n");
-                    }
-                    return 0;
-                }),
-                tool(
-                        "jmod",
-                        (writer, arguments) -> {
-                            jmodArguments.addAll(arguments);
-                            Path packagedModule = Path.of(arguments.get(arguments.indexOf("--class-path") + 1));
-                            assertTrue(Files.isDirectory(packagedModule));
-                            assertTrue(Files.isRegularFile(packagedModule.resolve("com/example/Probe.class")));
-                            assertEquals("complete", Files.readString(packagedModule.resolve("com/example/Patched.class")));
-                            assertFalse(Files.exists(packagedModule.resolve("com/example/ProbeTest.class")));
-                            assertFalse(Files.exists(packagedModule.resolve("com/example/ProbeTest$Nested.class")));
-                            assertFalse(Files.exists(packagedModule.resolve("com/example/test/Fixture.class")));
-                            assertFalse(Files.exists(packagedModule.resolve("com/example/test/fixture.properties")));
-                            Path configuration = Path.of(arguments.get(arguments.indexOf("--config") + 1));
-                            assertEquals("--enable-preview\n--enable-native-access=com.example.tool\n", Files.readString(configuration.resolve("com.netflix.tools.launcher/probe.args")));
-                            return 0;
-                        }));
-        int result = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> workspace)
-                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
-                        new PrintStream(new ByteArrayOutputStream()));
-
-        assertEquals(0, result);
-        int configuration = jmodArguments.indexOf("--config");
-        assertTrue(configuration > 0);
-        var withoutConfiguration = new ArrayList<>(jmodArguments);
-        withoutConfiguration.remove(configuration + 1);
-        withoutConfiguration.remove(configuration);
-        assertEquals("create", withoutConfiguration.get(0));
-        assertEquals("--class-path", withoutConfiguration.get(1));
-        assertNotEquals(workspace.modules()
-                .resolve("com.example.tool")
-                .toString(),
-                withoutConfiguration.get(2));
-        assertEquals(
-                List.of("--module-version", "1.2.3", "--target-platform", "macos-aarch64", output.toString()),
-                withoutConfiguration.subList(3, withoutConfiguration.size()));
     }
 
     @Test

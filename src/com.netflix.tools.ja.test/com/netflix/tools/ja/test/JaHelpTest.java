@@ -76,9 +76,7 @@ class JaHelpTest {
 
                 Build and distribute:
                   assemble     Assemble module artifacts
-                  jar          Create or update a modular JAR
-                  mod          Create a JMOD archive
-                  install      Install an application command
+                  install      Install a module as a command
                   maven        Export Maven projects or install and deploy modules
 
                 Tools:

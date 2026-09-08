@@ -471,7 +471,7 @@ The destination must not already exist. Each module receives binary, source, and
 ja assemble --jmod --module-version 1.2.3 build/artifacts
 ```
 
-Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. When a module requires an automatic module with a filename-derived name, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
+Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. When a module requires an automatic module, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
 
 ## Export a Maven project
 
@@ -518,17 +518,6 @@ ja maven deploy-central --module-version 1.2.3
 
 The project `consumer.pom` must provide the name, description, URL, licenses, developers, and SCM information required by Central. Store the Central user token under the `central` server in `~/.m2/settings.xml`. Signing reads `MAVEN_GPG_KEY`, with optional `MAVEN_GPG_KEY_FINGERPRINT` and `MAVEN_GPG_PASSPHRASE`, from the environment. Add `--manual` to leave the validated deployment awaiting approval in the Central Portal.
 
-### Create a standalone jmod
-
-Create a single `jmod` directly with the JDK tool:
-
-```sh
-ja -C src/com.example.tool mod \
-  --module-version 1.2.3 \
-  --target-platform macos-aarch64 \
-  /path/to/com.example.tool.jmod
-```
-
 ## Link runtime images
 
 Run the JDK's `jlink` tool directly to create a runtime image for the current source application. `ja` supplies the selected modules and their module path:
@@ -545,15 +534,15 @@ ja tool jlink \
   --output /path/to/image
 ```
 
-## Install applications
+## Install commands
 
-Install the current source application:
+Install the current source module as a command:
 
 ```sh
 ja install
 ```
 
-Install a released application by module name or Maven package URL:
+Install a command from a released module by module name or Maven package URL:
 
 ```sh
 ja install com.example.application
