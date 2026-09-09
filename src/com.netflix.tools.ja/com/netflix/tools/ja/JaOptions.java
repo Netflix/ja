@@ -95,7 +95,6 @@ final class JaOptions {
                 ToolOption.option("--module-version", "VERSION", "Set the module version"),
                 ToolOption.flag("--jmod", "Also deploy JMOD artifacts"),
                 ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"),
-                ToolOption.option("--merge-consumer-pom", "PATH", "Merge metadata into consumer POMs"),
                 ToolOption.option("--repository", "ID=URI|PATH", "Select the deployment repository"),
                 ToolOption.flag("--sign", "Sign deployed artifacts"));
     }
@@ -105,7 +104,6 @@ final class JaOptions {
                 ToolOption.option("--module-version", "VERSION", "Set the module version"),
                 ToolOption.flag("--jmod", "Also deploy JMOD artifacts"),
                 ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"),
-                ToolOption.option("--merge-consumer-pom", "PATH", "Merge metadata into consumer POMs"),
                 ToolOption.option("--name", "NAME", "Set the Central deployment name"),
                 ToolOption.flag("--manual", "Wait for manual approval after validation"));
     }

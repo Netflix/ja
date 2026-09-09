@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <name>${project.artifactId}</name>
-  <description>Build and development tooling for modular Java applications distributed with ja.</description>
+  <name>ja tests</name>
+  <description>Tests for the ja build and development tooling.</description>
   <url>https://github.com/Netflix/ja</url>
   <licenses>
     <license>

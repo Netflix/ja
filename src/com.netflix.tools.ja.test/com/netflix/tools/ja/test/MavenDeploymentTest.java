@@ -42,12 +42,11 @@ class MavenDeploymentTest {
     @Test
     void deploysAssembledArtifactsToMavenCentral(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        Path metadata = Files.writeString(directory.resolve("metadata.pom"), "<project/>");
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment);
+        ToolServices tools = tools(directory, deployment, true);
         var commandLine = JaInvocation.parse(
                 directory,
-                new String[] {"maven", "deploy-central", "--module-version", "1.0", "--merge-consumer-pom", "metadata.pom",
+                new String[] {"maven", "deploy-central", "--module-version", "1.0",
                         "--name", "Example 1.0", "--manual"});
 
         int result = run(commandLine, tools);
@@ -55,7 +54,6 @@ class MavenDeploymentTest {
         assertEquals(0, result);
         assertEquals("maven", deployment.get(0));
         assertEquals("deploy-central", deployment.get(1));
-        assertEquals(metadata.toString(), value(deployment, "--merge-consumer-pom"));
         assertEquals("Example 1.0", value(deployment, "--name"));
         assertTrue(deployment.contains("--manual"));
         Path artifacts = Path.of(deployment.getLast());
@@ -74,12 +72,11 @@ class MavenDeploymentTest {
     }
 
     @Test
-    void deploysUsingTheConventionalConsumerPom(@TempDir Path directory) throws Exception {
+    void deploysUsingModulePublicationMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        Path metadata = Files.writeString(directory.resolve("consumer.pom"), "<project/>");
         Path repository = directory.resolve("repository");
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment);
+        ToolServices tools = tools(directory, deployment, true);
         var commandLine = JaInvocation.parse(
                 directory,
                 new String[] {"maven", "deploy", "--module-version", "1.0", "--repository",
@@ -89,26 +86,37 @@ class MavenDeploymentTest {
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "deploy"), deployment.subList(0, 2));
-        assertEquals(metadata.toString(), value(deployment, "--merge-consumer-pom"));
         assertEquals(repository.toString(), value(deployment, "--repository"));
         assertTrue(deployment.contains("--sign"));
     }
 
     @Test
+    void deploymentRequiresARepository(@TempDir Path directory) throws Exception {
+        sourceModule(directory, "com.example.library");
+        var commandLine = JaInvocation.parse(directory,
+                new String[] {"maven", "deploy", "--module-version", "1.0"});
+
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> run(commandLine, tools(directory, new ArrayList<>(), true)));
+
+        assertEquals("maven deploy requires --repository", failure.getMessage());
+    }
+
+    @Test
     void installsWithoutPublicationMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
+        Files.delete(directory.resolve("src/com.example.library/com.example.library.pom"));
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment);
+        ToolServices tools = tools(directory, deployment, false);
         var commandLine = JaInvocation.parse(directory, new String[] {"maven", "install", "--module-version", "1.0"});
 
         int result = run(commandLine, tools);
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "install"), deployment.subList(0, 2));
-        assertFalse(deployment.contains("--merge-consumer-pom"));
     }
 
-    private static ToolServices tools(Path directory, List<String> deployment) throws Exception {
+    private static ToolServices tools(Path directory, List<String> deployment, boolean expectMetadata) throws Exception {
         String moduleName = "com.example.library";
         Path runtimeModule = Files.createDirectories(directory.resolve("runtime")
                 .resolve(moduleName));
@@ -120,6 +128,7 @@ class MavenDeploymentTest {
                         assertTrue(Files.isRegularFile(artifacts.resolve(moduleName + ".jar")));
                         assertTrue(Files.isRegularFile(artifacts.resolve(moduleName + "-sources.jar")));
                         assertTrue(Files.isRegularFile(artifacts.resolve(moduleName + "-javadoc.jar")));
+                        assertEquals(expectMetadata, Files.isRegularFile(artifacts.resolve(moduleName + ".pom")));
                         deployment.addAll(arguments);
                         return 0;
                     }
@@ -184,6 +193,13 @@ class MavenDeploymentTest {
                 .resolve(module));
         Files.writeString(source.resolve("module-info.java"), "module " + module + " {}\n");
         Files.writeString(source.resolve("module-info.hash"), "");
+        Files.writeString(source.resolve(module + ".pom"),
+                """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <name>Example library</name>
+                </project>
+                """);
     }
 
     private static ToolProvider tool(String name, Operation operation) {

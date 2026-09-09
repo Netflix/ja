@@ -17,7 +17,6 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +31,6 @@ final class MavenDeploymentCommand {
     private record Request(
             String operation,
             Options assembly,
-            Path consumerPom,
             String repository,
             boolean sign,
             String name,
@@ -49,7 +47,7 @@ final class MavenDeploymentCommand {
     int run(JaInvocation commandLine, ModuleSourcePath moduleSourcePath, InputStream in,
             PrintStream out, PrintStream err)
             throws IOException {
-        Request request = request(commandLine.workingDirectory(), commandLine.toolArguments());
+        Request request = request(commandLine.toolArguments());
         try (var temporary = TemporaryDirectory.create()) {
             Path artifacts = temporary.root().resolve("artifacts");
             int result = assembler.assemble(commandLine, moduleSourcePath, request.assembly(), artifacts, in,
@@ -66,11 +64,6 @@ final class MavenDeploymentCommand {
         var arguments = new ArrayList<String>();
         arguments.add("maven");
         arguments.add(request.operation());
-        if (request.consumerPom() != null) {
-            arguments.add("--merge-consumer-pom");
-            arguments.add(request.consumerPom()
-                                 .toString());
-        }
         if (request.repository() != null) {
             arguments.add("--repository");
             arguments.add(request.repository());
@@ -89,7 +82,7 @@ final class MavenDeploymentCommand {
         return tools.run("jig", in, out, err, arguments.toArray(String[]::new));
     }
 
-    private static Request request(Path workingDirectory, List<String> arguments) {
+    private static Request request(List<String> arguments) {
         if (arguments.isEmpty()) {
             throw new IllegalArgumentException("maven requires an operation: export, install, deploy, or deploy-central");
         }
@@ -99,7 +92,6 @@ final class MavenDeploymentCommand {
         }
         String version = null;
         String targetPlatform = null;
-        Path consumerPom = null;
         String repository = null;
         String name = null;
         boolean jmod = false;
@@ -115,14 +107,6 @@ final class MavenDeploymentCommand {
                 targetPlatform = singleValue("--target-platform", targetPlatform, arguments, ++i);
             } else if (argument.startsWith("--target-platform=")) {
                 targetPlatform = singleValue("--target-platform", targetPlatform, argument.substring("--target-platform=".length()));
-            } else if (argument.equals("--merge-consumer-pom")) {
-                String value = singleValue("--merge-consumer-pom", consumerPom == null ? null : consumerPom.toString(),
-                        arguments, ++i);
-                consumerPom = workingDirectory.resolve(value).normalize();
-            } else if (argument.startsWith("--merge-consumer-pom=")) {
-                String value = singleValue("--merge-consumer-pom", consumerPom == null ? null : consumerPom.toString(),
-                        argument.substring("--merge-consumer-pom=".length()));
-                consumerPom = workingDirectory.resolve(value).normalize();
             } else if (argument.equals("--repository")) {
                 repository = singleValue("--repository", repository, arguments, ++i);
             } else if (argument.startsWith("--repository=")) {
@@ -155,21 +139,14 @@ final class MavenDeploymentCommand {
         if (version == null || version.isBlank()) {
             throw new IllegalArgumentException("maven " + operation + " requires --module-version");
         }
-        validateOperation(operation, consumerPom, repository, sign, name, manual);
-        if (consumerPom == null && !operation.equals("install")) {
-            Path conventional = workingDirectory.resolve("consumer.pom").normalize();
-            if (Files.isRegularFile(conventional)) {
-                consumerPom = conventional;
-            }
-        }
-        return new Request(operation, new Options(version, targetPlatform, jmod), consumerPom, repository, sign,
-                name, manual);
+        validateOperation(operation, repository, sign, name, manual);
+        return new Request(operation, new Options(version, targetPlatform, jmod), repository, sign, name, manual);
     }
 
-    private static void validateOperation(String operation, Path consumerPom, String repository,
+    private static void validateOperation(String operation, String repository,
             boolean sign, String name, boolean manual) {
-        if (operation.equals("install") && consumerPom != null) {
-            throw new IllegalArgumentException("--merge-consumer-pom is only supported by Maven deployment");
+        if (operation.equals("deploy") && repository == null) {
+            throw new IllegalArgumentException("maven deploy requires --repository");
         }
         if (!operation.equals("deploy") && repository != null) {
             throw new IllegalArgumentException("--repository is only supported by maven deploy");

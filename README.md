@@ -495,7 +495,7 @@ The destination must not already exist. Each module receives binary, source, and
 ja assemble --jmod --module-version 1.2.3 build/artifacts
 ```
 
-Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. When a module requires an automatic module, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
+Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. A `<module-name>.pom` at the source module root is copied beside the matching main JAR as publication metadata. When a module requires an automatic module, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
 
 ## Export a Maven project
 
@@ -515,10 +515,9 @@ Install the selected source modules in the configured local Maven repository:
 ja maven install --module-version 1.2.3
 ```
 
-Deploy them to the release repository configured by the project POM, or select a repository explicitly:
+Deploy them to a selected release repository:
 
 ```sh
-ja maven deploy --module-version 1.2.3
 ja maven deploy \
   --module-version 1.2.3 \
   --repository releases=https://repository.example/releases
@@ -532,7 +531,17 @@ ja maven deploy \
   --repository build/repository
 ```
 
-A `consumer.pom` in the project root contributes shared metadata and repository configuration to the deployed consumer POMs. Use `--merge-consumer-pom PATH` to select a different file. Add `--sign` when the selected repository requires OpenPGP signatures.
+Each source module can provide `<module-name>.pom` at its module root. The POM contributes additional metadata to that module's generated consumer POM. It supports these top-level elements:
+
+- `modelVersion`, which must be `4.0.0`
+- `name`
+- `description`
+- `url`
+- `licenses`
+- `developers`
+- `scm`
+
+Add `--sign` when the selected repository requires OpenPGP signatures.
 
 Deploy a release to Maven Central with:
 
@@ -540,7 +549,7 @@ Deploy a release to Maven Central with:
 ja maven deploy-central --module-version 1.2.3
 ```
 
-The project `consumer.pom` must provide the name, description, URL, licenses, developers, and SCM information required by Central. Store the Central user token under the `central` server in `~/.m2/settings.xml`. Signing reads `MAVEN_GPG_KEY`, with optional `MAVEN_GPG_KEY_FINGERPRINT` and `MAVEN_GPG_PASSPHRASE`, from the environment. Add `--manual` to leave the validated deployment awaiting approval in the Central Portal.
+Every selected module must provide a matching POM with the metadata required by Central. Store the Central user token under the `central` server in `~/.m2/settings.xml`. Signing reads `MAVEN_GPG_KEY`, with optional `MAVEN_GPG_KEY_FINGERPRINT` and `MAVEN_GPG_PASSPHRASE`, from the environment. Add `--manual` to leave the validated deployment awaiting approval in the Central Portal.
 
 ## Link runtime images
 

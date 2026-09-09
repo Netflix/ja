@@ -68,7 +68,9 @@ final class FilteredModuleContent implements AutoCloseable {
         }
 
         var excluded = exclusions(compileArguments, runtimeArguments, tools);
-        if (excluded.isEmpty() || !containsExcludedContent(source, excluded)) {
+        Path publicationMetadata = source.resolve(moduleName + ".pom");
+        if (!Files.isRegularFile(publicationMetadata)
+                && (excluded.isEmpty() || !containsExcludedContent(source, excluded))) {
             return new FilteredModuleContent(source, null);
         }
 
@@ -76,6 +78,7 @@ final class FilteredModuleContent implements AutoCloseable {
         var destination = staging.resolve(moduleName);
         try {
             copy(source, destination);
+            Files.deleteIfExists(destination.resolve(moduleName + ".pom"));
             removeExcludedContent(destination, excluded);
         } catch (IOException | RuntimeException | Error failure) {
             deleteTree(staging);

@@ -1,5 +1,5 @@
 com.netflix.tools.jdocserver@0.4.0=module:sha256:dd1dc16b5f3ce2388607ae53194ee88cf9594b018f0ea0f8b01692767a68fa70
-com.netflix.tools.jig@0.13.2=module:sha256:80f34d2934534523e0096c1945c160efaa6eaece0b3c7905ae8570baca90d591
+com.netflix.tools.jig@0.13.4=module:sha256:8c45d011e2c42b56dc3a824e7cea28c12cd60a1b3f0a4fdc5f11fce3b7e15e9c
 org.apiguardian.api@1.1.2=module:sha256:8fe700256df67fb279c0734898bf7c25c199ef407ae18b918947b38dfdf0af2a
 org.jspecify@1.0.0=module:sha256:db02318646febd4e03fc69910df454696d58b2be88e7232a0262c3fe0141bd03
 org.junit.jupiter.api@6.1.3=module:sha256:20c0d83d6f2882d9e5d49353c0f2c51acaa1b35d96ec7f3c242530ad0179b89a

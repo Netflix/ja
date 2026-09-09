@@ -80,6 +80,30 @@ class AssembleTest {
     }
 
     @Test
+    void includesModulePublicationMetadata(@TempDir Path directory) throws Exception {
+        String moduleName = "com.example.library";
+        Path module = sourceModule(directory, moduleName);
+        String metadata = """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <name>Example library</name>
+                </project>
+                """;
+        Files.writeString(module.resolve(moduleName + ".pom"), metadata);
+
+        Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path output = artifacts(directory);
+        assertEquals(metadata, Files.readString(output.resolve(moduleName + ".pom")));
+        try (var binary = new ZipFile(output.resolve(moduleName + ".jar").toFile());
+             var sources = new ZipFile(output.resolve(moduleName + "-sources.jar").toFile())) {
+            assertNull(binary.getEntry(moduleName + ".pom"));
+            assertNull(sources.getEntry(moduleName + ".pom"));
+        }
+    }
+
+    @Test
     void assemblesEveryModuleOnTheSourcePath(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.api");
         Path runtime = sourceModule(directory, "com.example.runtime");
@@ -407,6 +431,13 @@ class AssembleTest {
     void assemblesAJmodSourceLayout(@TempDir Path directory) throws Exception {
         Path module = directory.resolve("src/com.example.tool");
         Path classes = moduleAt(module.resolve("classes"), "com.example.tool");
+        String metadata = """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <name>Example tool</name>
+                </project>
+                """;
+        Files.writeString(module.resolve("com.example.tool.pom"), metadata);
         Path resources = classes.resolve("com/example");
         Files.createDirectories(resources);
         Files.writeString(resources.resolve("tool.properties"), "tool=true\n");
@@ -420,6 +451,7 @@ class AssembleTest {
         Path artifact = moduleVersion.resolve("com.example.tool.jmod");
         assertTrue(Files.isRegularFile(artifact));
         assertTrue(jmodEntries(artifact).contains("bin/example"));
+        assertEquals(metadata, Files.readString(moduleVersion.resolve("com.example.tool.pom")));
         try (var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar")
                 .toFile())) {
             assertTrue(sources.getEntry("module-info.java") != null);

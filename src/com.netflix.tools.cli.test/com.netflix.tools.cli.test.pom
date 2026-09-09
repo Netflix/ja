@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <name>ja command-line support tests</name>
+  <description>Tests for the command-line parsing support distributed with ja.</description>
+  <url>https://github.com/Netflix/ja</url>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>DanielThomas</id>
+      <name>Danny Thomas</name>
+      <url>https://github.com/DanielThomas</url>
+      <organization>Netflix, Inc.</organization>
+      <organizationUrl>https://netflix.github.io/</organizationUrl>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/Netflix/ja.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Netflix/ja.git</developerConnection>
+    <url>https://github.com/Netflix/ja</url>
+  </scm>
+</project>

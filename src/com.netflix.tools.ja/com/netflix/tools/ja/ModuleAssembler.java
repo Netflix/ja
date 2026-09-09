@@ -34,8 +34,8 @@ import com.netflix.tools.ja.JmodPackager.Artifacts;
 import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /**
- * Assembles flat, module-named binary, source, documentation, and JMOD
- * artifacts.
+ * Assembles flat, module-named binary, source, documentation, publication
+ * metadata, and JMOD artifacts.
  */
 final class ModuleAssembler {
     record Options(String version, String targetPlatform, boolean jmod) {}
@@ -205,9 +205,10 @@ final class ModuleAssembler {
     private int assemble(Plan plan, Path output, InputStream in,
                          PrintStream out, PrintStream err)
             throws IOException {
+        copyPublicationMetadata(plan, output);
         List<String> compileArguments = ArgumentFiles.parse(Files.readString(plan.compileArguments()));
         List<String> runtimeArguments = ArgumentFiles.parse(Files.readString(plan.runtimeArguments()));
-        int sourcesResult = archive(plan.moduleSource(), output.resolve(plan.moduleName() + "-sources.jar"), in,
+        int sourcesResult = archiveSources(plan, output.resolve(plan.moduleName() + "-sources.jar"), in,
                 out, err);
         if (sourcesResult != 0) {
             return sourcesResult;
@@ -257,6 +258,17 @@ final class ModuleAssembler {
         }
     }
 
+    private static void copyPublicationMetadata(Plan plan, Path output) throws IOException {
+        Path sourceRoot = plan.moduleSource();
+        if (sourceRoot.getFileName() != null && sourceRoot.getFileName().toString().equals("classes")) {
+            sourceRoot = sourceRoot.getParent();
+        }
+        Path metadata = sourceRoot.resolve(plan.moduleName() + ".pom");
+        if (Files.isRegularFile(metadata)) {
+            Files.copy(metadata, output.resolve(plan.moduleName() + ".pom"));
+        }
+    }
+
     private int javadoc(Plan plan, InputStream in, PrintStream out,
                         PrintStream err)
             throws IOException {
@@ -274,6 +286,31 @@ final class ModuleAssembler {
         arguments.add(plan.javadocOutput()
                           .toString());
         return tools.run("javadoc", in, out, err, arguments.toArray(String[]::new));
+    }
+
+    private int archiveSources(Plan plan, Path archive, InputStream in,
+                               PrintStream out, PrintStream err) throws IOException {
+        Path content = plan.moduleSource();
+        Path metadata = content.resolve(plan.moduleName() + ".pom");
+        if (!Files.isRegularFile(metadata)) {
+            return archive(content, archive, in, out, err);
+        }
+        var arguments = new ArrayList<String>();
+        arguments.add("--create");
+        arguments.add("--no-manifest");
+        arguments.add("--file");
+        arguments.add(archive.toString());
+        try (var entries = Files.list(content)) {
+            for (Path entry : entries
+                    .filter(path -> !path.equals(metadata))
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .toList()) {
+                arguments.add("-C");
+                arguments.add(content.toString());
+                arguments.add(entry.getFileName().toString());
+            }
+        }
+        return tools.run("jar", in, out, err, arguments.toArray(String[]::new));
     }
 
     private int archive(Path content, Path archive, InputStream in,
