@@ -1140,7 +1140,7 @@ class ToolRunnerTest {
         assertEquals(0, result);
         assertEquals(
                 List.of("--module-path", "missing-modules", "--default", "--select-module", "com.example.app", "--include-methodname",
-                        "^\\Qcom\\E[.#]\\Qexample\\E[.#]\\QAppTest\\E(?:#.+)?$", "--include-methodname", "^\\Qcom\\E[.#]\\Qexample\\E[.#]\\QAppTest\\E[.#]\\Qexample\\E(?:#.+)?$"),
+                        "^\\Qcom\\E[.#]\\Qexample\\E[.#]\\QAppTest\\E(?:#.+)?$", "--include-methodname", "^\\Qcom\\E[.#]\\Qexample\\E[.#]\\QAppTest\\E[.#]\\Qexample\\E(?:#.+)?$", "--fail-if-no-tests"),
                 runWith);
     }
 

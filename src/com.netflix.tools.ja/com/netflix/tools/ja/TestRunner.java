@@ -266,6 +266,7 @@ final class TestRunner {
 
     private static Arguments parseArguments(List<String> arguments) {
         boolean runAll = false;
+        boolean explicitSelector = false;
         var junitArguments = new ArrayList<String>();
         for (int i = 0; i < arguments.size(); i++) {
             var argument = arguments.get(i);
@@ -284,11 +285,15 @@ final class TestRunner {
                 }
                 junitArguments.add("--include-tag=" + argument.substring(separator + 1));
             } else if (!argument.startsWith("-")) {
+                explicitSelector = true;
                 junitArguments.add("--include-methodname");
                 junitArguments.add(selectorPattern(argument));
             } else {
                 throw new IllegalArgumentException("Unsupported test argument: " + argument);
             }
+        }
+        if (explicitSelector) {
+            junitArguments.add("--fail-if-no-tests");
         }
         return new Arguments(runAll, List.copyOf(junitArguments));
     }
