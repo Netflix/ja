@@ -69,7 +69,7 @@ class ToolLauncherIntegrationTest {
                 "--upgrade-module-path",
                 launcherModule().toString(),
                 "--patch-module",
-                "com.netflix.tools.launcher=" + launcherClasses(),
+                "com.netflix.tools.launcher=" + launcherPatch(directory),
                 "--module-path",
                 modules.toString(),
                 "--add-modules",
@@ -89,13 +89,13 @@ class ToolLauncherIntegrationTest {
         assertEquals("provider ran with --version\n", output);
     }
 
-    private static Path launcherClasses() throws Exception {
+    private static Path launcherPatch(Path directory) throws Exception {
         URI classLocation = ToolLauncher.class.getResource("ToolLauncher.class").toURI();
-        Path root = Path.of(classLocation);
-        for (int i = 0; i < ToolLauncher.class.getName().split("\\.").length; i++) {
-            root = root.getParent();
-        }
-        return root;
+        Path source = Path.of(classLocation);
+        Path destination = directory.resolve(ToolLauncher.class.getName().replace('.', '/') + ".class");
+        Files.createDirectories(destination.getParent());
+        Files.copy(source, destination);
+        return directory;
     }
 
     private static Path launcherModule() {
