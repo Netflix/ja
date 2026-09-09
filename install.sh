@@ -22,7 +22,7 @@ configured_java_home="${JAVA_HOME:-}"
 java_on_path="$(type -P java || true)"
 java_properties=""
 
-jig_version="${JIG_VERSION:-0.13.2}"
+jig_version="${JIG_VERSION:-0.13.4}"
 ja_version="${JA_VERSION:-}"
 if [[ -n "$configured_java_home" ]]; then
     source_java_home="$configured_java_home"

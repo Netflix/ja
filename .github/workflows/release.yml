@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BOOTSTRAP_JA_VERSION: 0.17.6
+      JIG_VERSION: 0.13.4
     steps:
       - uses: actions/checkout@v6
 
@@ -71,7 +72,8 @@ jobs:
             "$BOOTSTRAP_JAVA_HOME" \
             "$ARTIFACTS" \
             "$BUILT_JAVA_HOME" \
-            "$BUILD_VERSION"
+            "$BUILD_VERSION" \
+            "$JIG_VERSION"
           echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Test source with built ja

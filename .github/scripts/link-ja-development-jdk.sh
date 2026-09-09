@@ -20,7 +20,7 @@ fi
 source_java_home="$1"
 output_java_home="$2"
 ja_version="$3"
-bootstrap_jig_version=0.13.2
+bootstrap_jig_version=0.13.4
 
 if [[ -e "$output_java_home" ]]; then
     echo "Output path already exists: $output_java_home" >&2
@@ -104,7 +104,7 @@ if [[ -z "$add_modules" ]]; then
     exit 1
 fi
 
-# jig 0.13.2 does not project runtime-access attributes from binary application modules.
+# Bootstrap linking does not project runtime-access attributes from binary application modules.
 # Keep these in sync with the declarations on ja's static development-tool dependencies.
 cat > "$output_java_home/conf/com.netflix.tools.launcher/ja.args" <<EOF
 --enable-native-access=com.netflix.tools.ja

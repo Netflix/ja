@@ -13,8 +13,8 @@
 
 set -euo pipefail
 
-if (($# != 5)); then
-    echo "Usage: $0 <source-java-home> <bootstrap-java-home> <artifacts> <output-java-home> <ja-version>" >&2
+if (($# != 6)); then
+    echo "Usage: $0 <source-java-home> <bootstrap-java-home> <artifacts> <output-java-home> <ja-version> <jig-version>" >&2
     exit 2
 fi
 source_java_home="$1"
@@ -22,6 +22,7 @@ bootstrap_java_home="$2"
 artifacts="$3"
 output_java_home="$4"
 ja_version="$5"
+jig_version="$6"
 
 if [[ -e "$output_java_home" ]]; then
     echo "Output path already exists: $output_java_home" >&2
@@ -58,8 +59,17 @@ done
 
 work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ja-assembled-jdk.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
+jig_jar="$work/com.netflix.tools.jig-$jig_version.jar"
+jig_jmod="$work/com.netflix.tools.jig-$jig_version-$platform.jmod"
+curl --fail --silent --show-error --location \
+    "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.jig/$jig_version/com.netflix.tools.jig-$jig_version.jar" \
+    --output "$jig_jar"
+curl --fail --silent --show-error --location \
+    "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.jig/$jig_version/com.netflix.tools.jig-$jig_version-$platform.jmod" \
+    --output "$jig_jmod"
+
 cp -Rp "$bootstrap_java_home/jmods" "$work/jmods"
-for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja; do
+for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja com.netflix.tools.jig; do
     find "$work/jmods" -maxdepth 1 -type f \
         \( -name "$module.jar" -o -name "$module-*.jar" \
         -o -name "$module.jmod" -o -name "$module-*.jmod" \) -delete
@@ -67,6 +77,7 @@ done
 cp -p "$cli_jmod" "$work/jmods/com.netflix.tools.cli.jmod"
 cp -p "$launcher_jmod" "$work/jmods/com.netflix.tools.launcher.jmod"
 cp -p "$ja_jmod" "$work/jmods/com.netflix.tools.ja.jmod"
+cp -p "$jig_jmod" "$work/jmods/com.netflix.tools.jig.jmod"
 
 "$jlink" \
     --module-path "$work/jmods" \
@@ -78,18 +89,20 @@ cp -Rp "$work/jmods" "$output_java_home/jmods"
 cp -p "$source_java_home/lib/src.zip" "$output_java_home/lib/src.zip"
 mkdir -p "$output_java_home/lib/ja/modules"
 cp -p "$bootstrap_java_home/lib/ja/modules/"*.jar "$output_java_home/lib/ja/modules/"
-for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja; do
+for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja com.netflix.tools.jig; do
     find "$output_java_home/lib/ja/modules" -maxdepth 1 -type f \
         \( -name "$module.jar" -o -name "$module-*.jar" \) -delete
 done
 cp -p "$artifacts/com.netflix.tools.cli.jar" "$output_java_home/lib/ja/modules/"
 cp -p "$artifacts/com.netflix.tools.launcher.jar" "$output_java_home/lib/ja/modules/"
 cp -p "$artifacts/com.netflix.tools.ja.jar" "$output_java_home/lib/ja/modules/"
+cp -p "$jig_jar" "$output_java_home/lib/ja/modules/"
 
 [[ -x "$output_java_home/bin/ja" ]]
 [[ -f "$output_java_home/jmods/java.base.jmod" ]]
 [[ -f "$output_java_home/lib/src.zip" ]]
 "$output_java_home/bin/java" --list-modules | grep -Fqx "com.netflix.tools.ja@$ja_version"
+"$output_java_home/bin/java" --list-modules | grep -Fqx "com.netflix.tools.jig@$jig_version"
 if ! find "$output_java_home/lib" -type f -name '*.jsa' -print -quit | grep -q .; then
     echo "The linked development JDK has no CDS archive" >&2
     exit 1
