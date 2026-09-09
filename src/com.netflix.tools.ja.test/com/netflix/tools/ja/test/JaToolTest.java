@@ -72,6 +72,7 @@ class JaToolTest {
         assertEquals(0, described.isSupportedOption("--verbose"));
         assertEquals(0, described.isSupportedOption("--help"));
         assertEquals(0, described.isSupportedOption("-h"));
+        assertEquals(0, described.isSupportedOption("--version"));
         assertEquals(1, described.isSupportedOption("-C"));
         assertEquals(0, described.isSupportedOption("__complete"));
         assertEquals(-1, described.isSupportedOption("--completion"));
@@ -270,6 +271,19 @@ class JaToolTest {
 
         assertEquals(2, result.exitCode());
         assertEquals("ja: Unknown command: link\n", result.error());
+    }
+
+    @Test
+    void printsVersion() {
+        Result result = run("--version");
+        String version = Ja.class.getModule()
+                .getDescriptor()
+                .rawVersion()
+                .orElse("dev");
+
+        assertEquals(0, result.exitCode(), result.error());
+        assertEquals("ja " + version + "\n", result.output());
+        assertEquals("", result.error());
     }
 
     @Test

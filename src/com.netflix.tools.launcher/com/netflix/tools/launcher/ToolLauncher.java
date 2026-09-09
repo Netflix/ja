@@ -47,30 +47,12 @@ public final class ToolLauncher {
             boolean training = Boolean.getBoolean(AOT_TRAINING_PROPERTY);
             Optional<Tool> compilerTool = findTool(name);
             if (compilerTool.isPresent()) {
-                Tool initialTool = compilerTool.get();
-                if (training) {
-                    result = runTool(name, toolArguments, System.in, System.out, System.err, true,
-                            WarmupPlans::find, () -> findTool(name).orElseThrow());
-                } else if (versionRequested(toolArguments)) {
-                    result = printVersion(name, initialTool.getClass().getModule(),
-                            out);
-                } else {
-                    result = runTool(name, toolArguments, System.in, System.out, System.err, false,
-                            WarmupPlans::find, () -> findTool(name).orElseThrow());
-                }
+                result = runTool(name, toolArguments, System.in, System.out, System.err, training,
+                        WarmupPlans::find, () -> findTool(name).orElseThrow());
             } else {
-                ToolProvider initialProvider = ToolProvider.findFirst(name).orElseThrow(() -> new LauncherConfigurationException("Tool not found: " + name));
                 Supplier<ToolProvider> provider = () -> ToolProvider.findFirst(name).orElseThrow(() -> new LauncherConfigurationException("Tool not found: " + name));
-                if (training) {
-                    result = run(name, toolArguments, out, err, true,
-                            WarmupPlans::find, provider);
-                } else if (versionRequested(toolArguments)) {
-                    result = printVersion(name, initialProvider.getClass().getModule(),
-                            out);
-                } else {
-                    result = run(name, toolArguments, out, err, false,
-                            WarmupPlans::find, provider);
-                }
+                result = run(name, toolArguments, out, err, training,
+                        WarmupPlans::find, provider);
             }
         } catch (LauncherConfigurationException e) {
             err.println(e.getMessage());
@@ -79,18 +61,6 @@ public final class ToolLauncher {
         out.flush();
         err.flush();
         System.exit(result);
-    }
-
-    private static boolean versionRequested(String[] arguments) {
-        return arguments.length == 1 && arguments[0].equals("--version");
-    }
-
-    private static int printVersion(String name, Module module, PrintWriter out) {
-        String version = module.getDescriptor() == null ? null : module.getDescriptor()
-                .rawVersion()
-                .orElse(null);
-        out.println(name + " " + (version == null ? "dev" : version));
-        return 0;
     }
 
     public static int run(

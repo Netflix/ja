@@ -86,6 +86,7 @@ class JaHelpTest {
                 Options:
                   --verbose  Enable verbose output
                   -h, --help  Print help
+                  --version  Print version information
                   -C <DIRECTORY>  Run in the specified directory
 
                 Run 'ja <command> --help' for command-specific help.

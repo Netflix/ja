@@ -195,7 +195,7 @@ if [[ "$openj9" == true ]]; then
         grep -Fxq -- -L-aot=auto "$options" || continue
         command="${options##*/}"
         command="${command%.args}"
-        "$ja_home/bin/$command" -L-aot=create --version >/dev/null
+        "$ja_home/bin/$command" -L-aot=create --help >/dev/null
     done
 fi
 

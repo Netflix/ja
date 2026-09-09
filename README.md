@@ -711,7 +711,7 @@ For an application module named `<module>`, installation generates a companion m
 
 When the application already provides a tool whose name matches the installed command, the companion module anchors that service in the runtime image. Otherwise, it provides a generated `Tool` adapter that invokes the application's declared main class. The main package is opened only to the companion launcher module.
 
-Every installed application receives `--` passthrough, `--version` reporting, and launcher options. Argument files and working-directory handling are tool-level conventions rather than native-launcher behavior. Installation also preserves preview and runtime-access configuration in the generated command. Tools that provide [startup and warmup](#startup-and-warmup) metadata additionally receive launcher-managed AOT caching.
+Every installed application receives `--` passthrough and launcher options. Version reporting, argument files, and working-directory handling are tool-level conventions rather than native-launcher behavior. Installation also preserves preview and runtime-access configuration in the generated command. Tools that provide [startup and warmup](#startup-and-warmup) metadata additionally receive launcher-managed AOT caching.
 
 ### Startup and warmup
 
@@ -741,9 +741,7 @@ Launcher options such as `-L-aot=off` are interpreted before the launched comman
 some-command -- -L-aot=off
 ```
 
-The native launcher passes `@file` and `-C` through unchanged. Tools may opt into Java-style argument files and working-directory handling as part of their described command-line contract; tools that do not opt in receive those arguments literally.
-
-Every native command also supports `--version`, which reports the command and provider version without running it.
+The native launcher passes `@file`, `-C`, and `--version` through unchanged. Tools may opt into Java-style argument files, working-directory handling, and module-version reporting as part of their described command-line contract; tools that do not opt in receive those arguments literally.
 
 ## Acknowledgements
 

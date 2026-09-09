@@ -216,7 +216,7 @@ try {
             }
             $CommandName = [IO.Path]::GetFileNameWithoutExtension($Options.Name)
             $Command = Join-Path $Output "bin\$CommandName.exe"
-            & $Command "-L-aot=create" "--version" | Out-Null
+            & $Command "-L-aot=create" "--help" | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Unable to warm shared class cache with $CommandName"
             }

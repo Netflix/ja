@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.tools.ToolProvider;
 
+import com.netflix.tools.launcher.ToolLauncher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ToolLauncherIntegrationTest {
 
     @Test
-    void reportsTheProviderModuleVersionWithoutRunningTheProvider(@TempDir Path directory) throws Exception {
+    void delegatesVersionReportingToTheProvider(@TempDir Path directory) throws Exception {
         Path source = Files.createDirectories(directory.resolve("src/versioned.probe"));
         Files.writeString(source.resolve("module-info.java"),
                 """
@@ -44,7 +45,7 @@ class ToolLauncherIntegrationTest {
                     public String name() { return "versioned-probe"; }
                     public int run(java.io.PrintWriter out, java.io.PrintWriter err,
                             String... arguments) {
-                        out.println("provider ran");
+                        out.println("provider ran with " + String.join(" ", arguments));
                         return 9;
                     }
                 }
@@ -67,6 +68,8 @@ class ToolLauncherIntegrationTest {
                 javaExecutable().toString(),
                 "--upgrade-module-path",
                 launcherModule().toString(),
+                "--patch-module",
+                "com.netflix.tools.launcher=" + launcherClasses(),
                 "--module-path",
                 modules.toString(),
                 "--add-modules",
@@ -82,8 +85,17 @@ class ToolLauncherIntegrationTest {
                         StandardCharsets.UTF_8);
         int result = process.waitFor();
 
-        assertEquals(0, result, output);
-        assertEquals("versioned-probe 1.2.3\n", output);
+        assertEquals(9, result, output);
+        assertEquals("provider ran with --version\n", output);
+    }
+
+    private static Path launcherClasses() throws Exception {
+        URI classLocation = ToolLauncher.class.getResource("ToolLauncher.class").toURI();
+        Path root = Path.of(classLocation);
+        for (int i = 0; i < ToolLauncher.class.getName().split("\\.").length; i++) {
+            root = root.getParent();
+        }
+        return root;
     }
 
     private static Path launcherModule() {

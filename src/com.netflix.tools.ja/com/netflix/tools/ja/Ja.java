@@ -50,6 +50,10 @@ public final class Ja {
                    Path workingDirectory, String... args)
             throws IOException {
         try {
+            var version = COMMAND_LINE.runVersion("ja", new PrintWriter(out, true), args);
+            if (version.isPresent()) {
+                return version.orElseThrow();
+            }
             var completion = COMMAND_LINE.runCompletion(new PrintWriter(out, true), new PrintWriter(err, true), Ja::complete,
                     new ToolInvocation(workingDirectory, Arrays.asList(args)));
             if (completion.isPresent()) {
@@ -233,6 +237,7 @@ public final class Ja {
         var commandLine = CommandLine.builder()
                 .description("Develop, explore, build, and run Java modules")
                 .options(JaOptions.verbose(), JaOptions.help())
+                .version(Ja.class.getModule())
                 .completion()
                 .workingDirectory();
         for (BuiltinCommand command : BuiltinCommand.values()) {

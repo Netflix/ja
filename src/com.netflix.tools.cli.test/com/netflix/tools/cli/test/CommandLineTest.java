@@ -16,9 +16,12 @@ package com.netflix.tools.cli.test;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import javax.tools.ToolProvider;
 
 import com.netflix.tools.cli.CommandLine;
 import com.netflix.tools.cli.CommandLine.Cardinality;
@@ -179,6 +182,49 @@ class CommandLineTest {
         assertFalse(commandLine.help("probe")
                                .contains("__probe"));
         assertEquals(List.of(), commandLine.complete(List.of("__pr")));
+    }
+
+    @Test
+    void versionIsAnOptInCommandLineConvention(@TempDir Path directory) throws Exception {
+        Path source = Files.createDirectories(directory.resolve("src/versioned.probe"));
+        Files.writeString(source.resolve("module-info.java"), "module versioned.probe {}\n");
+        Path modules = Files.createDirectories(directory.resolve("modules"));
+        int compilation = ToolProvider.getSystemJavaCompiler().run(
+                null,
+                null,
+                null,
+                "--module-version",
+                "1.2.3",
+                "-d",
+                modules.toString(),
+                source.resolve("module-info.java").toString());
+        assertEquals(0, compilation);
+        var finder = ModuleFinder.of(modules);
+        var configuration = ModuleLayer.boot()
+                .configuration()
+                .resolve(finder, ModuleFinder.of(), Set.of("versioned.probe"));
+        var layer = ModuleLayer.boot()
+                .defineModulesWithOneLoader(configuration, ClassLoader.getSystemClassLoader());
+        var commandLine = CommandLine.builder()
+                .version(layer.findModule("versioned.probe").orElseThrow())
+                .build();
+        var output = new StringWriter();
+
+        var result = commandLine.runVersion("probe", new PrintWriter(output, true), "--version");
+
+        assertEquals(0, result.orElseThrow());
+        assertEquals("probe 1.2.3\n", output.toString());
+        assertEquals(0, commandLine.isSupportedOption("--version"));
+        assertTrue(commandLine.help("probe")
+                              .contains("--version"));
+        assertFalse(commandLine.runVersion("probe", new PrintWriter(output), "--check")
+                               .isPresent());
+        assertFalse(commandLine.runVersion("probe", new PrintWriter(output), "--version", "extra")
+                               .isPresent());
+        assertFalse(CommandLine.builder()
+                               .build()
+                               .runVersion("probe", new PrintWriter(output), "--version")
+                               .isPresent());
     }
 
     @Test

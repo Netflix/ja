@@ -45,6 +45,7 @@ import javax.tools.OptionChecker;
 public final class CommandLine implements OptionChecker {
     private static final String COMPLETION_COMMAND = "__complete";
     private static final ToolOption COMPLETION = ToolOption.flag(COMPLETION_COMMAND, "");
+    private static final ToolOption VERSION = ToolOption.flag("--version", "Print version information");
 
     public enum Cardinality {
         ZERO_OR_ONE,
@@ -63,6 +64,7 @@ public final class CommandLine implements OptionChecker {
     private final boolean workingDirectory;
     private final boolean argumentFiles;
     private final boolean javaToolOptions;
+    private final Module versionModule;
 
     private CommandLine(
             String description,
@@ -72,7 +74,8 @@ public final class CommandLine implements OptionChecker {
             Operand operand,
             boolean workingDirectory,
             boolean argumentFiles,
-            boolean javaToolOptions) {
+            boolean javaToolOptions,
+            Module versionModule) {
         this.description = description;
         this.options = List.copyOf(options);
         this.optionGroups = List.copyOf(optionGroups);
@@ -81,6 +84,7 @@ public final class CommandLine implements OptionChecker {
         this.workingDirectory = workingDirectory;
         this.argumentFiles = argumentFiles;
         this.javaToolOptions = javaToolOptions;
+        this.versionModule = versionModule;
         var byName = new LinkedHashMap<String, ToolOption>();
         for (ToolOption option : options) {
             for (String name : option.names()) {
@@ -384,6 +388,29 @@ public final class CommandLine implements OptionChecker {
         }
         completions.sort(Comparator.comparing(Completion::value));
         return List.copyOf(completions);
+    }
+
+    /**
+     * Handles {@code --version} when version reporting is enabled.
+     *
+     * @return zero after printing the version, or empty for an ordinary invocation
+     */
+    public OptionalInt runVersion(String invocationName, PrintWriter out, String... arguments) {
+        Objects.requireNonNull(invocationName);
+        Objects.requireNonNull(out);
+        Objects.requireNonNull(arguments);
+        if (versionModule == null) {
+            return OptionalInt.empty();
+        }
+        if (!Arrays.asList(arguments).equals(List.of("--version"))) {
+            return OptionalInt.empty();
+        }
+        String version = versionModule.getDescriptor() == null ? null : versionModule.getDescriptor()
+                .rawVersion()
+                .orElse(null);
+        out.println(invocationName + " " + (version == null ? "dev" : version));
+        out.flush();
+        return OptionalInt.of(0);
     }
 
     /**
@@ -1199,6 +1226,7 @@ public final class CommandLine implements OptionChecker {
         private boolean workingDirectory;
         private boolean argumentFiles;
         private boolean javaToolOptions;
+        private Module versionModule;
 
         private Builder() {}
 
@@ -1240,6 +1268,14 @@ public final class CommandLine implements OptionChecker {
                 throw new IllegalStateException("Completion is already enabled");
             }
             return option(COMPLETION);
+        }
+
+        public Builder version(Module module) {
+            if (versionModule != null) {
+                throw new IllegalStateException("Version reporting is already enabled");
+            }
+            versionModule = Objects.requireNonNull(module);
+            return option(VERSION);
         }
 
         public Builder argumentFiles() {
@@ -1285,7 +1321,7 @@ public final class CommandLine implements OptionChecker {
 
         public CommandLine build() {
             return new CommandLine(description, options, optionGroups, commands, operand, workingDirectory,
-                    argumentFiles, javaToolOptions);
+                    argumentFiles, javaToolOptions, versionModule);
         }
     }
 }
