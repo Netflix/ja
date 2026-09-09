@@ -17,9 +17,7 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.List;
 
 /** Exports source modules as a Maven build project. */
 final class MavenExporter {
@@ -32,7 +30,6 @@ final class MavenExporter {
     int run(JaInvocation commandLine, ModuleSourcePath moduleSourcePath, InputStream in,
             PrintStream out, PrintStream err)
             throws IOException {
-        Path project = request(commandLine.workingDirectory(), commandLine.toolArguments());
         if (commandLine.rootModules().isEmpty()) {
             throw new IllegalArgumentException("maven export requires at least one source module");
         }
@@ -46,28 +43,7 @@ final class MavenExporter {
         arguments.add("--verify-module-hashes");
         arguments.add("--no-compile-diagnostics");
         arguments.add("--generate-module-poms");
-        arguments.add(project.toString());
+        arguments.add(commandLine.workingDirectory().toString());
         return tools.run("jig", in, out, err, arguments.toArray(String[]::new));
-    }
-
-    private static Path request(Path workingDirectory, List<String> arguments) {
-        if (arguments.isEmpty() || !arguments.getFirst().equals("export")) {
-            throw new IllegalArgumentException("maven requires the export operation");
-        }
-        Path project = null;
-        for (int i = 1; i < arguments.size(); i++) {
-            String argument = arguments.get(i);
-            if (argument.startsWith("-")) {
-                throw new IllegalArgumentException("Unknown maven export option: " + argument);
-            }
-            if (project != null) {
-                throw new IllegalArgumentException("maven export accepts one project directory");
-            }
-            project = workingDirectory.resolve(argument).normalize();
-        }
-        if (project == null) {
-            throw new IllegalArgumentException("maven export requires a project directory");
-        }
-        return project;
     }
 }

@@ -295,9 +295,7 @@ public final class Ja {
 
     private static CommandLine mavenCommandLine(Builder commandLine) {
         return commandLine.command("export", "Generate Maven build POMs",
-                                  CommandLine.builder()
-                                          .operand("PROJECT", "Source project directory", Cardinality.EXACTLY_ONE)
-                                          .build())
+                                  CommandLine.builder().build())
                           .command("install", "Install modules in the local Maven repository",
                                   CommandLine.builder()
                                           .options(JaOptions.mavenInstallOptions())

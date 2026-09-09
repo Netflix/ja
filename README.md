@@ -518,10 +518,10 @@ Artifacts use their Java module names and form a flat directory. The version is 
 Export the selected source modules as a Maven reactor for IDE import and other tools that understand the Maven project model:
 
 ```sh
-ja maven export .
+ja maven export
 ```
 
-The destination must be a common ancestor of every selected source module. The command updates the root `pom.xml`, writes `module-info.pom` beside each selected module descriptor, and configures `.mvn/maven.config` to make resolved dependencies available to Maven.
+The command exports to the selected working directory, which must be a common ancestor of every selected source module. It updates the root `pom.xml`, writes `module-info.pom` beside each selected module descriptor, and configures `.mvn/maven.config` to make resolved dependencies available to Maven.
 
 ## Install and deploy modules
 

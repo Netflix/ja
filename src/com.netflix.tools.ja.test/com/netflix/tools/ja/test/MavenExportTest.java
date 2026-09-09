@@ -23,6 +23,7 @@ import java.nio.file.Path;
 
 import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.JaInvocation;
+import com.netflix.tools.ja.JaTool;
 import com.netflix.tools.ja.ToolExecutionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,7 +46,7 @@ class MavenExportTest {
                 module com.example.library {}
                 """);
 
-        Result result = run(directory, "maven", "export", ".");
+        Result result = runJa(directory, "maven", "export");
 
         assertEquals(0, result.exitCode(), result.error());
         assertTrue(Files.isRegularFile(directory.resolve("pom.xml")));
@@ -56,21 +57,16 @@ class MavenExportTest {
     }
 
     @Test
-    void requiresOneProjectDirectory(@TempDir Path directory) throws Exception {
+    void rejectsDestinationDirectory(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.application",
                 """
                 module com.example.application {}
                 """);
 
-        Result missing = run(directory, "maven", "export");
-        Result extra = run(directory, "maven", "export", ".", "other");
+        Result result = runJa(directory, "maven", "export", ".");
 
-        assertEquals(2, missing.exitCode());
-        assertTrue(missing.error().contains("maven export requires a project directory"),
-                missing.error());
-        assertEquals(2, extra.exitCode());
-        assertTrue(extra.error().contains("maven export accepts one project directory"),
-                extra.error());
+        assertEquals(2, result.exitCode());
+        assertEquals("ja: Unexpected argument: .\n", result.error());
     }
 
     @Test
@@ -92,6 +88,17 @@ class MavenExportTest {
                 .resolve(name));
         Files.writeString(source.resolve("module-info.java"), descriptor);
         Files.writeString(source.resolve("module-info.hash"), "");
+    }
+
+    private static Result runJa(Path workingDirectory, String... arguments) {
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+        var invocation = new String[arguments.length + 2];
+        invocation[0] = "-C";
+        invocation[1] = workingDirectory.toString();
+        System.arraycopy(arguments, 0, invocation, 2, arguments.length);
+        int exitCode = new JaTool().run(new ByteArrayInputStream(new byte[0]), output, errors, invocation);
+        return new Result(exitCode, output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
     }
 
     private static Result run(Path workingDirectory, String... arguments) throws Exception {
