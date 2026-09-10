@@ -72,7 +72,7 @@ class MavenDeploymentTest {
     }
 
     @Test
-    void deploysUsingModulePublicationMetadata(@TempDir Path directory) throws Exception {
+    void deploysUsingModuleDeploymentMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
         Path repository = directory.resolve("repository");
         var deployment = new ArrayList<String>();
@@ -105,7 +105,8 @@ class MavenDeploymentTest {
     @Test
     void installsWithoutPublicationMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        Files.delete(directory.resolve("src/com.example.library/com.example.library.pom"));
+        Files.delete(directory.resolve(
+                "src/com.example.library/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
         var deployment = new ArrayList<String>();
         ToolServices tools = tools(directory, deployment, false);
         var commandLine = JaInvocation.parse(directory, new String[] {"maven", "install", "--module-version", "1.0"});
@@ -193,7 +194,9 @@ class MavenDeploymentTest {
                 .resolve(module));
         Files.writeString(source.resolve("module-info.java"), "module " + module + " {}\n");
         Files.writeString(source.resolve("module-info.hash"), "");
-        Files.writeString(source.resolve(module + ".pom"),
+        Path deploymentPom = source.resolve("META-INF/com.netflix.tools.ja/maven/deploy.pom");
+        Files.createDirectories(deploymentPom.getParent());
+        Files.writeString(deploymentPom,
                 """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>

@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Prepares an install request and delegates installation. */
@@ -44,8 +45,8 @@ final class InstallCommand {
             throws IOException {
         var installTarget = target.orElseGet(() -> sourceTarget(commandLine, resolved.arguments()));
         try (var filtered = FilteredModulePath.prepare(commandLine.moduleSourcePath()
-                .map(ModuleSourcePath::moduleNames)
-                .orElseGet(List::of),
+                .map(ModuleSourcePath::modules)
+                .orElseGet(Map::of),
                 compileArguments, resolved.arguments(), definitions)) {
             var actualInstaller = installer == null ? new Installer(tools, InstallationDirectories.defaults(),
                     System.getProperty("os.name").startsWith("Windows"))

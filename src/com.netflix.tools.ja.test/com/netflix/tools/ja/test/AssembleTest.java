@@ -80,7 +80,7 @@ class AssembleTest {
     }
 
     @Test
-    void includesModulePublicationMetadata(@TempDir Path directory) throws Exception {
+    void includesModuleDeploymentMetadata(@TempDir Path directory) throws Exception {
         String moduleName = "com.example.library";
         Path module = sourceModule(directory, moduleName);
         String metadata = """
@@ -89,7 +89,10 @@ class AssembleTest {
                   <name>Example library</name>
                 </project>
                 """;
-        Files.writeString(module.resolve(moduleName + ".pom"), metadata);
+        Path deploymentPom = module.resolve("META-INF/com.netflix.tools.ja/maven/deploy.pom");
+        Files.createDirectories(deploymentPom.getParent());
+        Files.writeString(deploymentPom, metadata);
+        Files.writeString(module.resolve("module-info.pom"), "Maven export intermediary");
 
         Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
 
@@ -98,8 +101,12 @@ class AssembleTest {
         assertEquals(metadata, Files.readString(output.resolve(moduleName + ".pom")));
         try (var binary = new ZipFile(output.resolve(moduleName + ".jar").toFile());
              var sources = new ZipFile(output.resolve(moduleName + "-sources.jar").toFile())) {
-            assertNull(binary.getEntry(moduleName + ".pom"));
-            assertNull(sources.getEntry(moduleName + ".pom"));
+            assertEquals(metadata, new String(binary.getInputStream(binary.getEntry(
+                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
+            assertEquals(metadata, new String(sources.getInputStream(sources.getEntry(
+                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
+            assertNull(binary.getEntry("module-info.pom"));
+            assertNull(sources.getEntry("module-info.pom"));
         }
     }
 
@@ -437,7 +444,10 @@ class AssembleTest {
                   <name>Example tool</name>
                 </project>
                 """;
-        Files.writeString(module.resolve("com.example.tool.pom"), metadata);
+        Path deploymentPom = module.resolve("META-INF/com.netflix.tools.ja/maven/deploy.pom");
+        Files.createDirectories(deploymentPom.getParent());
+        Files.writeString(deploymentPom, metadata);
+        Files.writeString(classes.resolve("module-info.pom"), "Maven export intermediary");
         Path resources = classes.resolve("com/example");
         Files.createDirectories(resources);
         Files.writeString(resources.resolve("tool.properties"), "tool=true\n");
@@ -451,11 +461,17 @@ class AssembleTest {
         Path artifact = moduleVersion.resolve("com.example.tool.jmod");
         assertTrue(Files.isRegularFile(artifact));
         assertTrue(jmodEntries(artifact).contains("bin/example"));
+        assertTrue(jmodEntries(artifact).contains("classes/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
+        assertFalse(jmodEntries(artifact).contains("classes/module-info.pom"));
         assertEquals(metadata, Files.readString(moduleVersion.resolve("com.example.tool.pom")));
-        try (var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar")
-                .toFile())) {
+        try (var binary = new ZipFile(moduleVersion.resolve("com.example.tool.jar").toFile());
+             var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar").toFile())) {
+            assertTrue(binary.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom") != null);
+            assertNull(binary.getEntry("module-info.pom"));
             assertTrue(sources.getEntry("module-info.java") != null);
             assertTrue(sources.getEntry("com/example/tool.properties") != null);
+            assertTrue(sources.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom") != null);
+            assertNull(sources.getEntry("module-info.pom"));
             assertNull(sources.getEntry("bin/example"));
             assertNull(sources.getEntry("classes/module-info.java"));
         }

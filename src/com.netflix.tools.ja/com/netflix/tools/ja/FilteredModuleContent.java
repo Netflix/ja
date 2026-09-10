@@ -59,8 +59,8 @@ final class FilteredModuleContent implements AutoCloseable {
         this.temporaryDirectory = temporaryDirectory;
     }
 
-    static FilteredModuleContent prepare(String moduleName, List<String> compileArguments, List<String> runtimeArguments,
-            List<ToolDefinition> tools)
+    static FilteredModuleContent prepare(String moduleName, Path deploymentPom,
+            List<String> compileArguments, List<String> runtimeArguments, List<ToolDefinition> tools)
             throws IOException {
         var source = ToolArguments.moduleLocation(moduleName, runtimeArguments).orElseThrow(() -> new IllegalArgumentException("Resolved arguments do not contain complete module " + moduleName));
         if (!Files.isDirectory(source)) {
@@ -68,8 +68,11 @@ final class FilteredModuleContent implements AutoCloseable {
         }
 
         var excluded = exclusions(compileArguments, runtimeArguments, tools);
-        Path publicationMetadata = source.resolve(moduleName + ".pom");
-        if (!Files.isRegularFile(publicationMetadata)
+        boolean addDeploymentPom = Files.isRegularFile(deploymentPom)
+                && !Files.isRegularFile(source.resolve(ModuleMetadata.DEPLOYMENT_POM));
+        boolean removeMavenExportPom = Files.isRegularFile(source.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
+        if (!addDeploymentPom
+                && !removeMavenExportPom
                 && (excluded.isEmpty() || !containsExcludedContent(source, excluded))) {
             return new FilteredModuleContent(source, null);
         }
@@ -78,7 +81,12 @@ final class FilteredModuleContent implements AutoCloseable {
         var destination = staging.resolve(moduleName);
         try {
             copy(source, destination);
-            Files.deleteIfExists(destination.resolve(moduleName + ".pom"));
+            Files.deleteIfExists(destination.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
+            if (addDeploymentPom) {
+                Path target = destination.resolve(ModuleMetadata.DEPLOYMENT_POM);
+                Files.createDirectories(target.getParent());
+                Files.copy(deploymentPom, target);
+            }
             removeExcludedContent(destination, excluded);
         } catch (IOException | RuntimeException | Error failure) {
             deleteTree(staging);

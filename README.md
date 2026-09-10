@@ -495,7 +495,7 @@ The destination must not already exist. Each module receives binary, source, and
 ja assemble --jmod --module-version 1.2.3 build/artifacts
 ```
 
-Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. A `<module-name>.pom` at the source module root is copied beside the matching main JAR as publication metadata. When a module requires an automatic module, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
+Artifacts use their Java module names and form a flat directory. The version is recorded in each binary module descriptor. A `META-INF/com.netflix.tools.ja/maven/deploy.pom` resource is preserved in the assembled module and copied beside the matching main JAR as `<module-name>.pom`. When a module requires an automatic module, its binary JAR is also made automatic and records its name in `Automatic-Module-Name`; a JMOD is not created for that module.
 
 ## Export a Maven project
 
@@ -505,7 +505,7 @@ Export the selected source modules as a Maven reactor for IDE import and other t
 ja maven export
 ```
 
-The command exports to the selected working directory, which must be a common ancestor of every selected source module. It updates the root `pom.xml`, writes `module-info.pom` beside each selected module descriptor, and configures `.mvn/maven.config` to make resolved dependencies available to Maven.
+The command exports to the selected working directory, which must be a common ancestor of every selected source module. It updates the root `pom.xml`, writes `module-info.pom` beside each selected module descriptor, and configures `.mvn/maven.config` to make resolved dependencies available to Maven. The generated `module-info.pom` is an export intermediary and is not included when assembling the module.
 
 ## Install and deploy modules
 
@@ -531,15 +531,14 @@ ja maven deploy \
   --repository build/repository
 ```
 
-Each source module can provide `<module-name>.pom` at its module root. The POM contributes additional metadata to that module's generated consumer POM. It supports these top-level elements:
+Maven repositories expose project information alongside a module so consumers can understand its purpose, ownership, licensing, and source. Provide this information in `META-INF/com.netflix.tools.ja/maven/deploy.pom` within each source module:
 
-- `modelVersion`, which must be `4.0.0`
-- `name`
-- `description`
-- `url`
-- `licenses`
-- `developers`
-- `scm`
+- Use Maven model version `4.0.0`.
+- Give the project a name and description.
+- Link to the project website.
+- Identify its license.
+- Identify its developers.
+- Link to its source control repository.
 
 Add `--sign` when the selected repository requires OpenPGP signatures.
 
@@ -549,7 +548,7 @@ Deploy a release to Maven Central with:
 ja maven deploy-central --module-version 1.2.3
 ```
 
-Every selected module must provide a matching POM with the metadata required by Central. Store the Central user token under the `central` server in `~/.m2/settings.xml`. Signing reads `MAVEN_GPG_KEY`, with optional `MAVEN_GPG_KEY_FINGERPRINT` and `MAVEN_GPG_PASSPHRASE`, from the environment. Add `--manual` to leave the validated deployment awaiting approval in the Central Portal.
+Every selected module must provide a deployment POM with the project information required by Central. Store the Central user token under the `central` server in `~/.m2/settings.xml`, or set both `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD`. Signing reads `MAVEN_GPG_KEY`, with optional `MAVEN_GPG_KEY_FINGERPRINT` and `MAVEN_GPG_PASSPHRASE`, from the environment. Add `--manual` to leave the validated deployment awaiting approval in the Central Portal.
 
 ## Link runtime images
 

@@ -35,10 +35,10 @@ final class FilteredModulePath implements AutoCloseable {
         this.arguments = List.copyOf(arguments);
     }
 
-    static FilteredModulePath prepare(List<String> sourceModules, List<String> compileArguments, List<String> runtimeArguments,
-            List<ToolDefinition> definitions)
+    static FilteredModulePath prepare(Map<String, Path> sourceModules, List<String> compileArguments,
+            List<String> runtimeArguments, List<ToolDefinition> definitions)
             throws IOException {
-        var modules = sourceModules.stream()
+        var modules = sourceModules.keySet().stream()
                 .filter(module -> ToolArguments.moduleLocation(module, runtimeArguments).isPresent())
                 .sorted()
                 .toList();
@@ -49,7 +49,9 @@ final class FilteredModulePath implements AutoCloseable {
         var contents = new LinkedHashMap<String, FilteredModuleContent>();
         try {
             for (var module : modules) {
-                contents.put(module, FilteredModuleContent.prepare(module, compileArguments, runtimeArguments, definitions));
+                Path deploymentPom = ModuleMetadata.deploymentPom(sourceModules.get(module));
+                contents.put(module, FilteredModuleContent.prepare(
+                        module, deploymentPom, compileArguments, runtimeArguments, definitions));
             }
         } catch (IOException | RuntimeException | Error failure) {
             try {

@@ -34,7 +34,7 @@ import com.netflix.tools.ja.JmodPackager.Artifacts;
 import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /**
- * Assembles flat, module-named binary, source, documentation, publication
+ * Assembles flat, module-named binary, source, documentation, deployment
  * metadata, and JMOD artifacts.
  */
 final class ModuleAssembler {
@@ -205,7 +205,7 @@ final class ModuleAssembler {
     private int assemble(Plan plan, Path output, InputStream in,
                          PrintStream out, PrintStream err)
             throws IOException {
-        copyPublicationMetadata(plan, output);
+        copyDeploymentMetadata(plan, output);
         List<String> compileArguments = ArgumentFiles.parse(Files.readString(plan.compileArguments()));
         List<String> runtimeArguments = ArgumentFiles.parse(Files.readString(plan.runtimeArguments()));
         int sourcesResult = archiveSources(plan, output.resolve(plan.moduleName() + "-sources.jar"), in,
@@ -224,7 +224,7 @@ final class ModuleAssembler {
         }
 
         var moduleArguments = ArgumentFiles.parse(Files.readString(plan.jarArguments()));
-        try (var filteredPath = FilteredModulePath.prepare(List.copyOf(plan.observableSources().keySet()), compileArguments,
+        try (var filteredPath = FilteredModulePath.prepare(plan.observableSources(), compileArguments,
                 runtimeArguments, definitions)) {
             var filteredArguments = filteredPath.arguments();
             var content = filteredPath.module(plan.moduleName());
@@ -258,14 +258,10 @@ final class ModuleAssembler {
         }
     }
 
-    private static void copyPublicationMetadata(Plan plan, Path output) throws IOException {
-        Path sourceRoot = plan.moduleSource();
-        if (sourceRoot.getFileName() != null && sourceRoot.getFileName().toString().equals("classes")) {
-            sourceRoot = sourceRoot.getParent();
-        }
-        Path metadata = sourceRoot.resolve(plan.moduleName() + ".pom");
-        if (Files.isRegularFile(metadata)) {
-            Files.copy(metadata, output.resolve(plan.moduleName() + ".pom"));
+    private static void copyDeploymentMetadata(Plan plan, Path output) throws IOException {
+        Path deploymentPom = ModuleMetadata.deploymentPom(plan.moduleSource());
+        if (Files.isRegularFile(deploymentPom)) {
+            Files.copy(deploymentPom, output.resolve(plan.moduleName() + ".pom"));
         }
     }
 
@@ -291,26 +287,32 @@ final class ModuleAssembler {
     private int archiveSources(Plan plan, Path archive, InputStream in,
                                PrintStream out, PrintStream err) throws IOException {
         Path content = plan.moduleSource();
-        Path metadata = content.resolve(plan.moduleName() + ".pom");
-        if (!Files.isRegularFile(metadata)) {
+        Path deploymentPom = ModuleMetadata.deploymentPom(content);
+        boolean addDeploymentPom = Files.isRegularFile(deploymentPom) && !deploymentPom.startsWith(content);
+        boolean removeMavenExportPom = Files.isRegularFile(content.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
+        if (!addDeploymentPom && !removeMavenExportPom) {
             return archive(content, archive, in, out, err);
         }
-        var arguments = new ArrayList<String>();
-        arguments.add("--create");
-        arguments.add("--no-manifest");
-        arguments.add("--file");
-        arguments.add(archive.toString());
-        try (var entries = Files.list(content)) {
-            for (Path entry : entries
-                    .filter(path -> !path.equals(metadata))
-                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
-                    .toList()) {
-                arguments.add("-C");
-                arguments.add(content.toString());
-                arguments.add(entry.getFileName().toString());
+
+        Path staged = Files.createDirectory(plan.compilationRoot().getParent().resolve("sources"));
+        copyTree(content, staged);
+        Files.deleteIfExists(staged.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
+        if (addDeploymentPom) {
+            Path target = staged.resolve(ModuleMetadata.DEPLOYMENT_POM);
+            Files.createDirectories(target.getParent());
+            Files.copy(deploymentPom, target);
+        }
+        return archive(staged, archive, in, out, err);
+    }
+
+    private static void copyTree(Path source, Path destination) throws IOException {
+        try (var paths = Files.walk(source)) {
+            for (Path input : paths.filter(Files::isRegularFile).toList()) {
+                Path output = destination.resolve(source.relativize(input).toString());
+                Files.createDirectories(output.getParent());
+                Files.copy(input, output, StandardCopyOption.COPY_ATTRIBUTES);
             }
         }
-        return tools.run("jar", in, out, err, arguments.toArray(String[]::new));
     }
 
     private int archive(Path content, Path archive, InputStream in,
