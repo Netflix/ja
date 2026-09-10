@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BOOTSTRAP_JA_VERSION: 0.17.6
-      JIG_VERSION: 0.13.4
+      JIG_VERSION: 0.13.6
     steps:
       - uses: actions/checkout@v6
 

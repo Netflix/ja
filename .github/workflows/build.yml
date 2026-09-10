@@ -27,7 +27,7 @@ jobs:
     env:
       BOOTSTRAP_JA_VERSION: 0.17.6
       BUILD_VERSION: 0.17.7-build.${{ github.run_id }}
-      JIG_VERSION: 0.13.4
+      JIG_VERSION: 0.13.6
     steps:
       - uses: actions/checkout@v6
 
