@@ -489,7 +489,7 @@ class ToolRunnerTest {
     }
 
     @Test
-    void launchesAllTestsWhenRuntimeAccessCannotBeAppliedToTheIncrementalLayer(@TempDir Path directory) throws Exception {
+    void warnsWhenJavaBaseRuntimeAccessPreventsTestCaching(@TempDir Path directory) throws Exception {
         var moduleName = "example.runtime.access.tests";
         var modules = Files.createDirectories(directory.resolve("modules"));
         var module = Files.createDirectories(modules.resolve(moduleName));
@@ -499,7 +499,7 @@ class ToolRunnerTest {
         Files.createDirectories(classFile.getParent());
         writeIncrementalTest(classFile, ClassDesc.of("example.RuntimeAccessTest"), MethodTypeDesc.of(ClassDesc.ofDescriptor("V")), property,
                 false, false);
-        var runtimeAccess = "jdk.javadoc/jdk.javadoc.internal.doclets.formats.html=" + moduleName;
+        var runtimeAccess = "java.base/java.lang=" + moduleName;
         var resolvedWith = new ArrayList<String>();
         var launchedWith = new ArrayList<String>();
         var requireRuntimeAccess = new AtomicBoolean();
@@ -513,7 +513,7 @@ class ToolRunnerTest {
             public int run(PrintWriter out, PrintWriter err, String... arguments) {
                 resolvedWith.addAll(List.of(arguments));
                 if (requireRuntimeAccess.get()) {
-                    out.println("--add-exports");
+                    out.println("--add-opens");
                     out.println(runtimeAccess);
                 }
                 return 0;
@@ -558,15 +558,20 @@ class ToolRunnerTest {
             assertEquals("executed", System.getProperty(property));
 
             requireRuntimeAccess.set(true);
+            var error = new ByteArrayOutputStream();
             assertEquals(
                     0,
                     runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
-                            System.out, System.err));
+                            System.out, new PrintStream(error)));
+            assertEquals(
+                    "ja: warning: test caching is unavailable because the required access from java.base can only be applied in a separate JVM; running all tests"
+                            + System.lineSeparator(),
+                    error.toString());
         } finally {
             System.clearProperty(property);
         }
 
-        assertTrue(joinedPair(launchedWith, "--add-exports", runtimeAccess));
+        assertTrue(joinedPair(launchedWith, "--add-opens", runtimeAccess));
         assertFalse(launchedWith.contains("--exclude-methodname"));
         assertEquals(2, joinedPairCount(resolvedWith, "--add-requires", "org.junit.platform.console@6.1.3"));
     }

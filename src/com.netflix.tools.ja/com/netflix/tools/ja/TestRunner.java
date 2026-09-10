@@ -41,6 +41,7 @@ import com.netflix.tools.ja.TestResult.Status;
 final class TestRunner {
     private static final String TEST_ENGINE = "org.junit.platform.engine.TestEngine";
     private static final String JUPITER_ENGINE_MODULE = "org.junit.jupiter.engine";
+    private static final String JAVA_BASE = "java.base";
 
     private record Arguments(boolean runAll, List<String> junitArguments) {}
 
@@ -95,13 +96,18 @@ final class TestRunner {
         ResolvedClassModels classes = null;
         Runtime incrementalRuntime = null;
         if (observedExecution) {
+            var incrementalArguments = layerArguments(applicationArguments, runtimeArguments);
             classes = ResolvedClassModels.resolve(
                     parent.configuration(),
                     new ModuleInputs(Set.copyOf(rootModules), applicationArguments),
-                    new ModuleInputs(JUnitExecutionTrace.runtimeModules(), layerArguments(applicationArguments, runtimeArguments)),
+                    new ModuleInputs(JUnitExecutionTrace.runtimeModules(), incrementalArguments),
                     runtimeImage.hash());
-            incrementalRuntime = JUnitExecutionTrace.runtimeIfSupported(classes, parent, layerArguments(applicationArguments, runtimeArguments)).orElse(null);
+            incrementalRuntime = JUnitExecutionTrace.runtimeIfSupported(classes, parent, incrementalArguments).orElse(null);
             observedExecution = incrementalRuntime != null;
+            if (!observedExecution && toolArguments.isEmpty() && !parsed.runAll()
+                    && requiresJavaBaseRuntimeAccess(incrementalArguments)) {
+                err.println("ja: warning: test caching is unavailable because the required access from java.base can only be applied in a separate JVM; running all tests");
+            }
         }
         boolean cacheResults = observedExecution && !parsed.runAll();
 
@@ -234,6 +240,15 @@ final class TestRunner {
         var arguments = new ArrayList<>(applicationArguments);
         arguments.addAll(testRuntimeArguments);
         return List.copyOf(arguments);
+    }
+
+    @SuppressWarnings("restricted")
+    private static boolean requiresJavaBaseRuntimeAccess(List<String> arguments) {
+        var access = ModuleRuntimeAccess.parseArguments(arguments);
+        return access.addExports().stream()
+                .anyMatch(export -> export.sourceModule().equals(JAVA_BASE))
+                || access.addOpens().stream()
+                        .anyMatch(open -> open.sourceModule().equals(JAVA_BASE));
     }
 
     @SuppressWarnings("restricted")
