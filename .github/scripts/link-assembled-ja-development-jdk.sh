@@ -29,7 +29,8 @@ if [[ -e "$output_java_home" ]]; then
     exit 1
 fi
 jlink="$source_java_home/bin/jlink"
-if [[ ! -x "$jlink" || ! -d "$bootstrap_java_home/jmods" \
+jmod="$source_java_home/bin/jmod"
+if [[ ! -x "$jlink" || ! -x "$jmod" || ! -d "$bootstrap_java_home/jmods" \
         || ! -d "$bootstrap_java_home/lib/ja/modules" \
         || ! -f "$source_java_home/lib/src.zip" ]]; then
     echo "The source and bootstrap Java installations do not provide the required development artifacts" >&2
@@ -59,44 +60,46 @@ done
 
 work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ja-assembled-jdk.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
-jig_jar="$work/com.netflix.tools.jig-$jig_version.jar"
-jig_jmod="$work/com.netflix.tools.jig-$jig_version-$platform.jmod"
+jmod_overlay="$work/jmods"
+jar_overlay="$work/jars"
+mkdir -p "$jmod_overlay" "$jar_overlay"
 curl --fail --silent --show-error --location \
     "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.jig/$jig_version/com.netflix.tools.jig-$jig_version.jar" \
-    --output "$jig_jar"
+    --output "$jar_overlay/com.netflix.tools.jig.jar"
 curl --fail --silent --show-error --location \
     "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.jig/$jig_version/com.netflix.tools.jig-$jig_version-$platform.jmod" \
-    --output "$jig_jmod"
-
-cp -Rp "$bootstrap_java_home/jmods" "$work/jmods"
-for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja com.netflix.tools.jig; do
-    find "$work/jmods" -maxdepth 1 -type f \
-        \( -name "$module.jar" -o -name "$module-*.jar" \
-        -o -name "$module.jmod" -o -name "$module-*.jmod" \) -delete
-done
-cp -p "$cli_jmod" "$work/jmods/com.netflix.tools.cli.jmod"
-cp -p "$launcher_jmod" "$work/jmods/com.netflix.tools.launcher.jmod"
-cp -p "$ja_jmod" "$work/jmods/com.netflix.tools.ja.jmod"
-cp -p "$jig_jmod" "$work/jmods/com.netflix.tools.jig.jmod"
+    --output "$jmod_overlay/com.netflix.tools.jig.jmod"
+cp -p "$cli_jmod" "$jmod_overlay/com.netflix.tools.cli.jmod"
+cp -p "$launcher_jmod" "$jmod_overlay/com.netflix.tools.launcher.jmod"
+cp -p "$ja_jmod" "$jmod_overlay/com.netflix.tools.ja.jmod"
+cp -p "$artifacts/com.netflix.tools.cli.jar" "$jar_overlay/"
+cp -p "$artifacts/com.netflix.tools.launcher.jar" "$jar_overlay/"
+cp -p "$artifacts/com.netflix.tools.ja.jar" "$jar_overlay/"
 
 "$jlink" \
-    --module-path "$work/jmods" \
+    --module-path "$jmod_overlay:$bootstrap_java_home/jmods" \
     --add-modules ALL-MODULE-PATH \
     --generate-cds-archive \
     --output "$output_java_home"
 
-cp -Rp "$work/jmods" "$output_java_home/jmods"
+cp -Rp "$bootstrap_java_home/jmods" "$output_java_home/jmods"
 cp -p "$source_java_home/lib/src.zip" "$output_java_home/lib/src.zip"
 mkdir -p "$output_java_home/lib/ja/modules"
 cp -p "$bootstrap_java_home/lib/ja/modules/"*.jar "$output_java_home/lib/ja/modules/"
-for module in com.netflix.tools.cli com.netflix.tools.launcher com.netflix.tools.ja com.netflix.tools.jig; do
-    find "$output_java_home/lib/ja/modules" -maxdepth 1 -type f \
-        \( -name "$module.jar" -o -name "$module-*.jar" \) -delete
+for artifact in "$jmod_overlay/"*.jmod; do
+    module="$($jmod describe "$artifact" | sed -n '1s/@.*//p')"
+    if [[ -z "$module" ]]; then
+        echo "Cannot determine module name: $artifact" >&2
+        exit 1
+    fi
+    for directory in "$output_java_home/jmods" "$output_java_home/lib/ja/modules"; do
+        find "$directory" -maxdepth 1 -type f \
+            \( -name "$module.jar" -o -name "$module-*.jar" \
+            -o -name "$module.jmod" -o -name "$module-*.jmod" \) -delete
+    done
 done
-cp -p "$artifacts/com.netflix.tools.cli.jar" "$output_java_home/lib/ja/modules/"
-cp -p "$artifacts/com.netflix.tools.launcher.jar" "$output_java_home/lib/ja/modules/"
-cp -p "$artifacts/com.netflix.tools.ja.jar" "$output_java_home/lib/ja/modules/"
-cp -p "$jig_jar" "$output_java_home/lib/ja/modules/"
+cp -p "$jmod_overlay/"*.jmod "$output_java_home/jmods/"
+cp -p "$jar_overlay/"*.jar "$output_java_home/lib/ja/modules/"
 
 [[ -x "$output_java_home/bin/ja" ]]
 [[ -f "$output_java_home/jmods/java.base.jmod" ]]
