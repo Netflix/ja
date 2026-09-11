@@ -141,6 +141,43 @@ class ResolvedClassModelsTest {
     }
 
     @Test
+    void prefersRuntimeAccessModulesFromTheModulePathOverTheParentConfiguration(@TempDir Path directory) throws Exception {
+        var parentModules = Files.createDirectories(directory.resolve("parent-modules"));
+        var parentTool = TestModules.writeJar(parentModules.resolve("example.tool.jar"), "example.tool");
+        var parentConfiguration = Configuration.resolve(
+                ModuleFinder.of(parentModules),
+                List.of(ResolvedClassModelsTest.class.getModule().getLayer().configuration()),
+                ModuleFinder.of(),
+                Set.of("example.tool"));
+        var parentLayer = ModuleLayer.defineModulesWithOneLoader(
+                parentConfiguration,
+                List.of(ResolvedClassModelsTest.class.getModule().getLayer()),
+                ClassLoader.getSystemClassLoader()).layer();
+        var applicationModules = Files.createDirectories(directory.resolve("application-modules"));
+        var root = Files.createDirectories(applicationModules.resolve("example.root"));
+        TestModules.writeModuleInfo(root, "example.root");
+        writeClass(root, "root.Root");
+        var runtimeModules = Files.createDirectories(directory.resolve("runtime-modules"));
+        var runtimeTool = Files.createDirectories(runtimeModules.resolve("example.tool"));
+        TestModules.writeModuleInfo(runtimeTool, "example.tool");
+        var runtimeArguments = List.of(
+                "--module-path", runtimeModules.toString(),
+                "--add-modules", "example.tool",
+                "--add-exports", "jdk.compiler/com.sun.source.util=example.tool");
+        var classes = ResolvedClassModels.resolve(
+                parentConfiguration,
+                new ModuleInputs(Set.of("example.root"), List.of("--module-path", applicationModules.toString())),
+                new ModuleInputs(Set.of(), runtimeArguments),
+                "test-runtime");
+
+        var layer = classes.instrumentedLayer(parentLayer, Set.of(), List.of()).layer();
+        var resolvedTool = layer.configuration().findModule("example.tool").orElseThrow();
+
+        assertNotEquals(parentTool.toUri(), resolvedTool.reference().location().orElseThrow());
+        assertEquals(runtimeTool.toUri(), resolvedTool.reference().location().orElseThrow());
+    }
+
+    @Test
     void definesAnInstrumentedModuleAndItsParentDependentsInTheChildLayer(@TempDir Path directory) throws Exception {
         var parentModules = Files.createDirectories(directory.resolve("parent-modules"));
         TestModules.writeJar(parentModules.resolve("example.library.jar"), "example.library");

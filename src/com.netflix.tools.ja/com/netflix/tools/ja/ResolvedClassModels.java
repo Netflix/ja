@@ -97,7 +97,7 @@ public final class ResolvedClassModels {
                 .forEach(applicationBeforeModules::add);
         var application = resolveInputs(parent, applicationInputs, withDependents(applicationBeforeModules, applicationPathModules));
         var effectiveRuntimeInputs = withJUnitDependencies(application.configuration(), applicationInputs, runtimeInputs);
-        var runtime = resolveInputs(application.configuration(), effectiveRuntimeInputs, modulePathClosure(effectiveRuntimeInputs));
+        var runtime = resolveInputs(application.configuration(), effectiveRuntimeInputs, runtimeModulePathClosure(effectiveRuntimeInputs));
         var runtimeModules = Configurations.reachableModules(runtime.configuration(), effectiveRuntimeInputs.roots()).stream()
                 .map(module -> module.name())
                 .collect(Collectors.toUnmodifiableSet());
@@ -128,11 +128,27 @@ public final class ResolvedClassModels {
         return new ModuleInputs(roots, runtimeInputs.arguments());
     }
 
-    private static Set<String> modulePathClosure(ModuleInputs inputs) {
-        var paths = ToolArguments.applicationModulePath(inputs.arguments());
+    @SuppressWarnings("restricted")
+    private static Set<String> runtimeModulePathClosure(ModuleInputs inputs) {
+        var roots = new LinkedHashSet<>(inputs.roots());
+        var access = ModuleRuntimeAccess.parseArguments(inputs.arguments());
+        roots.addAll(access.enableNativeAccess());
+        access.addExports().forEach(export -> {
+            roots.add(export.sourceModule());
+            roots.add(export.targetModule());
+        });
+        access.addOpens().forEach(open -> {
+            roots.add(open.sourceModule());
+            roots.add(open.targetModule());
+        });
+        return modulePathClosure(inputs.arguments(), roots);
+    }
+
+    private static Set<String> modulePathClosure(List<String> arguments, Set<String> roots) {
+        var paths = ToolArguments.applicationModulePath(arguments);
         var finder = ModuleFinder.of(paths.toArray(Path[]::new));
         var modules = new LinkedHashSet<String>();
-        var pending = new ArrayDeque<>(inputs.roots());
+        var pending = new ArrayDeque<>(roots);
         while (!pending.isEmpty()) {
             var name = pending.removeFirst();
             var reference = finder.find(name).orElse(null);
