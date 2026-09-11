@@ -33,7 +33,8 @@ public final class ModuleOptions {
             option(JdkModuleOptions.patchModule()),
             option(JdkCompilationOptions.moduleSourcePath()),
             option(JdkCompilationOptions.sourcePath()),
-            option("module", ModuleSelection.single().moduleOption()),
+            option("module", JdkOptionDescriptors.option(
+                    "module=single", "--module", "MODULE", "Select the module", "-m")),
             option(JdkModuleOptions.addModules()),
             option(JdkModuleOptions.describeModule()),
             option(JdkModuleOptions.mainClass()),

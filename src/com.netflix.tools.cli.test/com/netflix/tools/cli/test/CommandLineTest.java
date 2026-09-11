@@ -26,6 +26,7 @@ import javax.tools.ToolProvider;
 import com.netflix.tools.cli.CommandLine;
 import com.netflix.tools.cli.CommandLine.Cardinality;
 import com.netflix.tools.cli.CommandLine.Completion;
+import com.netflix.tools.cli.CommandLine.ConfigurationException;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.cli.CommandLine.ToolOption;
 import org.junit.jupiter.api.Test;
@@ -145,6 +146,99 @@ class CommandLineTest {
         assertEquals(List.of("--check", "explicit"), prepared.arguments());
         assertTrue(diagnostics.toString()
                               .contains("picked up options"));
+    }
+
+    @Test
+    void ambientToolOptionsSelectTheDeepestMirroredScope(@TempDir Path directory) throws Exception {
+        Path options = Files.createDirectories(directory.resolve(".java-tool-options"));
+        Files.writeString(options.resolve("probe.args"), "root\n");
+        Path main = Files.createDirectories(options.resolve("app/src/main"));
+        Path test = Files.createDirectories(options.resolve("app/src/test"));
+        Files.writeString(main.resolve("probe.args"), "main\n");
+        Files.writeString(test.resolve("probe.args"), "test\n");
+        Path source = Files.createDirectories(directory.resolve("app/src/test/java"));
+
+        var prepared = CommandLine.builder()
+                .javaToolOptions()
+                .build()
+                .prepare("probe", new ToolInvocation(source, List.of("explicit")),
+                        new PrintWriter(new StringWriter()));
+
+        assertEquals(List.of("test", "explicit"), prepared.arguments());
+    }
+
+    @Test
+    void ambientToolOptionsSelectTheOnlyContainedScope(@TempDir Path directory) throws Exception {
+        Path options = Files.createDirectories(directory.resolve(".java-tool-options/app/src/main"));
+        Files.writeString(options.resolve("probe.args"), "main\n");
+        Files.createDirectories(directory.resolve("app/src/main"));
+
+        var prepared = CommandLine.builder()
+                .javaToolOptions()
+                .build()
+                .prepare("probe", new ToolInvocation(directory, List.of()),
+                        new PrintWriter(new StringWriter()));
+
+        assertEquals(List.of("main"), prepared.arguments());
+    }
+
+    @Test
+    void ambientToolOptionsRejectInvalidToolNames(@TempDir Path directory) {
+        var failure = assertThrows(ConfigurationException.class,
+                () -> CommandLine.builder()
+                        .javaToolOptions()
+                        .build()
+                        .prepare("../probe", new ToolInvocation(directory, List.of()),
+                                new PrintWriter(new StringWriter())));
+
+        assertEquals("Invalid tool name: ../probe", failure.getMessage());
+    }
+
+    @Test
+    void ambiguousAmbientToolOptionsSuggestWorkingDirectoryOptionWhenAvailable(@TempDir Path directory) throws Exception {
+        ambiguousOptions(directory);
+        var diagnostics = new StringWriter();
+
+        var failure = assertThrows(ConfigurationException.class,
+                () -> CommandLine.builder()
+                        .workingDirectory()
+                        .javaToolOptions()
+                        .build()
+                        .prepare("probe", new ToolInvocation(directory, List.of()),
+                                new PrintWriter(diagnostics, true)));
+
+        assertTrue(failure.getMessage().contains("select one with -C:"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("-C app/src/main"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("-C app/src/test"), failure.getMessage());
+    }
+
+    @Test
+    void ambiguousAmbientToolOptionsSuggestChangingDirectoryWithoutWorkingDirectoryOption(@TempDir Path directory)
+            throws Exception {
+        ambiguousOptions(directory);
+        var diagnostics = new StringWriter();
+
+        var failure = assertThrows(ConfigurationException.class,
+                () -> CommandLine.builder()
+                        .javaToolOptions()
+                        .build()
+                        .prepare("probe", new ToolInvocation(directory, List.of()),
+                                new PrintWriter(diagnostics, true)));
+
+        assertTrue(failure.getMessage().contains("run from within one of:"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("  app/src/main"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("  app/src/test"), failure.getMessage());
+        assertFalse(failure.getMessage().contains("-C"), failure.getMessage());
+    }
+
+    private static void ambiguousOptions(Path directory) throws Exception {
+        Path options = Files.createDirectories(directory.resolve(".java-tool-options"));
+        Files.createDirectories(directory.resolve("app/src/main"));
+        Files.createDirectories(directory.resolve("app/src/test"));
+        Files.createDirectories(options.resolve("app/src/main"));
+        Files.createDirectories(options.resolve("app/src/test"));
+        Files.writeString(options.resolve("app/src/main/probe.args"), "main\n");
+        Files.writeString(options.resolve("app/src/test/probe.args"), "test\n");
     }
 
     @Test

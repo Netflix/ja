@@ -12,7 +12,7 @@
  * the License.
  */
 
-/** Java tool command-line description and launching support. */
+/** Java tool metadata, completion, and launching support. */
 module com.netflix.tools.launcher {
     exports com.netflix.tools.launcher;
 

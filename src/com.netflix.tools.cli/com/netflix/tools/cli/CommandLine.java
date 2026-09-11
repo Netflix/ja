@@ -148,7 +148,8 @@ public final class CommandLine implements OptionChecker {
         var prepared = prepareDirectory(invocation);
         var arguments = new ArrayList<String>();
         if (javaToolOptions) {
-            arguments.addAll(ToolOptions.configured(invocationName, prepared.workingDirectory(), diagnostics));
+            arguments.addAll(ToolOptions.configured(invocationName, prepared.workingDirectory(), diagnostics,
+                    workingDirectory));
         }
         arguments.addAll(argumentFiles ? ToolOptions.expand(prepared.arguments()) : prepared.arguments());
         if (arguments.equals(prepared.arguments())) {
@@ -923,11 +924,12 @@ public final class CommandLine implements OptionChecker {
 
         private ToolOptions() {}
 
-        static List<String> configured(String tool, Path effectiveDirectory, PrintWriter diagnostics) {
+        static List<String> configured(String tool, Path effectiveDirectory, PrintWriter diagnostics,
+                boolean workingDirectoryOption) {
             try {
                 optionFileName(tool);
                 Path effective = normalizeDirectory(effectiveDirectory);
-                Path optionFile = findOptions(tool, effective);
+                Path optionFile = findOptions(tool, effective, workingDirectoryOption);
                 if (optionFile == null) {
                     return List.of();
                 }
@@ -959,7 +961,8 @@ public final class CommandLine implements OptionChecker {
             return null;
         }
 
-        private static Path findOptions(String tool, Path effective) throws IOException {
+        private static Path findOptions(String tool, Path effective, boolean workingDirectoryOption)
+                throws IOException {
             for (Path directory = effective;
                  directory != null;
                  directory = directory.getParent()) {
@@ -967,13 +970,14 @@ public final class CommandLine implements OptionChecker {
                 if (!Files.isDirectory(optionsDirectory)) {
                     continue;
                 }
-                return selectOptions(tool, effective, directory, optionsDirectory);
+                return selectOptions(tool, effective, directory, optionsDirectory,
+                        workingDirectoryOption);
             }
             return null;
         }
 
         private static Path selectOptions(String tool, Path effective, Path root,
-                Path optionsDirectory)
+                Path optionsDirectory, boolean workingDirectoryOption)
                 throws IOException {
             String fileName = optionFileName(tool);
             Path relative = root.relativize(effective);
@@ -993,7 +997,7 @@ public final class CommandLine implements OptionChecker {
             }
             var contained = containedOptions(fileName, effective, root, optionsDirectory, relative);
             if (contained.size() > 1) {
-                throw ambiguousOptions(tool, effective, contained);
+                throw ambiguousOptions(tool, effective, contained, workingDirectoryOption);
             }
             if (contained.size() == 1) {
                 return contained.getFirst().options();
@@ -1041,15 +1045,22 @@ public final class CommandLine implements OptionChecker {
             return List.copyOf(candidates);
         }
 
-        private static ConfigurationException ambiguousOptions(String tool, Path effective, List<OptionScope> candidates) {
+        private static ConfigurationException ambiguousOptions(String tool, Path effective,
+                List<OptionScope> candidates, boolean workingDirectoryOption) {
             var message = new StringBuilder("Multiple ")
                     .append(tool)
                     .append(" option scopes are contained by ")
                     .append(effective)
-                    .append("; select one with -C:");
+                    .append(workingDirectoryOption
+                            ? "; select one with -C:"
+                            : "; run from within one of:");
             Path root = optionsRoot(effective);
             for (var candidate : candidates) {
-                message.append("\n  -C ").append(displayPath(root, candidate.directory()));
+                message.append("\n  ");
+                if (workingDirectoryOption) {
+                    message.append("-C ");
+                }
+                message.append(displayPath(root, candidate.directory()));
             }
             return new ConfigurationException(message.toString());
         }

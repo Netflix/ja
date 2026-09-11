@@ -17,26 +17,15 @@ package com.netflix.tools.launcher;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-
-import com.netflix.tools.launcher.CommandLine.Subcommand;
 
 final class CompletionShims {
-    private static final String RESOURCE_ROOT = "META-INF/com.netflix.tools/completion/";
-    private static final String DELEGATED_RESOURCE_ROOT = RESOURCE_ROOT + "delegated/";
+    private static final String RESOURCE_ROOT = "META-INF/com.netflix.tools/completion/delegated/";
 
     private CompletionShims() {}
 
     static String render(CompletionShell shell, String command) {
-        String template = resource(DELEGATED_RESOURCE_ROOT, shell.option());
-        return template.replace("@COMMAND@", quote(command, shell)).replace("@FUNCTION@", functionName(command));
-    }
-
-    static String render(CompletionShell shell, String command, CommandLine commandLine) {
         String template = resource(RESOURCE_ROOT, shell.option());
-        return template.replace("@COMMAND@", quote(command, shell))
-                       .replace("@FUNCTION@", functionName(command))
-                       .replace("@CANDIDATES@", candidates(shell, commandLine));
+        return template.replace("@COMMAND@", quote(command, shell)).replace("@FUNCTION@", functionName(command));
     }
 
     private static String resource(String root, String shell) {
@@ -49,43 +38,6 @@ final class CompletionShims {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    private static String candidates(CompletionShell shell, CommandLine commandLine) {
-        var candidates = new LinkedHashMap<String, String>();
-        for (ToolOption option : commandLine.options()) {
-            for (String name : option.names()) {
-                candidates.putIfAbsent(name, option.description());
-                for (String choice : option.choices()) {
-                    candidates.putIfAbsent(name + "=" + choice, option.description());
-                }
-            }
-        }
-        for (Subcommand command : commandLine.commands()) {
-            candidates.putIfAbsent(command.name(), command.description());
-        }
-        var rendered = new StringBuilder();
-        candidates.forEach((value, description) -> {
-            switch (shell) {
-                case BASH -> rendered.append("    ")
-                                     .append(quote(value, shell))
-                                     .append('\n');
-                case ZSH -> rendered.append("    ")
-                                    .append(quote(value + ":" + description, shell))
-                                    .append('\n');
-                case FISH -> rendered.append("    printf '%s\\t%s\\n' ")
-                                     .append(quote(value, shell))
-                                     .append(' ')
-                                     .append(quote(description, shell))
-                                     .append('\n');
-                case POWERSHELL -> rendered.append("        @{ Value = ")
-                        .append(quote(value, shell))
-                        .append("; Description = ")
-                        .append(quote(description, shell))
-                        .append(" }\n");
-            }
-        });
-        return rendered.toString().stripTrailing();
     }
 
     private static String quote(String value, CompletionShell shell) {
