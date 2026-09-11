@@ -21,13 +21,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ServiceLoader;
 import java.util.regex.Pattern;
 import javax.tools.Diagnostic.Kind;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
-import javax.tools.ToolProvider;
 
 import com.netflix.tools.ja.RequireRequest.Dependency;
 import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
@@ -296,10 +296,7 @@ final class ModuleInfo {
     }
 
     private static Parsed parse(Path descriptor) throws IOException {
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        if (compiler == null) {
-            throw new IllegalStateException("A JDK is required to read " + descriptor);
-        }
+        JavaCompiler compiler = javaCompiler();
 
         var diagnostics = new DiagnosticCollector<JavaFileObject>();
         try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, null, null)) {
@@ -322,6 +319,16 @@ final class ModuleInfo {
             return new Parsed(unit, module,
                     Trees.instance(task).getSourcePositions());
         }
+    }
+
+    private static JavaCompiler javaCompiler() {
+        var layer = ModuleInfo.class.getModule().getLayer();
+        if (layer == null) {
+            throw new IllegalStateException("A JDK is required to read a module descriptor");
+        }
+        return ServiceLoader.load(layer, JavaCompiler.class)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("A JDK is required to read a module descriptor"));
     }
 
     private record Parsed(CompilationUnitTree unit, ModuleTree module, SourcePositions positions) {}

@@ -577,6 +577,75 @@ class ToolRunnerTest {
     }
 
     @Test
+    void cachesTestsWhenRuntimeAccessRequiresAJdkModuleInTheTestLayer(@TempDir Path directory) throws Exception {
+        var moduleName = "example.runtime.access.tests";
+        var modules = Files.createDirectories(directory.resolve("modules"));
+        var module = Files.createDirectories(modules.resolve(moduleName));
+        TestModules.writeModuleInfo(module, moduleName, "org.junit.jupiter.api");
+        var property = getClass().getName() + ".jdkRuntimeAccess";
+        var classFile = module.resolve("example/RuntimeAccessTest.class");
+        Files.createDirectories(classFile.getParent());
+        writeIncrementalTest(classFile, ClassDesc.of("example.RuntimeAccessTest"), MethodTypeDesc.of(ClassDesc.ofDescriptor("V")), property,
+                false, false);
+        var runtimeAccess = "jdk.javadoc/jdk.javadoc.internal.tool=" + moduleName;
+        var resolvedWith = new ArrayList<String>();
+        var launchedWith = new ArrayList<String>();
+        var jig = tool("jig", resolvedWith, List.of("--add-exports", runtimeAccess));
+        var definition = new ToolDefinition(
+                "junit",
+                Launch.JAVA,
+                Optional.of("org.junit.platform.engine"),
+                Optional.of("org.junit.platform.console"),
+                "junit",
+                Optional.empty(),
+                Set.of("module-path", "add-modules"),
+                List.of("execute"));
+        var testState = incrementalTestState(directory);
+        var runner = new ToolRunner(
+                testLayer(),
+                ToolServices.of(jig),
+                new ToolCatalog(List.of(definition)),
+                (arguments, in, out, err) -> {
+                    launchedWith.addAll(arguments);
+                    return 0;
+                },
+                testState.results(),
+                testState.runtimeImage());
+        var engine = ModuleDescriptor.newModule("org.junit.platform.engine")
+                .version("6.1.3")
+                .build();
+        var root = ModuleFinder.of(modules)
+                .find(moduleName)
+                .orElseThrow()
+                .descriptor();
+        var commandLine = incrementalTestCommand(moduleName);
+        var resolved = new ResolvedToolArguments(List.of("--module-path", modules.toString()),
+                Set.of(engine, root), Map.of());
+
+        try {
+            assertEquals(
+                    0,
+                    runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
+                            System.out, System.err));
+            assertEquals("executed", System.getProperty(property));
+
+            System.setProperty(property, "cached");
+            var output = new ByteArrayOutputStream();
+            assertEquals(
+                    0,
+                    runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
+                            new PrintStream(output), System.err));
+            assertEquals("cached", System.getProperty(property));
+            assertTrue(output.toString().contains("Tests:      1 found, 1 cached"));
+        } finally {
+            System.clearProperty(property);
+        }
+
+        assertTrue(launchedWith.isEmpty());
+        assertEquals(2, joinedPairCount(resolvedWith, "--add-requires", "org.junit.platform.console@6.1.3"));
+    }
+
+    @Test
     void cachesTestsFromTheirObservedDirectoryModuleCode(@TempDir Path directory) throws Exception {
         try (var fixture = IncrementalTestFixture.create(directory, getClass().getName() + ".observed")) {
             fixture.prime();

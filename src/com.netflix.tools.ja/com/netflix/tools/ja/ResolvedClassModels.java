@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipFile;
 
 import com.netflix.module.ModuleHash;
+import com.netflix.module.ModuleRuntimeAccess;
 import com.netflix.tools.ja.ExecutionTrace.Event;
 import com.netflix.tools.ja.TestDiscovery.TestMethod;
 
@@ -72,6 +73,7 @@ public final class ResolvedClassModels {
     private final Map<String, List<Path>> patches;
     private final Set<String> roots;
     private final Set<String> runtimeModules;
+    private final Map<String, ModuleReference> runtimeAccessModules;
     private final String runtimeImageHash;
     private final Map<String, List<Entry>> classes = new LinkedHashMap<>();
     private final Map<String, ModuleState> moduleStates = new LinkedHashMap<>();
@@ -108,8 +110,10 @@ public final class ResolvedClassModels {
                 .filter(module -> application.pathModules().contains(module.name()) || runtime.pathModules().contains(module.name()))
                 .sorted(Comparator.comparing(module -> module.name()))
                 .forEach(module -> modules.putIfAbsent(module.name(), module.reference()));
+        var layerArguments = new ArrayList<>(applicationInputs.arguments());
+        layerArguments.addAll(runtimeInputs.arguments());
         return new ResolvedClassModels(runtime.configuration(), modules, ToolArguments.patchModules(applicationInputs.arguments()),
-                applicationInputs.roots(), runtimeModules, runtimeImageHash);
+                applicationInputs.roots(), runtimeModules, runtimeAccessModules(runtime.configuration(), layerArguments), runtimeImageHash);
     }
 
     private static ModuleInputs withJUnitDependencies(Configuration application, ModuleInputs applicationInputs, ModuleInputs runtimeInputs) {
@@ -157,12 +161,13 @@ public final class ResolvedClassModels {
     }
 
     private ResolvedClassModels(Configuration configuration, Map<String, ModuleReference> modules, Map<String, List<Path>> patches,
-            Set<String> roots, Set<String> runtimeModules, String runtimeImageHash) {
+            Set<String> roots, Set<String> runtimeModules, Map<String, ModuleReference> runtimeAccessModules, String runtimeImageHash) {
         this.configuration = configuration;
         this.modules = Map.copyOf(modules);
         this.patches = Map.copyOf(patches);
         this.roots = Set.copyOf(roots);
         this.runtimeModules = Set.copyOf(runtimeModules);
+        this.runtimeAccessModules = Map.copyOf(runtimeAccessModules);
         this.runtimeImageHash = runtimeImageHash;
     }
 
@@ -258,6 +263,7 @@ public final class ResolvedClassModels {
         var layerRoots = new LinkedHashSet<>(roots);
         layerRoots.addAll(runtimeModules);
         layerRoots.addAll(executionRoots);
+        layerRoots.addAll(runtimeAccessModules.keySet());
         supportModules.stream()
                 .map(reference -> reference.descriptor().name())
                 .forEach(layerRoots::add);
@@ -305,6 +311,7 @@ public final class ResolvedClassModels {
                 throw new IllegalArgumentException("Duplicate support module: " + name);
             }
         }
+        runtimeAccessModules.forEach(references::putIfAbsent);
         var instrumented = instrumentedModules();
         var hierarchy = instrumentedClassHierarchy();
         var selected = completeLayer ? modules.keySet() : layerModules(instrumented);
@@ -456,6 +463,49 @@ public final class ResolvedClassModels {
                     .forEach(remaining::addLast);
         }
         return references;
+    }
+
+    @SuppressWarnings("restricted")
+    private static Map<String, ModuleReference> runtimeAccessModules(Configuration configuration, List<String> arguments) {
+        var access = ModuleRuntimeAccess.parseArguments(arguments);
+        var names = new LinkedHashSet<String>();
+        for (var name : access.enableNativeAccess()) {
+            addRuntimeAccessModule(configuration, names, name);
+        }
+        for (var export : access.addExports()) {
+            addRuntimeAccessModules(configuration, names, export.sourceModule(), export.targetModule());
+        }
+        for (var open : access.addOpens()) {
+            addRuntimeAccessModules(configuration, names, open.sourceModule(), open.targetModule());
+        }
+        var references = new LinkedHashMap<String, ModuleReference>();
+        for (var name : names) {
+            configuration.findModule(name)
+                    .map(module -> module.reference())
+                    .ifPresent(reference -> references.put(name, reference));
+        }
+        return Map.copyOf(references);
+    }
+
+    private static void addRuntimeAccessModules(Configuration configuration, Set<String> names, String source, String target) {
+        if (canDefineForRuntimeAccess(configuration, source) && canDefineForRuntimeAccess(configuration, target)) {
+            names.add(source);
+            names.add(target);
+        }
+    }
+
+    private static void addRuntimeAccessModule(Configuration configuration, Set<String> names, String name) {
+        if (canDefineForRuntimeAccess(configuration, name)) {
+            names.add(name);
+        }
+    }
+
+    private static boolean canDefineForRuntimeAccess(Configuration configuration, String name) {
+        return configuration.findModule(name)
+                .map(module -> module.reference())
+                .flatMap(ModuleReference::location)
+                .map(location -> !location.getScheme().equals("jrt") || !name.startsWith("java."))
+                .orElse(false);
     }
 
     private static ModuleFinder finder(Map<String, ModuleReference> references) {
