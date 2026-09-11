@@ -39,7 +39,7 @@ The default installation is discoverable by common development tools. On macOS i
 
 On macOS and Linux, we recommend using [jenv](https://www.jenv.be/) to select both the source JDK and the installed JDK. Running `jenv local` records the selection in `.java-version`, allowing each repository to select its `ja`-enabled JDK and compatible bundled toolchain automatically.
 
-The installer does not modify shell configuration. It prints activation steps matching the way the source JDK was selected, including jenv, SDKMAN!, `JAVA_HOME`, or `PATH`. The steps also add `~/.local/bin` when needed so commands created by `ja install` are available.
+The installer does not modify shell configuration. It prints activation steps matching the way the source JDK was selected, including jenv, SDKMAN!, `JAVA_HOME`, or `PATH`. The steps also add `~/.local/bin` when needed so commands created by `ja install` are available, and show how to enable completions for `ja` and the bundled tools.
 
 Pass an output directory to use a custom location instead:
 

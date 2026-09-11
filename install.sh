@@ -297,3 +297,21 @@ if [[ "$java_selection" == jenv || "$java_selection" == sdkman ]] && [[ "$ja_bin
     printf '\nCommands installed by ja use %s. To use them in this shell:\n\n' "$ja_bin_home"
     printf "  export PATH=%q:\"\$PATH\"\n" "$ja_bin_home"
 fi
+
+case "${SHELL##*/}" in
+    fish)
+        completion_command='ja completion fish | source'
+        completion_shell=Fish
+        ;;
+    zsh)
+        completion_command="eval \"\$(ja completion zsh)\""
+        completion_shell=Zsh
+        ;;
+    *)
+        completion_command="eval \"\$(ja completion bash)\""
+        completion_shell=Bash
+        ;;
+esac
+printf '\nAfter activating ja, enable completions in this %s session with:\n\n' "$completion_shell"
+printf '  %s\n' "$completion_command"
+printf '\nAdd this command to your shell configuration to enable completions in future sessions.\n'

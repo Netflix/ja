@@ -238,6 +238,12 @@ try {
     }
     $QuotedPathPrefix = "'" + $PathPrefix.Replace("'", "''") + "'"
     Write-Output "  `$env:Path = $QuotedPathPrefix + `$env:Path"
+    Write-Output ""
+    Write-Output "After activating ja, enable completions in this PowerShell session with:"
+    Write-Output ""
+    Write-Output "  ja completion powershell | Out-String | Invoke-Expression"
+    Write-Output ""
+    Write-Output "Add this command to your PowerShell profile to enable completions in future sessions."
 } finally {
     Remove-Item -Recurse -Force $Work
 }
