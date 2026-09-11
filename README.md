@@ -128,7 +128,7 @@ While `com.example.hello` is fine for this example, for a module you intend to p
 
 ## Continuous Integration
 
-Refer to the [minimal bootstrap script](.github/actions/setup-ja/link.sh) as a reference for how to produce a minimal `ja` runtime image for continuous integration.
+Refer to the [minimal bootstrap script](.github/actions/setup-ja/link.sh) for the steps to produce a `ja` development JDK for continuous integration. It resolves the `ja` modules with Jig and passes the resulting argument file directly to the source JDK's `jlink`. Packaged JMODs from the source JDK and resolved modules are retained so subsequent links can replace bundled modules.
 
 ### GitHub Actions
 
