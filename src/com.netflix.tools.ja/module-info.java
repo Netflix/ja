@@ -20,7 +20,7 @@ module com.netflix.tools.ja {
     exports com.netflix.tools.ja to com.netflix.tools.ja.test;
 
     requires com.netflix.tools.cli;
-    requires com.netflix.tools.jig; // @0.13.6
+    requires com.netflix.tools.jig; // @0.14.0
     requires com.netflix.tools.launcher;
     requires java.compiler;
     requires java.desktop;
@@ -30,8 +30,8 @@ module com.netflix.tools.ja {
     requires jdk.javadoc;
     requires jdk.zipfs;
     requires static com.netflix.tools.jfmt; // @0.7.2
-    requires static com.netflix.tools.jist; // @0.5.0
-    requires static com.netflix.tools.jdocserver; // @0.4.0
+    requires static com.netflix.tools.jist; // @0.5.1
+    requires static com.netflix.tools.jdocserver; // @0.4.1
 
     uses java.util.spi.ToolProvider;
     uses javax.tools.JavaCompiler;
