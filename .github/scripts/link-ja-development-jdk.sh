@@ -112,6 +112,7 @@ cat > "$output_java_home/conf/com.netflix.tools.launcher/ja.args" <<EOF
 --add-exports=jdk.javadoc/jdk.javadoc.internal.api=com.netflix.tools.jdocserver
 --add-exports=jdk.javadoc/jdk.javadoc.internal.doclets.toolkit.util=com.netflix.tools.jdocserver
 --add-exports=jdk.javadoc/jdk.javadoc.internal.tool=com.netflix.tools.jdocserver
+--add-exports=jdk.compiler/com.sun.tools.javac.api=com.netflix.tools.jdocserver
 --add-exports=jdk.compiler/com.sun.tools.javac.main=com.netflix.tools.jdocserver
 --add-exports=jdk.compiler/com.sun.tools.javac.util=com.netflix.tools.jdocserver
 --add-exports=jdk.compiler/com.sun.tools.javac.api=com.netflix.tools.jfmt
