@@ -300,6 +300,16 @@ class JaToolTest {
     }
 
     @Test
+    void printsMavenHelpWhenNoOperationIsSpecified() {
+        Result result = run("maven");
+
+        assertEquals(0, result.exitCode(), result.error());
+        var described = assertInstanceOf(JaTool.class, ja);
+        assertEquals(commandLine(described, "maven").help("ja maven"), result.output());
+        assertEquals("", result.error());
+    }
+
+    @Test
     void printsHelpWithVerboseBeforeTheCommand() {
         Result result = run("--verbose", "compile", "--help");
 
