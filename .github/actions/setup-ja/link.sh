@@ -47,7 +47,8 @@ curl --fail --silent --show-error --location \
 module_arguments="$work/modules.args"
 "$java" \
     --module-path "$bootstrap_jig" \
-    --module com.netflix.tools.jig/com.netflix.tools.jig.Jig \
+    --module com.netflix.tools.jig \
+    --module-path "$source_java_home/jmods" \
     --add-requires "com.netflix.tools.ja@$ja_version" \
     --prefer-jmod \
     --target-platform CURRENT \
@@ -65,7 +66,7 @@ fi
 
 "$jlink" \
     @"$module_arguments" \
-    --add-modules ALL-MODULE-PATH,jdk.jlink \
+    --add-modules ALL-MODULE-PATH \
     --generate-cds-archive \
     --output "$output_java_home"
 
@@ -73,7 +74,11 @@ fi
 mkdir -p "$output_java_home/jmods"
 cp -p "$source_java_home/jmods/"*.jmod "$output_java_home/jmods/"
 IFS=: read -r -a jmods <<< "${resolved[1]}"
-cp -p "${jmods[@]}" "$output_java_home/jmods/"
+for jmod in "${jmods[@]}"; do
+    if [[ "$jmod" != "$source_java_home/jmods" ]]; then
+        cp -p "$jmod" "$output_java_home/jmods/"
+    fi
+done
 cp -p "$source_java_home/lib/src.zip" "$output_java_home/lib/src.zip"
 
 [[ -x "$output_java_home/bin/ja" && -x "$output_java_home/bin/jig" ]]
