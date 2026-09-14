@@ -25,9 +25,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     env:
-      BOOTSTRAP_JA_VERSION: 0.17.6
-      BUILD_VERSION: 0.17.7-build.${{ github.run_id }}
-      JIG_VERSION: 0.13.6
+      BOOTSTRAP_JA_VERSION: 0.17.12
+      BUILD_VERSION: 0.18.1-build.${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
 
@@ -39,38 +38,32 @@ jobs:
 
       - name: Configure build
         run: |
-          echo "ARTIFACTS=$RUNNER_TEMP/ja-artifacts" >> "$GITHUB_ENV"
+          echo "SOURCE_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           echo "BOOTSTRAP_JAVA_HOME=$RUNNER_TEMP/ja-bootstrap" >> "$GITHUB_ENV"
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
       - name: Link bootstrap ja development JDK
         run: |
           .github/scripts/link-ja-development-jdk.sh \
-            "$JAVA_HOME" \
+            "$SOURCE_JAVA_HOME" \
             "$BOOTSTRAP_JAVA_HOME" \
             "$BOOTSTRAP_JA_VERSION"
+          echo "JAVA_HOME=$BOOTSTRAP_JAVA_HOME" >> "$GITHUB_ENV"
           echo "$BOOTSTRAP_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Build native launchers with Zig
         run: src/launcher/build.sh
 
-      - name: Test source with bootstrap ja
-        run: >-
-          ja run -m com.netflix.tools.ja/com.netflix.tools.ja.Ja --
-          test --all
-
-      - name: Assemble ja distribution with bootstrap ja
-        run: ja assemble --jmod --module-version "$BUILD_VERSION" "$ARTIFACTS"
+      - name: Build ja distribution with bootstrap ja
+        run: ja maven install --module-version "$BUILD_VERSION"
 
       - name: Link built ja development JDK
         run: |
-          .github/scripts/link-assembled-ja-development-jdk.sh \
-            "$JAVA_HOME" \
-            "$BOOTSTRAP_JAVA_HOME" \
-            "$ARTIFACTS" \
+          .github/scripts/link-ja-development-jdk.sh \
+            "$SOURCE_JAVA_HOME" \
             "$BUILT_JAVA_HOME" \
-            "$BUILD_VERSION" \
-            "$JIG_VERSION"
+            "$BUILD_VERSION"
+          echo "JAVA_HOME=$BUILT_JAVA_HOME" >> "$GITHUB_ENV"
           echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Test source with built ja
