@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.netflix.tools.ja.ModuleAssembler.Options;
+import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /**
  * Assembles source modules and delegates Maven installation or deployment to
@@ -39,9 +40,10 @@ final class MavenDeploymentCommand {
     private final ToolServices tools;
     private final ModuleAssembler assembler;
 
-    MavenDeploymentCommand(ToolServices tools, List<ToolDefinition> definitions) {
+    MavenDeploymentCommand(ToolServices tools, List<ToolDefinition> definitions,
+            Projection javadocProjection) {
         this.tools = tools;
-        assembler = new ModuleAssembler(tools, definitions);
+        assembler = new ModuleAssembler(tools, definitions, javadocProjection);
     }
 
     int run(JaInvocation commandLine, ModuleSourcePath moduleSourcePath, InputStream in,

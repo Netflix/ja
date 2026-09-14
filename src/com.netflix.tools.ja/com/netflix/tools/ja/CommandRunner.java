@@ -167,20 +167,16 @@ public final class CommandRunner {
         if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.ASSEMBLE))) {
             var moduleSourcePath = commandLine.moduleSourcePath()
                     .orElseThrow(() -> new IllegalArgumentException("assemble requires a module source path"));
-            return new AssembleCommand(tools, selectedCatalog.definitions()).run(commandLine,
-                                                                                  moduleSourcePath,
-                                                                                  in,
-                                                                                  out,
-                                                                                  err);
+            return new AssembleCommand(tools, selectedCatalog.definitions(),
+                    selectedToolRunner.providerProjection("javadoc", ModuleResolver.Projection.EMPTY))
+                    .run(commandLine, moduleSourcePath, in, out, err);
         }
         if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.MAVEN))) {
             var moduleSourcePath = commandLine.moduleSourcePath()
                     .orElseThrow(() -> new IllegalArgumentException("maven requires a module source path"));
-            return new MavenCommand(tools, selectedCatalog.definitions()).run(commandLine,
-                                                                               moduleSourcePath,
-                                                                               in,
-                                                                               out,
-                                                                               err);
+            return new MavenCommand(tools, selectedCatalog.definitions(),
+                    selectedToolRunner.providerProjection("javadoc", ModuleResolver.Projection.EMPTY))
+                    .run(commandLine, moduleSourcePath, in, out, err);
         }
 
         var temporaryDirectory = temporaryDirectory(commandLine);

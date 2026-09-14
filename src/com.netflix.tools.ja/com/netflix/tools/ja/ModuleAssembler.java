@@ -65,12 +65,14 @@ final class ModuleAssembler {
 
     private final ToolServices tools;
     private final List<ToolDefinition> definitions;
+    private final Projection javadocProjection;
     private final JarPackager jars;
     private final JmodPackager jmods;
 
-    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions) {
+    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions, Projection javadocProjection) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
+        this.javadocProjection = javadocProjection;
         this.jars = new JarPackager(tools);
         this.jmods = new JmodPackager(tools);
     }
@@ -156,7 +158,7 @@ final class ModuleAssembler {
             writeProjection(arguments, artifactRuntime, runtimeArguments, err);
             writeProjection(arguments, new Projection(Set.of("main-class", "module-version"), false, false),
                     jarArguments, err);
-            writeProjection(arguments, ToolProjections.sourceList(true), javadocArguments, err);
+            writeProjection(arguments, javadocProjection, javadocArguments, err);
             plans.add(
                     new Plan(
                             module,

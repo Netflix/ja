@@ -19,14 +19,18 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.List;
 
+import com.netflix.tools.ja.ModuleResolver.Projection;
+
 /** Exports Maven build projects and deploys assembled source modules. */
 final class MavenCommand {
     private final ToolServices tools;
     private final List<ToolDefinition> definitions;
+    private final Projection javadocProjection;
 
-    MavenCommand(ToolServices tools, List<ToolDefinition> definitions) {
+    MavenCommand(ToolServices tools, List<ToolDefinition> definitions, Projection javadocProjection) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
+        this.javadocProjection = javadocProjection;
     }
 
     int run(JaInvocation commandLine, ModuleSourcePath moduleSourcePath, InputStream in,
@@ -37,7 +41,8 @@ final class MavenCommand {
         }
         return switch (commandLine.toolArguments().getFirst()) {
             case "export" -> new MavenExporter(tools).run(commandLine, moduleSourcePath, in, out, err);
-            case "install", "deploy", "deploy-central" -> new MavenDeploymentCommand(tools, definitions).run(commandLine, moduleSourcePath, in, out, err);
+            case "install", "deploy", "deploy-central" -> new MavenDeploymentCommand(tools, definitions,
+                    javadocProjection).run(commandLine, moduleSourcePath, in, out, err);
             default -> throw new IllegalArgumentException("Unknown maven operation: " + commandLine.toolArguments().getFirst());
         };
     }

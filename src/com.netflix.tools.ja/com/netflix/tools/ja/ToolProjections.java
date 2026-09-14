@@ -71,7 +71,7 @@ final class ToolProjections {
 
     private static Projection source(boolean compileTime, String moduleOption) {
         return new Projection(
-                Set.of("module-path", "upgrade-module-path", "module-source-path", moduleOption, "release", "enable-preview", "add-exports"),
+                Set.of("module-path", "module-source-path", moduleOption, "release", "enable-preview", "add-exports"),
                 compileTime,
                 false);
     }
