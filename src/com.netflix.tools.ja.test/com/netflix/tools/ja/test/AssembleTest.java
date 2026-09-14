@@ -287,6 +287,9 @@ class AssembleTest {
                     int write = arguments.indexOf("--write-argfile");
                     if (write >= 0) {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
+                        if (options.contains("module-source-path")) {
+                            assertTrue(options.contains("upgrade-module-path"), options);
+                        }
                         Path argumentFile = Path.of(arguments.get(write + 1));
                         Files.writeString(argumentFile, options.equals("main-class,module-version") ? "--main-class\ncom.example.Application\n--module-version\n1.0\n" : projection);
                     }
