@@ -42,6 +42,19 @@ public final class ToolArguments {
         return paths(arguments, Set.of("--upgrade-module-path", "--module-path"));
     }
 
+    static Map<String, Path> moduleSourcePath(List<String> arguments) {
+        var modules = new LinkedHashMap<String, Path>();
+        for (String value : optionValues(arguments, "--module-source-path")) {
+            for (String entry : value.split(Pattern.quote(System.getProperty("path.separator")))) {
+                int separator = entry.indexOf('=');
+                if (separator > 0 && separator < entry.length() - 1) {
+                    modules.putIfAbsent(entry.substring(0, separator), Path.of(entry.substring(separator + 1)));
+                }
+            }
+        }
+        return Map.copyOf(modules);
+    }
+
     static Map<String, List<Path>> patchModules(List<String> arguments) {
         var patches = new LinkedHashMap<String, List<Path>>();
         for (int i = 0; i < arguments.size(); i++) {
@@ -107,6 +120,19 @@ public final class ToolArguments {
             }
         }
         return Optional.empty();
+    }
+
+    private static List<String> optionValues(List<String> arguments, String option) {
+        var values = new ArrayList<String>();
+        for (int i = 0; i < arguments.size(); i++) {
+            String argument = arguments.get(i);
+            if (argument.equals(option) && i + 1 < arguments.size()) {
+                values.add(arguments.get(++i));
+            } else if (argument.startsWith(option + "=")) {
+                values.add(argument.substring(option.length() + 1));
+            }
+        }
+        return List.copyOf(values);
     }
 
     private static List<Path> paths(List<String> arguments, Set<String> options) {

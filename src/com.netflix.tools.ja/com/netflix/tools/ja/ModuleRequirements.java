@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.netflix.tools.ja.ModuleResolver.Projection;
 import com.netflix.tools.ja.RequireRequest.Dependency;
 
 /**
@@ -152,7 +151,7 @@ final class ModuleRequirements {
         arguments.add("--update-module-hashes");
         List<String> resolved = moduleResolver.resolve(
                 arguments,
-                new Projection(Set.of("module-path", "module-source-path", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"), false, true),
+                new ResolutionOptions(Set.of("module-path", "module-source-path", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"), false, true),
                 in,
                 err);
         return AutomaticModules.find(resolved);

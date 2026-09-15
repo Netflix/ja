@@ -30,6 +30,23 @@ final class ResolutionArguments {
         return List.copyOf(result);
     }
 
+    static List<String> withAddedModules(List<String> arguments, List<String> modules) {
+        var result = new ArrayList<String>();
+        for (int i = 0; i < arguments.size(); i++) {
+            String argument = arguments.get(i);
+            if (argument.equals("--add-modules")) {
+                operand(arguments, ++i, argument);
+            } else if (!argument.startsWith("--add-modules=")) {
+                result.add(argument);
+            }
+        }
+        if (!modules.isEmpty()) {
+            result.add("--add-modules");
+            result.add(String.join(",", modules));
+        }
+        return List.copyOf(result);
+    }
+
     static List<String> rootsAsAddedModules(List<String> arguments) {
         var result = new ArrayList<String>();
         for (int i = 0; i < arguments.size(); i++) {

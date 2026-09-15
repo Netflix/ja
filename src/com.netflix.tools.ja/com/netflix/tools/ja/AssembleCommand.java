@@ -21,14 +21,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 import com.netflix.tools.ja.ModuleAssembler.Options;
-import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /** Assembles selected source modules into a flat artifact directory. */
 final class AssembleCommand {
     private final ModuleAssembler assembler;
 
-    AssembleCommand(ToolServices tools, List<ToolDefinition> definitions, Projection javadocProjection) {
-        assembler = new ModuleAssembler(tools, definitions, javadocProjection);
+    AssembleCommand(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+        assembler = new ModuleAssembler(tools, definitions, javadocOptions);
     }
 
     int run(JaInvocation commandLine, ModuleSourcePath moduleSourcePath, InputStream in,

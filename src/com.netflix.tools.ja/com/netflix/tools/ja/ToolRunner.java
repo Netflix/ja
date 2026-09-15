@@ -43,7 +43,7 @@ import com.netflix.tools.launcher.ToolLauncher;
  * and tool metadata; the user's tool arguments remain unchanged.
  */
 public final class ToolRunner {
-    record Resolution(ModuleResolver.Projection projection,
+    record Resolution(ResolutionOptions resolutionOptions,
                       Optional<List<String>> explicitModules,
                       Optional<String> implicitModule) {
         Resolution {
@@ -51,7 +51,7 @@ public final class ToolRunner {
         }
 
         boolean participates() {
-            return projection.active();
+            return resolutionOptions.active();
         }
 
         boolean moduleSelected() {
@@ -90,8 +90,8 @@ public final class ToolRunner {
             arguments = List.copyOf(arguments);
         }
 
-        ModuleResolver.Projection projection() {
-            return resolution.projection();
+        ResolutionOptions resolutionOptions() {
+            return resolution.resolutionOptions();
         }
     }
 
@@ -176,47 +176,47 @@ public final class ToolRunner {
         };
     }
 
-    private ModuleResolver.Projection resolutionProjection(JaInvocation commandLine) {
+    private ResolutionOptions initialResolutionOptions(JaInvocation commandLine) {
         return switch (commandLine.command()) {
-            case Command.Tool(var name) -> projection(catalog.definition(name));
-            case Command.Builtin(var builtin) -> builtin.projection();
+            case Command.Tool(var name) -> resolutionOptions(catalog.definition(name));
+            case Command.Builtin(var builtin) -> builtin.resolutionOptions();
             default -> throw new IllegalArgumentException("Command " + commandLine.command() + " does not run a tool");
         };
     }
 
     ResolutionRequest initialResolution(JaInvocation commandLine) {
         return new ResolutionRequest(
-                resolution(commandLine, resolutionProjection(commandLine)),
+                resolution(commandLine, initialResolutionOptions(commandLine)),
                 hasActivation(commandLine));
     }
 
     PreparedInvocation prepare(JaInvocation commandLine, Set<String> selectedModules) {
         var definition = select(commandLine, selectedModules);
-        var resolution = resolution(commandLine, contractProjection(commandLine, definition));
+        var resolution = resolution(commandLine, contractResolutionOptions(commandLine, definition));
         return new PreparedInvocation(definition, resolution, arguments(commandLine, definition));
     }
 
-    private Resolution resolution(JaInvocation commandLine, ModuleResolver.Projection toolProjection) {
-        var projection = toolProjection;
-        var explicitModules = explicitModules(commandLine, projection.options());
+    private Resolution resolution(JaInvocation commandLine, ResolutionOptions toolOptions) {
+        var resolutionOptions = toolOptions;
+        var explicitModules = explicitModules(commandLine, resolutionOptions.options());
         Optional<String> implicitModule = Optional.empty();
         // A single-module tool consumes ja's selected root, not every root
         // introduced while resolving tool activation and static requirements.
-        if (projection.options().contains("module=single")) {
+        if (resolutionOptions.options().contains("module=single")) {
             if (explicitModules.isPresent()) {
                 requireSingleModule(commandLine, explicitModules.orElseThrow());
             } else {
                 requireSingleModule(commandLine, commandLine.rootModules());
                 implicitModule = Optional.of(commandLine.rootModules().getFirst());
             }
-            projection = withoutSingleModule(projection);
+            resolutionOptions = withoutSingleModule(resolutionOptions);
         }
-        return new Resolution(projection, explicitModules, implicitModule);
+        return new Resolution(resolutionOptions, explicitModules, implicitModule);
     }
 
-    ModuleResolver.Projection providerProjection(String name, ModuleResolver.Projection fallback) {
+    ResolutionOptions providerResolutionOptions(String name, ResolutionOptions fallback) {
         return catalog.find(name)
-                .map(definition -> declaredProjection(definition, fallback))
+                .map(definition -> declaredResolutionOptions(definition, fallback))
                 .orElse(fallback);
     }
 
@@ -345,7 +345,7 @@ public final class ToolRunner {
                     definition.activation().flatMap(resolved::moduleVersion));
             return new ToolResolver(tools).resolveLauncher(definition,
                     version,
-                    resolution.projection().compileTime(),
+                    resolution.resolutionOptions().compileTime(),
                     resolutionArguments,
                     commandLine.toolArguments(),
                     in,
@@ -374,7 +374,7 @@ public final class ToolRunner {
         }
         return runProvider(commandLine,
                            definition,
-                           resolution.projection().options(),
+                           resolution.resolutionOptions().options(),
                            resolution.moduleSelected(),
                            arguments,
                            resolved,
@@ -488,7 +488,7 @@ public final class ToolRunner {
         var runtimeArguments =
                 new ModuleResolver(tools)
                         .resolve(List.of("--add-modules", module.orElseThrow()),
-                                providerRuntimeProjection(),
+                                providerRuntimeOptions(),
                                 in,
                                 err);
         if (runtimeAccessIsEffective(layer, runtimeArguments)) {
@@ -525,8 +525,8 @@ public final class ToolRunner {
         return javaLauncher.run(arguments, in, out, err);
     }
 
-    private static ModuleResolver.Projection providerRuntimeProjection() {
-        return new ModuleResolver.Projection(
+    private static ResolutionOptions providerRuntimeOptions() {
+        return new ResolutionOptions(
                 Set.of("module-path", "add-modules", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"),
                 false,
                 true);
@@ -572,7 +572,7 @@ public final class ToolRunner {
         var runtimeArguments =
                 new ModuleResolver(tools)
                         .resolve(resolutionArguments,
-                                 providerRuntimeProjection(),
+                                 providerRuntimeOptions(),
                                  in,
                                  err);
         if (!executionTools.contains(definition.provider())) {
@@ -681,36 +681,36 @@ public final class ToolRunner {
         return true;
     }
 
-    private ModuleResolver.Projection contractProjection(JaInvocation commandLine, ToolDefinition definition) {
+    private ResolutionOptions contractResolutionOptions(JaInvocation commandLine, ToolDefinition definition) {
         return switch (commandLine.command()) {
-            case Command.Tool _ -> projection(definition);
-            case Command.Builtin(var builtin) -> declaredProjection(definition, builtin.projection());
+            case Command.Tool _ -> resolutionOptions(definition);
+            case Command.Builtin(var builtin) -> declaredResolutionOptions(definition, builtin.resolutionOptions());
             default -> throw new IllegalArgumentException("Command " + commandLine.command() + " does not run a tool");
         };
     }
 
-    private ModuleResolver.Projection declaredProjection(ToolDefinition definition, ModuleResolver.Projection fallback) {
-        var declared = definition.projection();
+    private ResolutionOptions declaredResolutionOptions(ToolDefinition definition, ResolutionOptions fallback) {
+        var declared = definition.resolutionOptions();
         var options = declared.options().isEmpty()
                 ? fallback.options()
-                : projection(definition).options();
-        return new ModuleResolver.Projection(options,
+                : resolutionOptions(definition).options();
+        return new ResolutionOptions(options,
                 declared.compileTime() || fallback.compileTime(),
                 declared.validateRuntimeAccess() || fallback.validateRuntimeAccess(),
                 declared.emitCompileDiagnostics() || fallback.emitCompileDiagnostics());
     }
 
-    private ModuleResolver.Projection projection(ToolDefinition definition) {
-        return tools.resolutionProjection(definition.provider(), definition.projection());
+    private ResolutionOptions resolutionOptions(ToolDefinition definition) {
+        return tools.resolutionOptions(definition.provider(), definition.resolutionOptions());
     }
 
-    private static ModuleResolver.Projection withoutSingleModule(ModuleResolver.Projection projection) {
-        var options = new LinkedHashSet<>(projection.options());
+    private static ResolutionOptions withoutSingleModule(ResolutionOptions resolutionOptions) {
+        var options = new LinkedHashSet<>(resolutionOptions.options());
         options.remove("module=single");
-        return new ModuleResolver.Projection(options,
-                projection.compileTime(),
-                projection.validateRuntimeAccess(),
-                projection.emitCompileDiagnostics());
+        return new ResolutionOptions(options,
+                resolutionOptions.compileTime(),
+                resolutionOptions.validateRuntimeAccess(),
+                resolutionOptions.emitCompileDiagnostics());
     }
 
     private boolean hasActivation(JaInvocation commandLine) {

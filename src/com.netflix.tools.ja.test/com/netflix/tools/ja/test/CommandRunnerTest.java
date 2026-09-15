@@ -70,6 +70,7 @@ class CommandRunnerTest {
             "release",
             "upgrade-module-path");
     private static final Set<String> SOURCE_OPTIONS = Set.of("add-exports", "enable-preview", "module=list", "module-path", "module-source-path", "release");
+    private static final Set<String> MODULE_PATH_OPTIONS = Set.of("add-modules", "module-path", "module-source-path", "upgrade-module-path");
     private static final Set<String> RUNTIME_ACCESS_OPTIONS = Set.of(
             "add-exports",
             "add-modules",
@@ -310,7 +311,7 @@ class CommandRunnerTest {
         assertEquals(2, jigInvocations.size());
         var discovery = jigInvocations.get(0);
         assertEquals(List.of("com.example.application"), optionValues(discovery, "-m", "--module"));
-        assertEquals(optionList(CONFIGURATION_OPTIONS), discovery.get(discovery.indexOf("--resolve-options") + 1));
+        assertEquals(optionList(MODULE_PATH_OPTIONS), discovery.get(discovery.indexOf("--resolve-options") + 1));
         assertTrue(discovery.contains("--compile-time"));
         var execution = jigInvocations.get(1);
         assertEquals(List.of("com.example.application", "com.example.tool"), optionValues(execution, "-m", "--module"));
@@ -506,6 +507,75 @@ class CommandRunnerTest {
                          .lines()
                          .toList()
                          .contains("source-probe"));
+    }
+
+    @Test
+    void bareToolDoesNotCompileModulesWithoutToolProviders() throws Exception {
+        Path provider = Files.createDirectories(temporaryDirectory.resolve("src/com.example.tool"));
+        Files.writeString(provider.resolve("module-info.java"),
+                """
+                module com.example.tool {
+                    provides java.util.spi.ToolProvider with com.example.Probe;
+                }
+                """);
+        Path providerPackage = Files.createDirectories(provider.resolve("com/example"));
+        Files.writeString(providerPackage.resolve("Probe.java"),
+                """
+                package com.example;
+
+                public final class Probe implements java.util.spi.ToolProvider {
+                    public String name() { return "source-probe"; }
+                    public int run(java.io.PrintWriter out, java.io.PrintWriter err,
+                                   String... arguments) {
+                        return 0;
+                    }
+                }
+                """);
+        Path unrelated = Files.createDirectories(temporaryDirectory.resolve("src/com.example.application"));
+        Files.writeString(unrelated.resolve("module-info.java"), "module com.example.application {}\n");
+        Files.writeString(unrelated.resolve("Broken.java"), "not Java\n");
+        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool"});
+        var output = new ByteArrayOutputStream();
+        var error = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot()).run(commandLine, InputStream.nullInputStream(),
+                new PrintStream(output), new PrintStream(error));
+
+        assertEquals(0, result, error.toString());
+        assertTrue(output.toString().lines().toList().contains("source-probe"));
+    }
+
+    @Test
+    void bareToolCompilesAProviderRequiredByTheSelectedModule() throws Exception {
+        Path provider = Files.createDirectories(temporaryDirectory.resolve("src/com.example.tool"));
+        Files.writeString(provider.resolve("module-info.java"),
+                "module com.example.tool { provides java.util.spi.ToolProvider with com.example.Probe; }\n");
+        Path providerPackage = Files.createDirectories(provider.resolve("com/example"));
+        Files.writeString(providerPackage.resolve("Probe.java"),
+                """
+                package com.example;
+
+                public final class Probe implements java.util.spi.ToolProvider {
+                    public String name() { return "source-probe"; }
+                    public int run(java.io.PrintWriter out, java.io.PrintWriter err,
+                                   String... arguments) {
+                        return 0;
+                    }
+                }
+                """);
+        Path application = Files.createDirectories(temporaryDirectory.resolve("src/com.example.application"));
+        Files.writeString(application.resolve("module-info.java"),
+                "module com.example.application { requires static com.example.tool; }\n");
+        Files.writeString(application.resolve("Broken.java"), "not Java\n");
+        var commandLine = JaInvocation.parse(application, new String[] {"tool"});
+        var output = new ByteArrayOutputStream();
+        var error = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot()).run(commandLine, InputStream.nullInputStream(),
+                new PrintStream(output), new PrintStream(error));
+
+        assertEquals(0, result, error.toString());
+        assertTrue(output.toString().lines().toList().contains("source-probe"));
     }
 
     @Test
@@ -1775,7 +1845,7 @@ class CommandRunnerTest {
                     int option = arguments.indexOf("--resolve-options");
                     assertTrue(option >= 0);
                     var options = arguments.get(option + 1);
-                    if (options.equals(optionList(CONFIGURATION_OPTIONS))) {
+                    if (options.equals(optionList(MODULE_PATH_OPTIONS))) {
                         assertTrue(arguments.contains("--compile-time"));
                         return 0;
                     }
@@ -1893,6 +1963,56 @@ class CommandRunnerTest {
     }
 
     @Test
+    void benchmarkCompilesOnlyRootsThatRequireItsActivationModule() throws Exception {
+        Path sources = temporaryDirectory.resolve("src");
+        Path benchmark = Files.createDirectories(sources.resolve("com.example.benchmark"));
+        Files.writeString(benchmark.resolve("module-info.java"),
+                "module com.example.benchmark { requires static com.example.activation; }\n");
+        Path unrelated = Files.createDirectories(sources.resolve("com.example.unrelated"));
+        Files.writeString(unrelated.resolve("module-info.java"), "module com.example.unrelated {}\n");
+        Path activation = Files.createDirectories(temporaryDirectory.resolve("activation"));
+        TestModules.writeModuleInfo(activation, "com.example.activation");
+        Path compiled = Files.createDirectories(temporaryDirectory.resolve("compiled"));
+        TestModules.writeModuleInfo(compiled, "com.example.benchmark");
+        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"bench"});
+        var resolutions = new ArrayList<List<String>>();
+        var tools = ToolServices.of(tool("jig",
+                (output, arguments) -> {
+                    resolutions.add(List.copyOf(arguments));
+                    String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
+                    if (options.equals(optionList(MODULE_PATH_OPTIONS))) {
+                        output.print("--module-path\n" + activation + "\n"
+                                + "--module-source-path\ncom.example.benchmark=" + benchmark + "\n"
+                                + "--module-source-path\ncom.example.unrelated=" + unrelated + "\n"
+                                + "--add-modules\ncom.example.benchmark,com.example.unrelated\n");
+                    } else {
+                        output.print("--module-path\n" + compiled + "\n--add-modules\ncom.example.benchmark\n");
+                    }
+                    return 0;
+                }),
+                tool("benchmark", (_, _) -> 0));
+        var definition = new ToolDefinition(
+                "jmh",
+                Launch.PROVIDER,
+                Optional.of("com.example.activation"),
+                Optional.empty(),
+                "benchmark",
+                Optional.empty(),
+                Set.of("module-path", "add-modules"),
+                List.of());
+
+        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(definition)), () -> null)
+                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        new PrintStream(new ByteArrayOutputStream()));
+
+        assertEquals(0, result);
+        assertEquals(2, resolutions.size());
+        var compilation = resolutions.getLast();
+        assertEquals(List.of("com.example.benchmark"), optionValues(compilation, "-m", "--module"));
+        assertFalse(compilation.contains("com.example.unrelated"), compilation.toString());
+    }
+
+    @Test
     void staticRequirementActivatesAToolWithoutJoiningItsRuntimeArguments() throws Exception {
         Files.writeString(temporaryDirectory.resolve("module-info.java"),
                 """
@@ -1911,7 +2031,7 @@ class CommandRunnerTest {
                 "jig",
                 (output, arguments) -> {
                     var options = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    if (options.equals(optionList(CONFIGURATION_OPTIONS)) && arguments.contains("--compile-time")) {
+                    if (options.equals(optionList(MODULE_PATH_OPTIONS)) && arguments.contains("--compile-time")) {
                         output.print("--module-path\n" + application + File.pathSeparator + activation + "\n--add-modules\ncom.example.app,com.example.formatter\n");
                         return 0;
                     }

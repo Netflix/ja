@@ -31,7 +31,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.netflix.tools.ja.JmodPackager.Artifacts;
-import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /**
  * Assembles flat, module-named binary, source, documentation, deployment
@@ -65,14 +64,14 @@ final class ModuleAssembler {
 
     private final ToolServices tools;
     private final List<ToolDefinition> definitions;
-    private final Projection javadocProjection;
+    private final ResolutionOptions javadocOptions;
     private final JarPackager jars;
     private final JmodPackager jmods;
 
-    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions, Projection javadocProjection) {
+    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
-        this.javadocProjection = javadocProjection;
+        this.javadocOptions = javadocOptions;
         this.jars = new JarPackager(tools);
         this.jmods = new JmodPackager(tools);
     }
@@ -136,8 +135,8 @@ final class ModuleAssembler {
         selectedArguments.add("--verify-module-hashes");
         selectedArguments.add("--module-version");
         selectedArguments.add(options.version());
-        var artifactRuntime = new Projection(ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS.options(), false, false);
-        writeProjection(selectedArguments, artifactRuntime, work.resolve("selected-runtime.args"), err);
+        var artifactRuntime = new ResolutionOptions(ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.options(), false, false);
+        writeOptions(selectedArguments, artifactRuntime, work.resolve("selected-runtime.args"), err);
         var plans = new ArrayList<Plan>();
         int index = 0;
         for (String module : commandLine.rootModules()) {
@@ -153,11 +152,11 @@ final class ModuleAssembler {
             arguments.add("--verify-module-hashes");
             arguments.add("--module-version");
             arguments.add(options.version());
-            writeProjection(arguments, ToolProjections.JAVAC, compileArguments, err);
-            writeProjection(arguments, artifactRuntime, runtimeArguments, err);
-            writeProjection(arguments, new Projection(Set.of("main-class", "module-version"), false, false),
+            writeOptions(arguments, ResolutionOptions.JAVAC, compileArguments, err);
+            writeOptions(arguments, artifactRuntime, runtimeArguments, err);
+            writeOptions(arguments, new ResolutionOptions(Set.of("main-class", "module-version"), false, false),
                     jarArguments, err);
-            writeProjection(arguments, javadocProjection, javadocArguments, err);
+            writeOptions(arguments, javadocOptions, javadocArguments, err);
             plans.add(
                     new Plan(
                             module,
@@ -175,20 +174,20 @@ final class ModuleAssembler {
         return List.copyOf(plans);
     }
 
-    private void writeProjection(List<String> resolutionArguments, Projection projection, Path argumentFile,
+    private void writeOptions(List<String> resolutionArguments, ResolutionOptions options, Path argumentFile,
             PrintStream err) {
         var arguments = new ArrayList<>(resolutionArguments);
         arguments.add("--resolve-options");
-        arguments.add(projection.options().stream()
+        arguments.add(options.options().stream()
                 .sorted()
                 .collect(Collectors.joining(",")));
-        if (projection.compileTime()) {
+        if (options.compileTime()) {
             arguments.add("--compile-time");
         }
-        if (projection.validateRuntimeAccess()) {
+        if (options.validateRuntimeAccess()) {
             arguments.add("--validate-runtime-access");
         }
-        if (!projection.emitCompileDiagnostics()) {
+        if (!options.emitCompileDiagnostics()) {
             arguments.add("--no-compile-diagnostics");
         }
         arguments.add("--write-argfile");

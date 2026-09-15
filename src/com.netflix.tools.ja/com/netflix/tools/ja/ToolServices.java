@@ -38,7 +38,6 @@ import javax.tools.Tool;
 
 import com.netflix.tools.cli.CommandLine.Completion;
 import com.netflix.tools.cli.CommandLine.CompletionRequest;
-import com.netflix.tools.ja.ModuleResolver.Projection;
 import com.netflix.tools.launcher.CompletionBundle.Builder;
 import com.netflix.tools.launcher.ModuleOptions;
 
@@ -50,6 +49,10 @@ import com.netflix.tools.launcher.ModuleOptions;
  * tool interface without maintaining separate execution paths.
  */
 public final class ToolServices {
+    static final String TOOL_SERVICE = Tool.class.getName();
+    static final String TOOL_PROVIDER_SERVICE = ToolProvider.class.getName();
+    static final Set<String> TOOL_SERVICE_NAMES = Set.of(TOOL_SERVICE, TOOL_PROVIDER_SERVICE);
+
     private enum Invocation {
         RESOLUTION,
         EXECUTION
@@ -294,21 +297,21 @@ public final class ToolServices {
             return ModuleOptions.resolutionOptions(declaredOptions);
         }
         if (compilerTools.get(name) instanceof JavaCompiler) {
-            return ToolProjections.JAVAC_OPTIONS;
+            return ResolutionOptions.JAVAC_OPTIONS;
         }
         var checker = optionChecker(name);
         return checker == null ? Set.of() : ModuleOptions.supportedBy(checker);
     }
 
-    Projection resolutionProjection(String name, Projection declared) {
+    ResolutionOptions resolutionOptions(String name, ResolutionOptions declared) {
         if (declared.active()) {
             return declared;
         }
         if (compilerTools.get(name) instanceof JavaCompiler) {
-            return ToolProjections.JAVAC;
+            return ResolutionOptions.JAVAC;
         }
         var checker = optionChecker(name);
-        return new Projection(checker == null ? Set.of() : ModuleOptions.supportedBy(checker),
+        return new ResolutionOptions(checker == null ? Set.of() : ModuleOptions.supportedBy(checker),
                 false, false);
     }
 

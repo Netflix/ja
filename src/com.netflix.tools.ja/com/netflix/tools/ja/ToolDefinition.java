@@ -203,8 +203,8 @@ public record ToolDefinition(String name,
         return ModuleOptions.checker(options).isSupportedOption(option);
     }
 
-    ModuleResolver.Projection projection() {
-        return new ModuleResolver.Projection(ModuleOptions.resolutionOptions(options), compileTime, validateRuntimeAccess);
+    ResolutionOptions resolutionOptions() {
+        return new ResolutionOptions(ModuleOptions.resolutionOptions(options), compileTime, validateRuntimeAccess);
     }
 
     public String resolveVersion(Optional<ModuleDescriptor.Version> selectedVersion) {

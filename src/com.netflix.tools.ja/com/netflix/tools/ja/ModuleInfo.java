@@ -15,14 +15,18 @@
 package com.netflix.tools.ja;
 
 import java.io.IOException;
+import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleDescriptor.Requires.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ServiceLoader;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.tools.Diagnostic.Kind;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -33,8 +37,12 @@ import com.netflix.tools.ja.RequireRequest.Dependency;
 import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.DirectiveTree;
+import com.sun.source.tree.ExportsTree;
 import com.sun.source.tree.ModuleTree;
+import com.sun.source.tree.OpensTree;
+import com.sun.source.tree.ProvidesTree;
 import com.sun.source.tree.RequiresTree;
+import com.sun.source.tree.UsesTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.SourcePositions;
 import com.sun.source.util.Trees;
@@ -52,6 +60,50 @@ final class ModuleInfo {
         return parse(descriptor).module()
                                 .getName()
                                 .toString();
+    }
+
+    static ModuleDescriptor descriptor(Path descriptor) throws IOException {
+        var module = parse(descriptor).module();
+        ModuleDescriptor.Builder builder = module.getModuleType() == ModuleTree.ModuleKind.OPEN
+                ? ModuleDescriptor.newOpenModule(module.getName().toString())
+                : ModuleDescriptor.newModule(module.getName().toString());
+        for (var directive : module.getDirectives()) {
+            if (directive instanceof RequiresTree requires) {
+                var modifiers = EnumSet.noneOf(Modifier.class);
+                if (requires.isStatic()) {
+                    modifiers.add(Modifier.STATIC);
+                }
+                if (requires.isTransitive()) {
+                    modifiers.add(Modifier.TRANSITIVE);
+                }
+                builder.requires(modifiers, requires.getModuleName().toString());
+            } else if (directive instanceof ExportsTree exports) {
+                var moduleNames = exports.getModuleNames();
+                if (moduleNames == null || moduleNames.isEmpty()) {
+                    builder.exports(exports.getPackageName().toString());
+                } else {
+                    builder.exports(exports.getPackageName().toString(), moduleNames.stream()
+                            .map(Object::toString)
+                            .collect(Collectors.toUnmodifiableSet()));
+                }
+            } else if (directive instanceof OpensTree opens) {
+                var moduleNames = opens.getModuleNames();
+                if (moduleNames == null || moduleNames.isEmpty()) {
+                    builder.opens(opens.getPackageName().toString());
+                } else {
+                    builder.opens(opens.getPackageName().toString(), moduleNames.stream()
+                            .map(Object::toString)
+                            .collect(Collectors.toUnmodifiableSet()));
+                }
+            } else if (directive instanceof ProvidesTree provides) {
+                builder.provides(provides.getServiceName().toString(), provides.getImplementationNames().stream()
+                        .map(Object::toString)
+                        .toList());
+            } else if (directive instanceof UsesTree uses) {
+                builder.uses(uses.getServiceName().toString());
+            }
+        }
+        return builder.build();
     }
 
     static List<VersionedRequirement> versionedRequirements(Path descriptor) throws IOException {

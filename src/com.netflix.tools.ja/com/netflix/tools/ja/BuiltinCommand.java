@@ -32,31 +32,30 @@ import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
 import com.netflix.tools.ja.Command.Source;
 import com.netflix.tools.ja.Command.Tools;
-import com.netflix.tools.ja.ModuleResolver.Projection;
 
 /** A stable, ergonomic command in ja's base surface. */
 public enum BuiltinCommand {
     INIT("init", HelpGroup.DEVELOP, "Initialize a source module", workflow(),
-            project()),
+            standardOptions()),
     REQUIRE("require", HelpGroup.DEVELOP, "Add or update dependencies", workflow(),
-            project("module-source-path")),
+            standardOptions("module-source-path")),
     GENERATE("generate", HelpGroup.DEVELOP, "Update generated source", workflow(requiresProvider("javac")),
             javac()),
     FMT("fmt", HelpGroup.DEVELOP, "Format source", new ToolBacked("jfmt"),
             sourceTool(false)),
     COMPILE("compile", HelpGroup.DEVELOP, "Compile source modules", new Materialize(),
-            project("module-path", "upgrade-module-path").withCompileDiagnostics()),
+            standardOptions("module-path", "upgrade-module-path").withCompileDiagnostics()),
     RUN("run", HelpGroup.DEVELOP, "Run a module", new LaunchJava(),
             javaLauncher()),
     TEST("test", HelpGroup.DEVELOP, "Run tests", new ToolBacked("junit"),
-            ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS.withCompileTime(true)),
+            ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.withCompileTime(true)),
     BENCH("bench", HelpGroup.DEVELOP, "Run benchmarks", new ToolBacked("jmh"),
             runtimeTool(false)),
 
     LIST("list", HelpGroup.EXPLORE, "List observable modules", new LaunchJava(),
-            project("module-path", "upgrade-module-path", "add-modules")),
+            standardOptions("module-path", "upgrade-module-path", "add-modules")),
     DESCRIBE("describe", HelpGroup.EXPLORE, "Describe a module", new LaunchJava(),
-            project("module-path", "upgrade-module-path", "describe-module")),
+            standardOptions("module-path", "upgrade-module-path", "describe-module")),
     DOC(
             "doc",
             HelpGroup.EXPLORE,
@@ -71,29 +70,29 @@ public enum BuiltinCommand {
             HelpGroup.BUILD,
             "Assemble module artifacts",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
-            Projection.EMPTY),
+            ResolutionOptions.EMPTY),
     INSTALL("install", HelpGroup.BUILD, "Install a module as a command",
-            workflow(requiresProvider("jlink")), ToolProjections.COMPLETE_JAVA),
+            workflow(requiresProvider("jlink")), ResolutionOptions.COMPLETE_JAVA),
     MAVEN(
             "maven",
             HelpGroup.BUILD,
             "Export Maven projects or install and deploy modules",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
-            Projection.EMPTY);
+            ResolutionOptions.EMPTY);
 
     private final String commandName;
     private final HelpGroup helpGroup;
     private final String description;
     private final Execution execution;
-    private final Projection projection;
+    private final ResolutionOptions resolutionOptions;
 
     BuiltinCommand(String commandName, HelpGroup helpGroup, String description,
-                   Execution execution, Projection projection) {
+                   Execution execution, ResolutionOptions resolutionOptions) {
         this.commandName = commandName;
         this.helpGroup = helpGroup;
         this.description = description;
         this.execution = execution;
-        this.projection = projection;
+        this.resolutionOptions = resolutionOptions;
     }
 
     String commandName() {
@@ -113,11 +112,11 @@ public enum BuiltinCommand {
     }
 
     public Set<String> options() {
-        return projection.options();
+        return resolutionOptions.options();
     }
 
-    Projection projection() {
-        return projection;
+    ResolutionOptions resolutionOptions() {
+        return resolutionOptions;
     }
 
     List<ToolRequirement> requiredTools() {
@@ -157,24 +156,24 @@ public enum BuiltinCommand {
         return new Provider(name);
     }
 
-    private static Projection project(String... options) {
-        return new Projection(Set.of(options), false, false);
+    private static ResolutionOptions standardOptions(String... options) {
+        return new ResolutionOptions(Set.of(options), false, false);
     }
 
-    private static Projection javac() {
-        return ToolProjections.JAVAC;
+    private static ResolutionOptions javac() {
+        return ResolutionOptions.JAVAC;
     }
 
-    private static Projection sourceTool(boolean compileTime) {
-        return ToolProjections.sourceList(compileTime);
+    private static ResolutionOptions sourceTool(boolean compileTime) {
+        return ResolutionOptions.sourceList(compileTime);
     }
 
-    private static Projection javaLauncher() {
-        return ToolProjections.JAVA;
+    private static ResolutionOptions javaLauncher() {
+        return ResolutionOptions.JAVA;
     }
 
-    private static Projection runtimeTool(boolean compileTime) {
-        return ToolProjections.runtimeWithAccess(compileTime);
+    private static ResolutionOptions runtimeTool(boolean compileTime) {
+        return ResolutionOptions.runtimeWithAccess(compileTime);
     }
 
     sealed interface ToolRequirement {

@@ -284,7 +284,7 @@ class AssembleTest {
                     assertTrue(arguments.contains("--no-compile-diagnostics"));
                     assertFalse(arguments.contains("--validate-runtime-access"), arguments.toString());
                     assertFalse(arguments.stream().anyMatch(argument -> argument.startsWith("source-path=")));
-                    String projection = "--module-path\n" + runtimeModule + "\n";
+                    String resolvedArguments = "--module-path\n" + runtimeModule + "\n";
                     int write = arguments.indexOf("--write-argfile");
                     if (write >= 0) {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -292,7 +292,7 @@ class AssembleTest {
                             assertTrue(options.contains("upgrade-module-path"), options);
                         }
                         Path argumentFile = Path.of(arguments.get(write + 1));
-                        Files.writeString(argumentFile, options.equals("main-class,module-version") ? "--main-class\ncom.example.Application\n--module-version\n1.0\n" : projection);
+                        Files.writeString(argumentFile, options.equals("main-class,module-version") ? "--main-class\ncom.example.Application\n--module-version\n1.0\n" : resolvedArguments);
                     }
                     return 0;
                 });

@@ -24,70 +24,45 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Requests from {@code jig} the standard option projection required by a
+ * Requests from {@code jig} the standard Java options required by a
  * module-aware tool.
  *
  * <p>This type is the resolution boundary with {@code jig}; it does not
  * interpret source descriptors or construct a parallel project model.
  */
 public final class ModuleResolver {
-    public record Projection(Set<String> options, boolean compileTime, boolean validateRuntimeAccess,
-            boolean emitCompileDiagnostics) {
-        public static final Projection EMPTY = new Projection(Set.of(), false, false);
-
-        public Projection(Set<String> options, boolean compileTime, boolean validateRuntimeAccess) {
-            this(options, compileTime, validateRuntimeAccess, false);
-        }
-
-        public Projection {
-            options = Set.copyOf(options);
-        }
-
-        boolean active() {
-            return !options.isEmpty() || compileTime || validateRuntimeAccess;
-        }
-
-        Projection withCompileTime(boolean value) {
-            return value == compileTime ? this : new Projection(options, value, validateRuntimeAccess, emitCompileDiagnostics);
-        }
-
-        Projection withCompileDiagnostics() {
-            return emitCompileDiagnostics ? this : new Projection(options, compileTime, validateRuntimeAccess, true);
-        }
-    }
-
     private final ToolServices tools;
 
     public ModuleResolver(ToolServices tools) {
         this.tools = tools;
     }
 
-    public List<String> resolve(List<String> resolutionArguments, Projection projection, InputStream in,
+    public List<String> resolve(List<String> resolutionArguments, ResolutionOptions options, InputStream in,
             PrintStream err) {
-        return resolve(resolutionArguments, projection, List.of(), in, err);
+        return resolve(resolutionArguments, options, List.of(), in, err);
     }
 
-    public List<String> resolve(List<String> resolutionArguments, Projection projection, List<String> suppliedArguments,
+    public List<String> resolve(List<String> resolutionArguments, ResolutionOptions options, List<String> suppliedArguments,
             InputStream in, PrintStream err) {
-        if (!projection.active()) {
+        if (!options.active()) {
             return List.of();
         }
-        return run(arguments(resolutionArguments, projection, suppliedArguments), in, err);
+        return run(arguments(resolutionArguments, options, suppliedArguments), in, err);
     }
 
-    private static ArrayList<String> arguments(List<String> resolutionArguments, Projection projection, List<String> suppliedArguments) {
+    private static ArrayList<String> arguments(List<String> resolutionArguments, ResolutionOptions options, List<String> suppliedArguments) {
         var arguments = new ArrayList<>(resolutionArguments);
-        if (!projection.options().isEmpty()) {
+        if (!options.options().isEmpty()) {
             arguments.add("--resolve-options");
-            arguments.add(optionSpecifications(projection.options()));
+            arguments.add(optionSpecifications(options.options()));
         }
-        if (projection.compileTime()) {
+        if (options.compileTime()) {
             arguments.add("--compile-time");
         }
-        if (projection.validateRuntimeAccess()) {
+        if (options.validateRuntimeAccess()) {
             arguments.add("--validate-runtime-access");
         }
-        if (!projection.emitCompileDiagnostics()) {
+        if (!options.emitCompileDiagnostics()) {
             arguments.add("--no-compile-diagnostics");
         }
         if (!suppliedArguments.isEmpty()) {

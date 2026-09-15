@@ -44,7 +44,7 @@ final class DocumentationCommand {
                 arguments.addAll(List.of("--source", "doc", "--break", "--no-line-number", symbol));
                 yield tools.run("jist", in, out, err, arguments.toArray(String[]::new));
             }
-            case Browse(var type) -> browser.browse(ToolArguments.select(resolvedArguments, ModuleOptions.checker(ToolProjections.JAVAC_OPTIONS), DocumentationHandler.optionChecker()),
+            case Browse(var type) -> browser.browse(ToolArguments.select(resolvedArguments, ModuleOptions.checker(ResolutionOptions.JAVAC_OPTIONS), DocumentationHandler.optionChecker()),
                     type);
         };
     }

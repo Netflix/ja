@@ -66,6 +66,11 @@ public record JaInvocation(
         toolArguments = List.copyOf(toolArguments);
     }
 
+    JaInvocation withRootModules(List<String> modules) {
+        return new JaInvocation(workingDirectory, verbose, command, moduleSourcePath, modules,
+                ResolutionArguments.withRoots(resolutionArguments, modules), toolArguments);
+    }
+
     public static JaInvocation parse(Path workingDirectory, String[] arguments) throws IOException {
         if (arguments.length == 0) {
             throw new IllegalArgumentException("Missing command");

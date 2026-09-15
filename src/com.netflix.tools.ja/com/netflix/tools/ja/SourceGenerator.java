@@ -95,7 +95,7 @@ final class SourceGenerator {
 
     private List<String> resolve(List<String> resolutionArguments, Path request, PrintStream err) throws IOException {
         Files.createDirectories(request);
-        return moduleResolver.resolve(resolutionArguments, ToolProjections.JAVAC, InputStream.nullInputStream(), err);
+        return moduleResolver.resolve(resolutionArguments, ResolutionOptions.JAVAC, InputStream.nullInputStream(), err);
     }
 
     private static boolean hasProcessorModulePath(List<String> arguments) {

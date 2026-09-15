@@ -23,7 +23,7 @@ import java.util.Set;
 import java.util.spi.ToolProvider;
 
 import com.netflix.tools.ja.ModuleResolver;
-import com.netflix.tools.ja.ModuleResolver.Projection;
+import com.netflix.tools.ja.ResolutionOptions;
 import com.netflix.tools.ja.ToolExecutionException;
 import com.netflix.tools.ja.ToolServices;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ModuleResolverTest {
     @Test
-    void requestsAStandardArgumentProjection() {
+    void requestsStandardJavaOptions() {
         var runWith = new ArrayList<String>();
         var resolver = new ModuleResolver(ToolServices.of(tool((out, arguments) -> {
             runWith.addAll(arguments);
@@ -41,7 +41,7 @@ class ModuleResolverTest {
             return 0;
         })));
 
-        List<String> result = resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new Projection(Set.of("module-path", "add-modules"), false, true),
+        List<String> result = resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path", "add-modules"), false, true),
                 List.of("--enable-feature"), InputStream.nullInputStream(), System.err);
 
         assertEquals(
@@ -59,7 +59,7 @@ class ModuleResolverTest {
             return 0;
         })));
 
-        resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new Projection(Set.of("module-path"), false, false, true),
+        resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path"), false, false, true),
                 InputStream.nullInputStream(), System.err);
 
         assertEquals(List.of("--module-source-path", "src", "-m", "com.example.app", "--resolve-options", "module-path"), runWith);
@@ -71,7 +71,7 @@ class ModuleResolverTest {
 
         assertThrows(
                 ToolExecutionException.class,
-                () -> resolver.resolve(List.of(), new Projection(Set.of("module-path"), true, false), InputStream.nullInputStream(),
+                () -> resolver.resolve(List.of(), new ResolutionOptions(Set.of("module-path"), true, false), InputStream.nullInputStream(),
                         System.err));
     }
 

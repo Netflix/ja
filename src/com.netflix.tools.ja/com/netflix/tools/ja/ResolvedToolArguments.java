@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Carries projected tool arguments together with the standard descriptors of
+ * Carries resolved tool arguments together with the standard descriptors of
  * the selected modules.
  */
 public record ResolvedToolArguments(List<String> arguments,

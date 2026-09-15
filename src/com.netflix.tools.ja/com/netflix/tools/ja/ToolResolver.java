@@ -39,7 +39,7 @@ final class ToolResolver {
         var arguments = new ArrayList<>(ResolutionArguments.rootsAsAddedModules(resolutionArguments));
         arguments.add("--add-requires");
         arguments.add(module + "@" + version);
-        return moduleResolver.resolve(arguments, ToolProjections.JAVA.withCompileTime(includeStatic),
+        return moduleResolver.resolve(arguments, ResolutionOptions.JAVA.withCompileTime(includeStatic),
                 suppliedArguments, in, err);
     }
 
