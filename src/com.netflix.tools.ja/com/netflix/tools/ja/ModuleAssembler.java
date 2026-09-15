@@ -136,9 +136,8 @@ final class ModuleAssembler {
         selectedArguments.add("--verify-module-hashes");
         selectedArguments.add("--module-version");
         selectedArguments.add(options.version());
-        writeProjection(selectedArguments, ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS,
-                work.resolve("selected-runtime.args"), err);
         var artifactRuntime = new Projection(ToolProjections.COMPLETE_RUNTIME_WITH_ACCESS.options(), false, false);
+        writeProjection(selectedArguments, artifactRuntime, work.resolve("selected-runtime.args"), err);
         var plans = new ArrayList<Plan>();
         int index = 0;
         for (String module : commandLine.rootModules()) {

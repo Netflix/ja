@@ -282,6 +282,7 @@ class AssembleTest {
                 "jig",
                 (output, arguments) -> {
                     assertTrue(arguments.contains("--no-compile-diagnostics"));
+                    assertFalse(arguments.contains("--validate-runtime-access"), arguments.toString());
                     assertFalse(arguments.stream().anyMatch(argument -> argument.startsWith("source-path=")));
                     String projection = "--module-path\n" + runtimeModule + "\n";
                     int write = arguments.indexOf("--write-argfile");
