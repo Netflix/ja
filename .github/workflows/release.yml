@@ -27,8 +27,6 @@ jobs:
     if: ${{ github.repository == 'Netflix/ja' }}
     environment: Maven Central
     runs-on: ubuntu-latest
-    env:
-      BOOTSTRAP_JA_VERSION: 0.17.12
     steps:
       - uses: actions/checkout@v6
 
@@ -42,17 +40,10 @@ jobs:
         run: |
           echo "SOURCE_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           echo "BUILD_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          echo "BOOTSTRAP_JAVA_HOME=$RUNNER_TEMP/ja-bootstrap" >> "$GITHUB_ENV"
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
-      - name: Link bootstrap ja development JDK
-        run: |
-          .github/scripts/link-ja-development-jdk.sh \
-            "$SOURCE_JAVA_HOME" \
-            "$BOOTSTRAP_JAVA_HOME" \
-            "$BOOTSTRAP_JA_VERSION"
-          echo "JAVA_HOME=$BOOTSTRAP_JAVA_HOME" >> "$GITHUB_ENV"
-          echo "$BOOTSTRAP_JAVA_HOME/bin" >> "$GITHUB_PATH"
+      - name: Set up bootstrap ja
+        uses: Netflix/ja/.github/actions/setup-ja@v0.18.7
 
       - name: Build native launchers with Zig
         run: src/launcher/build.sh
