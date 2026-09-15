@@ -25,6 +25,9 @@ final class AotWarmup {
     private AotWarmup() {}
 
     static int run(PrintStream err) throws IOException {
+        var layer = AotWarmup.class.getModule().getLayer();
+        var tools = ToolServices.load(layer);
+        var catalog = ToolCatalog.load(layer).withDiscovered(tools);
         try (var work = TemporaryDirectory.create();
              var out = new PrintStream(OutputStream.nullOutputStream())) {
             int result = invoke(work, out, err, "--help");
@@ -63,9 +66,11 @@ final class AotWarmup {
                         public static void main(String[] args) {}
                     }
                     """);
-            result = invoke(work, out, err, "fmt");
-            if (result != 0) {
-                return result;
+            if (available(BuiltinCommand.FMT, tools, catalog)) {
+                result = invoke(work, out, err, "fmt");
+                if (result != 0) {
+                    return result;
+                }
             }
             result = invoke(work, out, err, "compile");
             if (result != 0) {
@@ -75,13 +80,17 @@ final class AotWarmup {
             if (result != 0) {
                 return result;
             }
-            result = invoke(work, out, err, "source", "java.lang.String.isEmpty");
-            if (result != 0) {
-                return result;
+            if (available(BuiltinCommand.SOURCE, tools, catalog)) {
+                result = invoke(work, out, err, "source", "java.lang.String.isEmpty");
+                if (result != 0) {
+                    return result;
+                }
             }
-            result = invoke(work, out, err, "doc", "java.lang.String.isEmpty");
-            if (result != 0) {
-                return result;
+            if (available(BuiltinCommand.DOC, tools, catalog)) {
+                result = invoke(work, out, err, "doc", "java.lang.String.isEmpty");
+                if (result != 0) {
+                    return result;
+                }
             }
             result = invoke(
                     work,
@@ -111,6 +120,11 @@ final class AotWarmup {
             loadModuleClasses();
             return 0;
         }
+    }
+
+    private static boolean available(BuiltinCommand command, ToolServices tools,
+            ToolCatalog catalog) {
+        return CommandAvailability.missingTools(command, tools, catalog).isEmpty();
     }
 
     private static int invoke(TemporaryDirectory work, PrintStream out, PrintStream err,
