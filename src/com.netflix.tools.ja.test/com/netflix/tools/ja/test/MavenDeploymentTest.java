@@ -61,7 +61,7 @@ class MavenDeploymentTest {
     }
 
     @Test
-    void validatesTheCallerSelectedModuleScope(@TempDir Path directory) throws Exception {
+    void preservesTheCallerSelectedModuleScopeDuringPreparation(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.application");
         sourceModule(directory, "com.example.library");
 
@@ -170,7 +170,7 @@ class MavenDeploymentTest {
         var commandLine = JaInvocation.parse(workingDirectory,
                 new String[] {"maven", "install", "--module-version", "1.0"});
         assertThrows(ToolExecutionException.class, () -> run(commandLine, tools));
-        assertTrue(invocation.get().contains("--validate-runtime-access"));
+        assertFalse(invocation.get().contains("--validate-runtime-access"));
         return invocation.get();
     }
 
