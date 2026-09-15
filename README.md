@@ -128,7 +128,7 @@ While `com.example.hello` is fine for this example, for a module you intend to p
 
 ## Continuous Integration
 
-Refer to the [minimal bootstrap script](.github/actions/setup-ja/link.sh) for the steps to produce a `ja` development JDK for continuous integration. It resolves the `ja` modules with Jig and passes the resulting argument file directly to the source JDK's `jlink`. Packaged JMODs from the source JDK and resolved modules are retained so subsequent links can replace bundled modules.
+Refer to the [minimal bootstrap script](.github/actions/setup-ja/link.sh) for the steps to produce a `ja` development JDK for continuous integration. It resolves the `ja` modules and passes the resulting argument file directly to the source JDK's `jlink`. Packaged JMODs from the source JDK and resolved modules are retained so subsequent links can replace bundled modules.
 
 ### GitHub Actions
 
@@ -396,13 +396,13 @@ ja test -t fast
 ja test --tag fast --tag unit
 ```
 
-Use an ordinary `ja require org.junit.jupiter` instead for a dedicated test module. The resolved root modules define JUnit's discovery scope. Name one or more classes or methods to select them.
+Use an ordinary `ja require org.junit.jupiter` instead for a dedicated test module. The resolved root modules define the test discovery scope. Name one or more classes or methods to select them.
 
 A bare `ja test` discovers tests in the resolved root modules and reuses successful ordinary Jupiter `@Test` methods while their test classes, reachable code, and module inputs are unchanged. Parameterized, repeated, dynamic, template, and other tests execute on every run.
 
 `--all` runs all tests without reuse. Explicit selectors, `-t`, and `--tag` run the selected tests without reuse; either tag option may be repeated. Use the standalone `junit` tool for other Console options. The summary distinguishes JUnit containers and tests from test methods satisfied by the cache.
 
-JUnit runner output uses a compact summary by default and includes failure details when tests fail. Standard output and error produced by tests are captured in structured reports instead of written to the console; reports from failed runs are retained and linked from the failure output.
+Test runner output uses a compact summary by default and includes failure details when tests fail. Standard output and error produced by tests are captured in structured reports instead of written to the console; reports from failed runs are retained and linked from the failure output.
 
 ## Run benchmarks
 
@@ -420,7 +420,7 @@ ja bench com.example.application.ApplicationBenchmark
 ja bench com.example.application.ApplicationBenchmark.starts
 ```
 
-Use an ordinary `ja require org.openjdk.jmh.core` instead for a dedicated benchmark module. The tool discovers benchmarks from activated root modules, generates the JMH harness, and runs it without requiring a separate generated-source build. Name one or more classes or methods to select them. Use `ja tool jmh` for JMH options and native selector syntax.
+Use an ordinary `ja require org.openjdk.jmh.core` instead for a dedicated benchmark module. The tool discovers benchmarks from activated root modules, generates the benchmark harness, and runs it without requiring a separate generated-source build. Name one or more classes or methods to select them. Use `ja tool jmh` for additional options and native selector syntax.
 
 ## Format source
 
@@ -613,7 +613,7 @@ An application containing automatic modules requires `java.se` in its runtime im
 
 ## Tools
 
-Modules make Java tools available through the standard [`Tool`](https://docs.oracle.com/en/java/javase/25/docs/api/java.compiler/javax/tools/Tool.html) and [`ToolProvider`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/spi/ToolProvider.html) service interfaces. `ja` runs them in the module context selected by the current directory. The built-in `fmt`, `test`, and `bench` workflows use Jfmt, JUnit, and JMH respectively; `ja tool` runs a named tool directly.
+Modules make Java tools available through the standard [`Tool`](https://docs.oracle.com/en/java/javase/25/docs/api/java.compiler/javax/tools/Tool.html) and [`ToolProvider`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/spi/ToolProvider.html) service interfaces. `ja` runs them in the module context selected by the current directory. It provides the built-in `fmt`, `test`, and `bench` workflows; `ja tool` runs a named tool directly.
 
 Module-aware tools declare the standard Java arguments they accept, allowing `ja` to supply only the module paths, selected modules, and runtime access they need. The [native launcher](#native-launcher) packages service-provided tools as ordinary commands without wrapper scripts or Java launch syntax.
 
@@ -699,7 +699,7 @@ This metadata makes `junit` applicable when `org.junit.platform.engine` is prese
 
 `class-suffix` and `package-suffix` identify tool-specific content when packaging a module. If the activation dependency is static, matching classes, packages, and resources are left out of `jar`, `jmod`, and Maven artifacts. An ordinary requirement keeps that content in the artifacts.
 
-Include `verbose` in `options` when the tool accepts `--verbose`. Ja passes its global `--verbose` switch to tools that declare this support or expose it through `OptionChecker`.
+Include `verbose` in `options` when the tool accepts `--verbose`. `ja` passes its global `--verbose` switch to tools that declare this support or expose it through `OptionChecker`.
 
 Use `provider` when the service name differs from the metadata name. Append `@version` to `module` to select a fixed provider version; otherwise the version of the activation module is used.
 
