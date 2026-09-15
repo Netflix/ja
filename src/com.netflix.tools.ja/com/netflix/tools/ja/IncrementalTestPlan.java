@@ -28,11 +28,21 @@ final class IncrementalTestPlan {
     static Map<String, TestExecution> create(List<TestMethod> tests, ResolvedClassModels classes, TestResultStore results) throws IOException {
         var executions = new LinkedHashMap<String, TestExecution>();
         for (var test : tests) {
-            var trace = results.trace(test.selector());
+            var trace = results.storedTrace(test.selector());
             if (trace.isEmpty()) {
                 continue;
             }
-            classes.observedExecution(test, trace.orElseThrow()).ifPresent(execution -> executions.put(test.selector(), execution));
+            var previous = trace.orElseThrow();
+            var execution = classes.observedExecution(test, previous);
+            if (execution.isEmpty()) {
+                continue;
+            }
+            var current = execution.orElseThrow();
+            executions.put(test.selector(), current);
+            if (!current.observedClassHash().equals(previous.observedClassHash())
+                    && results.hasSuccessfulResult(current)) {
+                results.updateTrace(current);
+            }
         }
         return Map.copyOf(executions);
     }

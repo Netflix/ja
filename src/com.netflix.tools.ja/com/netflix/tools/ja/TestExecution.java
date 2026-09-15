@@ -22,12 +22,20 @@ import java.util.Set;
 /** Observed code, module inputs, and runtime image for one test method. */
 public record TestExecution(String selector,
                             String codeHash,
+                            String observedClassHash,
                             List<ResolvedClassModels.ModuleState> moduleStates,
                             String runtimeImageHash,
                             Set<ExecutionTrace.Event> trace) {
+    public TestExecution(String selector, String codeHash,
+            List<ResolvedClassModels.ModuleState> moduleStates, String runtimeImageHash,
+            Set<ExecutionTrace.Event> trace) {
+        this(selector, codeHash, "", moduleStates, runtimeImageHash, trace);
+    }
+
     public TestExecution {
         Objects.requireNonNull(selector, "selector");
         Objects.requireNonNull(codeHash, "codeHash");
+        Objects.requireNonNull(observedClassHash, "observedClassHash");
         Objects.requireNonNull(runtimeImageHash, "runtimeImageHash");
         if (runtimeImageHash.isEmpty()) {
             throw new IllegalArgumentException("runtimeImageHash is empty");

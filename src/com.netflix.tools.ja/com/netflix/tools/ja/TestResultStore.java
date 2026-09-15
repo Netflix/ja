@@ -37,7 +37,13 @@ import com.netflix.tools.ja.TestResult.Status;
 
 /** Persistent test outcomes and the code observed during their execution. */
 public final class TestResultStore {
-    private static final int TRACE_FORMAT = 1;
+    record Trace(String codeHash, String observedClassHash, Set<Event> events) {
+        Trace {
+            events = Set.copyOf(events);
+        }
+    }
+
+    private static final int TRACE_FORMAT = 2;
 
     private final Path root;
 
@@ -78,6 +84,10 @@ public final class TestResultStore {
     }
 
     public Optional<Set<Event>> trace(String selector) throws IOException {
+        return storedTrace(selector).map(Trace::events);
+    }
+
+    Optional<Trace> storedTrace(String selector) throws IOException {
         var path = tracePath(selector);
         if (!Files.isRegularFile(path)) {
             return Optional.empty();
@@ -85,9 +95,13 @@ public final class TestResultStore {
         return Optional.of(readTrace(Files.readAllBytes(path)));
     }
 
+    void updateTrace(TestExecution execution) throws IOException {
+        write(tracePath(execution.selector()), trace(execution));
+    }
+
     public void record(TestResult result) throws IOException {
         var execution = result.execution();
-        write(tracePath(execution.selector()), trace(execution.trace()));
+        updateTrace(execution);
         if (result.status() == Status.SUCCESS) {
             write(successPath(execution), (execution.identity() + "\n").getBytes(StandardCharsets.UTF_8));
             Files.deleteIfExists(failurePath(execution.selector()));
@@ -123,11 +137,13 @@ public final class TestResultStore {
         return root.resolve("trace").resolve(sha256(selector));
     }
 
-    private static byte[] trace(Set<Event> events) throws IOException {
+    private static byte[] trace(TestExecution execution) throws IOException {
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(bytes)) {
             output.writeInt(TRACE_FORMAT);
-            var ordered = events.stream()
+            write(output, execution.codeHash());
+            write(output, execution.observedClassHash());
+            var ordered = execution.trace().stream()
                     .sorted(Comparator.comparing(Event::method)
                             .thenComparing(Event::receiverModule, Comparator.nullsFirst(Comparator.naturalOrder()))
                             .thenComparing(Event::receiverClass, Comparator.nullsFirst(Comparator.naturalOrder())))
@@ -142,13 +158,23 @@ public final class TestResultStore {
         return bytes.toByteArray();
     }
 
-    private static Set<Event> readTrace(byte[] content) throws IOException {
+    private static Trace readTrace(byte[] content) throws IOException {
         try (var input = new DataInputStream(new ByteArrayInputStream(content))) {
             int format = input.readInt();
-            if (format != TRACE_FORMAT) {
+            String codeHash;
+            String observedClassHash;
+            int count;
+            if (format == 1) {
+                codeHash = "";
+                observedClassHash = "";
+                count = input.readInt();
+            } else if (format == TRACE_FORMAT) {
+                codeHash = read(input);
+                observedClassHash = read(input);
+                count = input.readInt();
+            } else {
                 throw new IOException("Unsupported incremental test trace format: " + format);
             }
-            int count = input.readInt();
             if (count < 0) {
                 throw new IOException("Invalid incremental test trace event count: " + count);
             }
@@ -159,7 +185,7 @@ public final class TestResultStore {
             if (input.read() != -1) {
                 throw new IOException("Trailing content in incremental test trace");
             }
-            return Set.copyOf(events);
+            return new Trace(codeHash, observedClassHash, events);
         } catch (EOFException failure) {
             throw new IOException("Truncated incremental test trace", failure);
         }

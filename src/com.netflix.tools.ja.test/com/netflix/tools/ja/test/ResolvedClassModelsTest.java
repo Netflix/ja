@@ -378,6 +378,31 @@ class ResolvedClassModelsTest {
     }
 
     @Test
+    void doesNotReadUnusedClassesWhenCreatingInstrumentedLayer(@TempDir Path directory) throws Exception {
+        var modules = Files.createDirectories(directory.resolve("modules"));
+        var dependency = Files.createDirectories(modules.resolve("example.dependency"));
+        TestModules.writeModuleInfo(dependency, "example.dependency");
+        var unusedClass = dependency.resolve("unused/Broken.class");
+        Files.createDirectories(unusedClass.getParent());
+        Files.write(unusedClass, new byte[] {0});
+        var root = Files.createDirectories(modules.resolve("example.root"));
+        TestModules.writeModuleInfo(root, "example.root", "example.dependency");
+        writeClass(root, "root.Root");
+        var classes = resolve(ResolvedClassModelsTest.class
+                .getModule()
+                .getLayer()
+                .configuration(),
+                List.of("example.root"), List.of("--module-path", modules.toString()));
+
+        var layer = classes.instrumentedLayer(ResolvedClassModelsTest.class.getModule().getLayer(),
+                Set.of(), List.of())
+                           .layer();
+
+        assertTrue(layer.findModule("example.root").isPresent());
+        assertTrue(layer.findModule("example.dependency").isPresent());
+    }
+
+    @Test
     void instrumentsDirectoryDependenciesAsWellAsRoots(@TempDir Path directory) throws Exception {
         var modules = Files.createDirectories(directory.resolve("modules"));
         var dependency = Files.createDirectories(modules.resolve("example.dependency"));

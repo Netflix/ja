@@ -14,7 +14,11 @@
 
 package com.netflix.tools.ja;
 
+import java.io.Closeable;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.lang.ModuleLayer.Controller;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
@@ -24,12 +28,13 @@ import java.lang.constant.ClassDesc;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
 import java.lang.module.ModuleReference;
-import java.lang.reflect.AccessFlag;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,6 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -62,6 +68,10 @@ public final class ResolvedClassModels {
 
     private record LayerFoundation(ModuleLayer layer, boolean complete) {}
 
+    private record LoadedClass(String moduleName, String resource, ClassModel model, byte[] hash) {}
+
+    private record ResolvedMethod(MethodModel model, LoadedClass owner) {}
+
     public record ModuleState(String moduleName, ModuleHash moduleHash, List<ModuleHash> patchHashes) {
         public ModuleState {
             patchHashes = List.copyOf(patchHashes);
@@ -75,11 +85,15 @@ public final class ResolvedClassModels {
     private final Set<String> runtimeModules;
     private final Map<String, ModuleReference> runtimeAccessModules;
     private final String runtimeImageHash;
+    private final Map<String, Path> moduleDirectories;
     private final Map<String, List<Entry>> classes = new LinkedHashMap<>();
+    private final Map<String, Optional<LoadedClass>> classModels = new LinkedHashMap<>();
+    private final Map<ClassModel, LoadedClass> loadedClasses = new IdentityHashMap<>();
+    private final Map<String, Optional<ResolvedMethod>> instrumentedMethods = new LinkedHashMap<>();
     private final Map<String, ModuleState> moduleStates = new LinkedHashMap<>();
     private final ObservedCodeHash codeHash = new ObservedCodeHash();
-    private Map<String, MethodModel> instrumentedMethods;
-    private Map<String, ClassModel> instrumentedClasses;
+    private ClassHierarchyResolver instrumentedClassHierarchy;
+    private Set<String> instrumentedModuleNames;
     private List<ModuleState> executionModuleStates;
 
     public static ResolvedClassModels resolve(Configuration parent, ModuleInputs applicationInputs, ModuleInputs runtimeInputs,
@@ -185,6 +199,13 @@ public final class ResolvedClassModels {
         this.runtimeModules = Set.copyOf(runtimeModules);
         this.runtimeAccessModules = Map.copyOf(runtimeAccessModules);
         this.runtimeImageHash = runtimeImageHash;
+        var directories = new LinkedHashMap<String, Path>();
+        modules.forEach((name, reference) -> reference.location()
+                .filter(location -> location.getScheme().equals("file"))
+                .map(Path::of)
+                .filter(Files::isDirectory)
+                .ifPresent(path -> directories.put(name, path)));
+        this.moduleDirectories = Map.copyOf(directories);
     }
 
     public Set<String> modules() {
@@ -194,7 +215,8 @@ public final class ResolvedClassModels {
     }
 
     boolean isDirectoryModule(String moduleName) {
-        return isInstrumented(module(moduleName));
+        module(moduleName);
+        return moduleDirectories.containsKey(moduleName);
     }
 
     Set<String> requirements(String moduleName) {
@@ -208,35 +230,23 @@ public final class ResolvedClassModels {
         if (existing != null) {
             return existing;
         }
-        var reference = module(moduleName);
-        var content = new LinkedHashMap<String, byte[]>();
+        var resources = new TreeSet<String>();
         for (var patch : patches.getOrDefault(moduleName, List.of())) {
-            readPatch(patch, content);
+            listPatchClasses(patch, resources);
         }
-        try (var reader = reference.open();
-             var resources = reader.list()) {
-            for (var resource : resources.filter(ResolvedClassModels::isClass)
-                    .sorted()
-                    .toList()) {
-                if (content.containsKey(resource)) {
-                    continue;
-                }
-                var input = reader.open(resource);
-                if (input.isPresent()) {
-                    try (var stream = input.orElseThrow()) {
-                        content.put(resource, stream.readAllBytes());
-                    }
-                }
-            }
+        try (var reader = module(moduleName).open();
+             var listed = reader.list()) {
+            listed.filter(ResolvedClassModels::isClass)
+                    .forEach(resources::add);
         }
-        var result = content.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(
-                        entry -> new Entry(moduleName, entry.getKey(),
-                                ClassFile.of().parse(entry.getValue())))
-                .toList();
-        classes.put(moduleName, result);
-        return result;
+        var result = new ArrayList<Entry>();
+        for (var resource : resources) {
+            classModel(moduleName, resource)
+                    .ifPresent(loaded -> result.add(new Entry(moduleName, resource, loaded.model())));
+        }
+        var content = List.copyOf(result);
+        classes.put(moduleName, content);
+        return content;
     }
 
     public List<Entry> classes() throws IOException {
@@ -250,29 +260,61 @@ public final class ResolvedClassModels {
     }
 
     Optional<TestExecution> observedExecution(TestMethod test, Set<Event> events) throws IOException {
-        indexInstrumentedClasses();
+        return observedExecution(test, events, null);
+    }
+
+    Optional<TestExecution> observedExecution(TestMethod test, TestResultStore.Trace previous) throws IOException {
+        return observedExecution(test, previous.events(), previous);
+    }
+
+    private Optional<TestExecution> observedExecution(TestMethod test, Set<Event> events,
+            TestResultStore.Trace previous) throws IOException {
+        var testClass = loadedClasses.get(test.model().parent().orElseThrow());
+        if (testClass == null) {
+            throw new IllegalStateException("Test class was not loaded from the resolved modules: " + test.className());
+        }
+        var observedClasses = new LinkedHashMap<String, LoadedClass>();
+        addObservedClass(observedClasses, testClass);
         var executedMethods = new ArrayList<MethodModel>();
         executedMethods.add(test.model());
         var receiverClasses = new ArrayList<ClassModel>();
-        receiverClasses.add(test.model()
-                                .parent()
-                                .orElseThrow());
+        receiverClasses.add(testClass.model());
         for (var event : events) {
-            var method = instrumentedMethods.get(event.method());
-            if (method == null) {
+            var method = instrumentedMethod(event.method());
+            if (method.isEmpty()) {
                 return Optional.empty();
             }
-            executedMethods.add(method);
+            var resolved = method.orElseThrow();
+            executedMethods.add(resolved.model());
+            addObservedClass(observedClasses, resolved.owner());
             if (event.receiverModule() != null && event.receiverClass() != null) {
-                var receiver = instrumentedClasses.get(event.receiverModule() + "/" + event.receiverClass().replace('.', '/'));
-                if (receiver == null) {
+                var receiver = instrumentedClass(event.receiverModule(), event.receiverClass().replace('.', '/'));
+                if (receiver.isEmpty()) {
                     return Optional.empty();
                 }
-                receiverClasses.add(receiver);
+                var loaded = receiver.orElseThrow();
+                receiverClasses.add(loaded.model());
+                addObservedClass(observedClasses, loaded);
             }
         }
-        return Optional.of(new TestExecution(test.selector(), codeHash.hash(executedMethods, receiverClasses,
-                instrumentedClassHierarchy()), moduleStates(), runtimeImageHash, events));
+        var observedClassHash = observedClassHash(observedClasses);
+        var currentCodeHash = previous != null && observedClassHash.equals(previous.observedClassHash())
+                ? previous.codeHash()
+                : codeHash.hash(executedMethods, receiverClasses, instrumentedClassHierarchy());
+        return Optional.of(new TestExecution(test.selector(), currentCodeHash, observedClassHash,
+                moduleStates(), runtimeImageHash, events));
+    }
+
+    private static void addObservedClass(Map<String, LoadedClass> classes, LoadedClass loaded) {
+        classes.putIfAbsent(loaded.moduleName() + "/" + loaded.resource(), loaded);
+    }
+
+    private static String observedClassHash(Map<String, LoadedClass> classes) {
+        var digest = new Sha256().add(classes.size());
+        classes.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> digest.add(entry.getKey()).add(entry.getValue().hash()));
+        return digest.hex();
     }
 
     public Controller instrumentedLayer(ModuleLayer parent, Set<String> executionRoots, List<ModuleReference> supportModules) throws IOException {
@@ -367,49 +409,152 @@ public final class ResolvedClassModels {
     }
 
     private Set<String> instrumentedModules() {
-        return modules.entrySet().stream()
-                .filter(entry -> !runtimeModules.contains(entry.getKey()))
-                .filter(entry -> isInstrumented(entry.getValue()))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toUnmodifiableSet());
+        if (instrumentedModuleNames == null) {
+            instrumentedModuleNames = modules.keySet().stream()
+                    .filter(name -> !runtimeModules.contains(name))
+                    .filter(moduleDirectories::containsKey)
+                    .collect(Collectors.toUnmodifiableSet());
+        }
+        return instrumentedModuleNames;
     }
 
-    private ClassHierarchyResolver instrumentedClassHierarchy() throws IOException {
-        indexInstrumentedClasses();
-        var interfaces = new LinkedHashSet<ClassDesc>();
-        var superclasses = new LinkedHashMap<ClassDesc, ClassDesc>();
-        for (var model : instrumentedClasses.values()) {
-            var type = model.thisClass().asSymbol();
-            if (model.flags().has(AccessFlag.INTERFACE)) {
-                interfaces.add(type);
-            } else {
-                model.superclass().ifPresent(superclass -> superclasses.put(type, superclass.asSymbol()));
+    private ClassHierarchyResolver instrumentedClassHierarchy() {
+        if (instrumentedClassHierarchy == null) {
+            instrumentedClassHierarchy = ClassHierarchyResolver.ofResourceParsing(this::openHierarchyClass)
+                    .orElse(ClassHierarchyResolver.defaultResolver())
+                    .cached(ConcurrentHashMap::new);
+        }
+        return instrumentedClassHierarchy;
+    }
+
+    private InputStream openHierarchyClass(ClassDesc type) {
+        if (!type.isClassOrInterface()) {
+            return null;
+        }
+        var descriptor = type.descriptorString();
+        var resource = descriptor.substring(1, descriptor.length() - 1) + ".class";
+        try {
+            for (var moduleName : candidateModules(resource.substring(0, resource.length() - ".class".length()))) {
+                var input = openClassResource(moduleName, resource);
+                if (input.isPresent()) {
+                    return input.orElseThrow();
+                }
             }
+            return null;
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
         }
-        return ClassHierarchyResolver.of(interfaces, superclasses)
-                .orElse(ClassHierarchyResolver.defaultResolver());
     }
 
-    private void indexInstrumentedClasses() throws IOException {
-        if (instrumentedMethods != null) {
-            return;
+    private Optional<ResolvedMethod> instrumentedMethod(String methodId) throws IOException {
+        var existing = instrumentedMethods.get(methodId);
+        if (existing != null) {
+            return existing;
         }
-        var methods = new LinkedHashMap<String, MethodModel>();
-        var classModels = new LinkedHashMap<String, ClassModel>();
-        for (var name : instrumentedModules()) {
-            for (var entry : classes(name)) {
-                var model = entry.model();
-                classModels.put(name + "/" + model.thisClass().asInternalName(), model);
-                for (var method : model.methods()) {
-                    var methodId = ExecutionTraceInstrumentation.methodId(method);
-                    if (methods.put(methodId, method) != null) {
-                        throw new IllegalArgumentException("Duplicate method: " + methodId);
-                    }
+        int descriptor = methodId.indexOf('(');
+        int separator = descriptor < 0 ? -1 : methodId.lastIndexOf('.', descriptor);
+        Optional<ResolvedMethod> result = Optional.empty();
+        if (separator > 0) {
+            var owner = methodId.substring(0, separator);
+            var name = methodId.substring(separator + 1, descriptor);
+            var type = methodId.substring(descriptor);
+            for (var moduleName : candidateModules(owner)) {
+                var model = instrumentedClass(moduleName, owner);
+                if (model.isEmpty()) {
+                    continue;
+                }
+                var ownerClass = model.orElseThrow();
+                result = ownerClass.model().methods().stream()
+                        .filter(method -> method.methodName().equalsString(name))
+                        .filter(method -> method.methodType().equalsString(type))
+                        .findFirst()
+                        .map(method -> new ResolvedMethod(method, ownerClass));
+                if (result.isPresent()) {
+                    break;
                 }
             }
         }
-        instrumentedMethods = Map.copyOf(methods);
-        instrumentedClasses = Map.copyOf(classModels);
+        instrumentedMethods.put(methodId, result);
+        return result;
+    }
+
+    private List<String> candidateModules(String internalClassName) {
+        int separator = internalClassName.lastIndexOf('/');
+        var packageName = separator < 0 ? "" : internalClassName.substring(0, separator).replace('/', '.');
+        var owners = instrumentedModules().stream()
+                .filter(name -> module(name).descriptor().packages().contains(packageName))
+                .sorted()
+                .toList();
+        if (!owners.isEmpty()) {
+            return owners;
+        }
+        return instrumentedModules().stream()
+                .filter(name -> !patches.getOrDefault(name, List.of()).isEmpty())
+                .sorted()
+                .toList();
+    }
+
+    private Optional<LoadedClass> instrumentedClass(String moduleName, String internalClassName) throws IOException {
+        if (!instrumentedModules().contains(moduleName)) {
+            return Optional.empty();
+        }
+        return classModel(moduleName, internalClassName + ".class");
+    }
+
+    private Optional<LoadedClass> classModel(String moduleName, String resource) throws IOException {
+        var key = moduleName + "/" + resource;
+        var existing = classModels.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        Optional<LoadedClass> result;
+        var input = openClassResource(moduleName, resource);
+        if (input.isEmpty()) {
+            result = Optional.empty();
+        } else {
+            try (var stream = input.orElseThrow()) {
+                var content = stream.readAllBytes();
+                var loaded = new LoadedClass(moduleName, resource, ClassFile.of().parse(content),
+                        Sha256.hashBytes(content));
+                loadedClasses.put(loaded.model(), loaded);
+                result = Optional.of(loaded);
+            }
+        }
+        classModels.put(key, result);
+        return result;
+    }
+
+    private Optional<InputStream> openClassResource(String moduleName, String resource) throws IOException {
+        for (var patch : patches.getOrDefault(moduleName, List.of())) {
+            var input = openPatchResource(patch, resource);
+            if (input.isPresent()) {
+                return input;
+            }
+        }
+        var directory = moduleDirectories.get(moduleName);
+        if (directory != null) {
+            try {
+                return Optional.of(Files.newInputStream(directory.resolve(resource)));
+            } catch (NoSuchFileException _) {
+                return Optional.empty();
+            }
+        }
+        var reader = module(moduleName).open();
+        try {
+            var input = reader.open(resource);
+            if (input.isEmpty()) {
+                reader.close();
+                return Optional.empty();
+            }
+            return Optional.of(closeWith(input.orElseThrow(), reader));
+        } catch (Throwable throwable) {
+            try {
+                reader.close();
+            } catch (Throwable closeFailure) {
+                throwable.addSuppressed(closeFailure);
+            }
+            throw throwable;
+        }
     }
 
     public List<ModuleState> moduleStates() throws IOException {
@@ -539,36 +684,62 @@ public final class ResolvedClassModels {
         };
     }
 
-    private static void readPatch(Path path, Map<String, byte[]> content) throws IOException {
+    private static void listPatchClasses(Path path, Set<String> resources) throws IOException {
         if (Files.isDirectory(path)) {
             try (var files = Files.walk(path)) {
-                for (var file : files.filter(Files::isRegularFile)
-                                     .sorted()
-                                     .toList()) {
-                    var resource = path.relativize(file)
-                                       .toString()
-                                       .replace(file.getFileSystem()
-                                                    .getSeparator(),
-                                               "/");
-                    if (isClass(resource)) {
-                        content.putIfAbsent(resource, Files.readAllBytes(file));
-                    }
-                }
+                files.filter(Files::isRegularFile)
+                        .map(file -> path.relativize(file)
+                                .toString()
+                                .replace(file.getFileSystem().getSeparator(), "/"))
+                        .filter(ResolvedClassModels::isClass)
+                        .forEach(resources::add);
             }
             return;
         }
         try (var jar = new JarFile(path.toFile(), true, ZipFile.OPEN_READ, Runtime.version())) {
-            var entries = jar.versionedStream()
-                             .filter(entry -> !entry.isDirectory())
-                             .filter(entry -> isClass(entry.getName()))
-                             .sorted(Comparator.comparing(JarEntry::getName))
-                             .toList();
-            for (var entry : entries) {
-                try (var stream = jar.getInputStream(entry)) {
-                    content.putIfAbsent(entry.getName(), stream.readAllBytes());
+            jar.versionedStream()
+                    .filter(entry -> !entry.isDirectory())
+                    .map(JarEntry::getName)
+                    .filter(ResolvedClassModels::isClass)
+                    .forEach(resources::add);
+        }
+    }
+
+    private static Optional<InputStream> openPatchResource(Path path, String resource) throws IOException {
+        if (Files.isDirectory(path)) {
+            var file = path.resolve(resource);
+            return Files.isRegularFile(file) ? Optional.of(Files.newInputStream(file)) : Optional.empty();
+        }
+        var jar = new JarFile(path.toFile(), true, ZipFile.OPEN_READ, Runtime.version());
+        try {
+            var entry = jar.versionedStream()
+                    .filter(candidate -> !candidate.isDirectory())
+                    .filter(candidate -> candidate.getName().equals(resource))
+                    .findFirst();
+            if (entry.isEmpty()) {
+                jar.close();
+                return Optional.empty();
+            }
+            return Optional.of(closeWith(jar.getInputStream(entry.orElseThrow()), jar));
+        } catch (Throwable throwable) {
+            try {
+                jar.close();
+            } catch (Throwable closeFailure) {
+                throwable.addSuppressed(closeFailure);
+            }
+            throw throwable;
+        }
+    }
+
+    private static InputStream closeWith(InputStream input, Closeable resource) {
+        return new FilterInputStream(input) {
+            @Override
+            public void close() throws IOException {
+                try (resource) {
+                    super.close();
                 }
             }
-        }
+        };
     }
 
     private static boolean isClass(String resource) {

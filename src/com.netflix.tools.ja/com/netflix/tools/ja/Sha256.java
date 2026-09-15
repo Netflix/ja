@@ -52,6 +52,11 @@ final class Sha256 {
         return new Sha256().add(value).hex();
     }
 
+    static byte[] hashBytes(byte[] value) {
+        var digest = newDigest();
+        return digest.digest(value);
+    }
+
     static String hash(Path path) throws IOException {
         var digest = newDigest();
         try (var input = Files.newInputStream(path)) {

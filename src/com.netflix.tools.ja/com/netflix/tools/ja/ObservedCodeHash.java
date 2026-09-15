@@ -28,8 +28,10 @@ import java.util.Map;
 
 /** Hashes the methods and class structure observed during a test execution. */
 final class ObservedCodeHash {
-    private final Map<MethodModel, byte[]> methodContent = new IdentityHashMap<>();
-    private final Map<ClassModel, byte[]> classContent = new IdentityHashMap<>();
+    private record Component(String name, byte[] hash) {}
+
+    private final Map<MethodModel, Component> methodHashes = new IdentityHashMap<>();
+    private final Map<ClassModel, Component> classHashes = new IdentityHashMap<>();
 
     String hash(
             Collection<MethodModel> methods,
@@ -39,34 +41,33 @@ final class ObservedCodeHash {
         var digest = new Sha256();
         methods.stream()
                 .distinct()
-                .sorted(Comparator.comparing(ObservedCodeHash::methodName))
-                .forEach(
-                        method ->
-                        add(
-                                digest,
-                                "method",
-                                methodName(method),
-                                methodContent.computeIfAbsent(
-                                        method,
-                                        candidate -> classFile.build(
-                                                candidate.parent()
-                                                         .orElseThrow()
-                                                         .thisClass()
-                                                         .asSymbol(),
-                                                builder -> builder.transformMethod(candidate, MethodTransform.ACCEPT_ALL)))));
+                .map(method -> methodHashes.computeIfAbsent(method, candidate -> methodHash(classFile, candidate)))
+                .sorted(Comparator.comparing(Component::name))
+                .forEach(component -> add(digest, "method", component));
         classes.stream()
                 .distinct()
-                .sorted(Comparator.comparing(ObservedCodeHash::className))
-                .forEach(model -> {
-                    var content = classContent.computeIfAbsent(
-                            model,
-                            candidate ->
-                                    classFile.build(
-                                            candidate.thisClass().asSymbol(),
-                                            builder -> builder.transform(candidate, ClassTransform.transformingMethods(MethodTransform.dropping(CodeModel.class::isInstance)))));
-                    add(digest, "class", className(model), content);
-                });
+                .map(model -> classHashes.computeIfAbsent(model, candidate -> classHash(classFile, candidate)))
+                .sorted(Comparator.comparing(Component::name))
+                .forEach(component -> add(digest, "class", component));
         return digest.hex();
+    }
+
+    private static Component methodHash(ClassFile classFile, MethodModel method) {
+        var content = classFile.build(
+                method.parent()
+                        .orElseThrow()
+                        .thisClass()
+                        .asSymbol(),
+                builder -> builder.transformMethod(method, MethodTransform.ACCEPT_ALL));
+        return new Component(methodName(method), Sha256.hashBytes(content));
+    }
+
+    private static Component classHash(ClassFile classFile, ClassModel model) {
+        var content = classFile.build(
+                model.thisClass().asSymbol(),
+                builder -> builder.transform(model,
+                        ClassTransform.transformingMethods(MethodTransform.dropping(CodeModel.class::isInstance))));
+        return new Component(className(model), Sha256.hashBytes(content));
     }
 
     private static String methodName(MethodModel method) {
@@ -81,10 +82,9 @@ final class ObservedCodeHash {
         return model.thisClass().asInternalName();
     }
 
-    private static void add(Sha256 digest, String kind, String name,
-                            byte[] content) {
+    private static void add(Sha256 digest, String kind, Component component) {
         digest.add(kind)
-              .add(name)
-              .add(content);
+              .add(component.name())
+              .add(component.hash());
     }
 }

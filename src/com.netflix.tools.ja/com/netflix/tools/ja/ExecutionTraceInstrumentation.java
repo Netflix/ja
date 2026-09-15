@@ -206,25 +206,38 @@ public final class ExecutionTraceInstrumentation {
 
         @Override
         public Optional<InputStream> open(String name) throws IOException {
+            if (isClass(name) && isInstrumentable(name)) {
+                return instrumentedClass(name).map(ByteArrayInputStream::new);
+            }
             var patch = patches.get(name);
-            var input = patch == null ? delegate.open(name) : Optional.<InputStream>of(new ByteArrayInputStream(patch.content()));
-            if (input.isEmpty() || !isClass(name) || !isInstrumentable(name)) {
-                return input;
-            }
-            try (var stream = input.orElseThrow()) {
-                var model = ClassFile.of().parse(stream.readAllBytes());
-                return Optional.of(new ByteArrayInputStream(instrument(model, hierarchy)));
-            }
+            return patch == null ? delegate.open(name) : Optional.of(new ByteArrayInputStream(patch.content()));
         }
 
         @Override
         public Optional<ByteBuffer> read(String name) throws IOException {
+            if (isClass(name) && isInstrumentable(name)) {
+                return instrumentedClass(name).map(ByteBuffer::wrap);
+            }
             var input = open(name);
             if (input.isEmpty()) {
                 return Optional.empty();
             }
             try (var stream = input.orElseThrow()) {
                 return Optional.of(ByteBuffer.wrap(stream.readAllBytes()));
+            }
+        }
+
+        private Optional<byte[]> instrumentedClass(String name) throws IOException {
+            var patch = patches.get(name);
+            if (patch != null) {
+                return Optional.of(instrument(ClassFile.of().parse(patch.content()), hierarchy));
+            }
+            var input = delegate.open(name);
+            if (input.isEmpty()) {
+                return Optional.empty();
+            }
+            try (var stream = input.orElseThrow()) {
+                return Optional.of(instrument(ClassFile.of().parse(stream.readAllBytes()), hierarchy));
             }
         }
 

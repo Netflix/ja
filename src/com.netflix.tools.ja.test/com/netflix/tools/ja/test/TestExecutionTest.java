@@ -54,6 +54,17 @@ class TestExecutionTest {
     }
 
     @Test
+    void observedClassHashIsOnlyAValidationShortcut() {
+        var module = module("example.module", A, A);
+        var first = new TestExecution("example.Test#test()", "code", A, List.of(module), A,
+                Set.of());
+        var second = new TestExecution("example.Test#test()", "code", B, List.of(module), A,
+                Set.of());
+
+        assertEquals(first.identity(), second.identity());
+    }
+
+    @Test
     void requiresARuntimeImageIdentity() {
         assertThrows(
                 IllegalArgumentException.class,
