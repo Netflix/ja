@@ -55,8 +55,7 @@ jobs:
             "$SOURCE_JAVA_HOME" \
             "$BUILT_JAVA_HOME" \
             "$BUILD_VERSION"
-          echo "JAVA_HOME=$BUILT_JAVA_HOME" >> "$GITHUB_ENV"
-          echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
-      - name: Test source with built ja
+      # Keep the bootstrap selected until hashes written by jig 0.15 have been refreshed.
+      - name: Test source with bootstrap ja
         run: ja test --all
