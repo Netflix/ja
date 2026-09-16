@@ -1,7 +1,7 @@
 jopt.simple@5.0.4=module:sha256:ca73b40a10faf38239b81c8a1451f2a463d5bc946a7df522413613980174a8b1
 org.apache.commons.math3@3.6.1=module:sha256:5ac04501abb71812bf805a987dbab5d1470f84170b76386d53b605f972a80c8a
 org.apiguardian.api@1.1.2=module:sha256:8fe700256df67fb279c0734898bf7c25c199ef407ae18b918947b38dfdf0af2a
-org.jspecify=module:sha256:db02318646febd4e03fc69910df454696d58b2be88e7232a0262c3fe0141bd03
+org.jspecify@1.0.0=module:sha256:db02318646febd4e03fc69910df454696d58b2be88e7232a0262c3fe0141bd03
 org.junit.jupiter.api@6.1.3=module:sha256:20c0d83d6f2882d9e5d49353c0f2c51acaa1b35d96ec7f3c242530ad0179b89a
 org.junit.jupiter.engine@6.1.3=module:sha256:b6dff8c85dc1513bae171968a52a659aaa52dc31fda8b6e48e6e986d1601ed78
 org.junit.jupiter.params@6.1.3=module:sha256:691c45b20325740fdb25dea947f22b267161a75a243a2f13ced3f06f88d8bb30
