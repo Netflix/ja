@@ -41,7 +41,7 @@ class ModuleResolverTest {
             return 0;
         })));
 
-        List<String> result = resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path", "add-modules"), false, true),
+        List<String> result = resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path", "add-modules"), true),
                 List.of("--enable-feature"), InputStream.nullInputStream(), System.err);
 
         assertEquals(
@@ -59,7 +59,7 @@ class ModuleResolverTest {
             return 0;
         })));
 
-        resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path"), false, false, true),
+        resolver.resolve(List.of("--module-source-path", "src", "-m", "com.example.app"), new ResolutionOptions(Set.of("module-path"), false, true),
                 InputStream.nullInputStream(), System.err);
 
         assertEquals(List.of("--module-source-path", "src", "-m", "com.example.app", "--resolve-options", "module-path"), runWith);
@@ -71,7 +71,7 @@ class ModuleResolverTest {
 
         assertThrows(
                 ToolExecutionException.class,
-                () -> resolver.resolve(List.of(), new ResolutionOptions(Set.of("module-path"), true, false), InputStream.nullInputStream(),
+                () -> resolver.resolve(List.of(), new ResolutionOptions(Set.of("module-path"), false), InputStream.nullInputStream(),
                         System.err));
     }
 

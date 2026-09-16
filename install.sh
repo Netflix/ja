@@ -150,7 +150,6 @@ resolved_arguments="$work/resolved.args"
     --add-requires "com.netflix.tools.ja@$ja_version" \
     --prefer-jmod \
     --target-platform CURRENT \
-    --compile-time \
     --resolve-options module-path,upgrade-module-path \
     > "$resolved_arguments"
 

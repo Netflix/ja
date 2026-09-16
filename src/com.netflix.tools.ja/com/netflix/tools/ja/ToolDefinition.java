@@ -43,7 +43,6 @@ public record ToolDefinition(String name,
                              String provider,
                              Optional<String> version,
                              Set<String> options,
-                             boolean compileTime,
                              boolean validateRuntimeAccess,
                              java.util.List<String> defaults,
                              Optional<String> classSuffix,
@@ -97,7 +96,6 @@ public record ToolDefinition(String name,
              version,
              options,
              false,
-             false,
              defaults,
              Optional.empty(),
              Optional.empty());
@@ -120,7 +118,6 @@ public record ToolDefinition(String name,
              provider,
              version,
              options,
-             false,
              false,
              defaults,
              classSuffix,
@@ -179,7 +176,6 @@ public record ToolDefinition(String name,
         }
         var version = moduleVersion.or(() -> declaredVersion);
         var options = Set.copyOf(commaSeparatedValues(properties, "options"));
-        boolean compileTime = booleanProperty(properties, "compile-time");
         boolean validateRuntimeAccess = booleanProperty(properties, "validate-runtime-access");
         var defaults = optional(properties, "defaults").map(ArgumentFiles::parse).orElseGet(java.util.List::of);
         var classSuffix = optional(properties, "class-suffix");
@@ -191,7 +187,6 @@ public record ToolDefinition(String name,
                 provider,
                 version,
                 options,
-                compileTime,
                 validateRuntimeAccess,
                 defaults,
                 classSuffix,
@@ -204,7 +199,7 @@ public record ToolDefinition(String name,
     }
 
     ResolutionOptions resolutionOptions() {
-        return new ResolutionOptions(ModuleOptions.resolutionOptions(options), compileTime, validateRuntimeAccess);
+        return new ResolutionOptions(ModuleOptions.resolutionOptions(options), validateRuntimeAccess);
     }
 
     public String resolveVersion(Optional<ModuleDescriptor.Version> selectedVersion) {

@@ -319,7 +319,7 @@ ja require --update=major
 
 By default, updates select compatible minor and patch releases. Versions before `1.0.0` may advance through `1.x`; later versions remain on their current major release. Use `patch` to remain on the current major and minor release, or `major` to allow any newer stable semantic version. Dependencies with only non-semantic versions advance to the latest version reported by the repository.
 
-Hashes of resolved dependencies in `module-info.hash` and are verified when resolving later. It stops if an artifact changes without changing its version.
+Hashes of resolved dependencies in `module-info.hash` are verified when resolving later. It stops if the content of an existing JPMS module coordinate changes.
 
 ## Generate checked-in sources
 

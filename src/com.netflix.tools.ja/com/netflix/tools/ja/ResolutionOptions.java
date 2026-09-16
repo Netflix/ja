@@ -18,7 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /** Standard Java options requested from jig, together with resolution behavior. */
-public record ResolutionOptions(Set<String> options, boolean compileTime, boolean validateRuntimeAccess,
+public record ResolutionOptions(Set<String> options, boolean validateRuntimeAccess,
         boolean emitCompileDiagnostics) {
     public static final ResolutionOptions EMPTY = new ResolutionOptions(Set.of(), false, false);
 
@@ -41,24 +41,24 @@ public record ResolutionOptions(Set<String> options, boolean compileTime, boolea
 
     static final Set<String> ACCESS_OPTIONS = Set.of("enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports");
 
-    static final ResolutionOptions JAVAC = new ResolutionOptions(JAVAC_OPTIONS, true, false);
+    static final ResolutionOptions JAVAC = new ResolutionOptions(JAVAC_OPTIONS, false);
 
-    static final ResolutionOptions MODULE_PATHS = new ResolutionOptions(Set.of("module-path", "module-source-path", "upgrade-module-path", "add-modules"), true, false);
+    static final ResolutionOptions MODULE_PATHS = new ResolutionOptions(Set.of("module-path", "module-source-path", "upgrade-module-path", "add-modules"), false);
 
-    static final ResolutionOptions CONFIGURATION = new ResolutionOptions(Set.of("module-path", "upgrade-module-path", "add-modules"), true, false);
+    static final ResolutionOptions CONFIGURATION = new ResolutionOptions(Set.of("module-path", "upgrade-module-path", "add-modules"), false);
 
-    static final ResolutionOptions RUNTIME = new ResolutionOptions(RUNTIME_OPTIONS, false, false);
+    static final ResolutionOptions RUNTIME = new ResolutionOptions(RUNTIME_OPTIONS, false);
 
-    static final ResolutionOptions RUNTIME_WITH_ACCESS = runtimeWithAccess(false);
+    static final ResolutionOptions RUNTIME_WITH_ACCESS = runtimeWithAccess();
 
-    static final ResolutionOptions COMPLETE_RUNTIME_WITH_ACCESS = new ResolutionOptions(union(COMPLETE_RUNTIME_OPTIONS, ACCESS_OPTIONS, Set.of("enable-preview")), false, true);
+    static final ResolutionOptions COMPLETE_RUNTIME_WITH_ACCESS = new ResolutionOptions(union(COMPLETE_RUNTIME_OPTIONS, ACCESS_OPTIONS, Set.of("enable-preview")), true);
 
     static final ResolutionOptions JAVA = java(RUNTIME_OPTIONS);
 
     static final ResolutionOptions COMPLETE_JAVA = java(COMPLETE_RUNTIME_OPTIONS);
 
-    public ResolutionOptions(Set<String> options, boolean compileTime, boolean validateRuntimeAccess) {
-        this(options, compileTime, validateRuntimeAccess, false);
+    public ResolutionOptions(Set<String> options, boolean validateRuntimeAccess) {
+        this(options, validateRuntimeAccess, false);
     }
 
     public ResolutionOptions {
@@ -66,34 +66,29 @@ public record ResolutionOptions(Set<String> options, boolean compileTime, boolea
     }
 
     boolean active() {
-        return !options.isEmpty() || compileTime || validateRuntimeAccess;
-    }
-
-    ResolutionOptions withCompileTime(boolean value) {
-        return value == compileTime ? this : new ResolutionOptions(options, value, validateRuntimeAccess, emitCompileDiagnostics);
+        return !options.isEmpty() || validateRuntimeAccess;
     }
 
     ResolutionOptions withCompileDiagnostics() {
-        return emitCompileDiagnostics ? this : new ResolutionOptions(options, compileTime, validateRuntimeAccess, true);
+        return emitCompileDiagnostics ? this : new ResolutionOptions(options, validateRuntimeAccess, true);
     }
 
-    static ResolutionOptions runtimeWithAccess(boolean compileTime) {
-        return new ResolutionOptions(union(RUNTIME_OPTIONS, ACCESS_OPTIONS, Set.of("enable-preview")), compileTime, true);
+    static ResolutionOptions runtimeWithAccess() {
+        return new ResolutionOptions(union(RUNTIME_OPTIONS, ACCESS_OPTIONS, Set.of("enable-preview")), true);
     }
 
-    static ResolutionOptions sourceList(boolean compileTime) {
-        return source(compileTime, "module=list");
+    static ResolutionOptions sourceList() {
+        return source("module=list");
     }
 
     private static ResolutionOptions java(Set<String> runtimeOptions) {
         return new ResolutionOptions(union(runtimeOptions, ACCESS_OPTIONS, Set.of("module=main", "enable-preview")),
-                false, true);
+                true);
     }
 
-    private static ResolutionOptions source(boolean compileTime, String moduleOption) {
+    private static ResolutionOptions source(String moduleOption) {
         return new ResolutionOptions(
                 Set.of("module-path", "module-source-path", moduleOption, "release", "enable-preview", "add-exports"),
-                compileTime,
                 false);
     }
 

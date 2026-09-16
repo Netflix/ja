@@ -323,7 +323,6 @@ public final class ToolRunner {
                 definition.provider(),
                 definition.version(),
                 definition.options(),
-                definition.compileTime(),
                 definition.validateRuntimeAccess(),
                 defaults,
                 definition.classSuffix(),
@@ -345,7 +344,6 @@ public final class ToolRunner {
                     definition.activation().flatMap(resolved::moduleVersion));
             return new ToolResolver(tools).resolveLauncher(definition,
                     version,
-                    resolution.resolutionOptions().compileTime(),
                     resolutionArguments,
                     commandLine.toolArguments(),
                     in,
@@ -528,7 +526,6 @@ public final class ToolRunner {
     private static ResolutionOptions providerRuntimeOptions() {
         return new ResolutionOptions(
                 Set.of("module-path", "add-modules", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"),
-                false,
                 true);
     }
 
@@ -695,7 +692,6 @@ public final class ToolRunner {
                 ? fallback.options()
                 : resolutionOptions(definition).options();
         return new ResolutionOptions(options,
-                declared.compileTime() || fallback.compileTime(),
                 declared.validateRuntimeAccess() || fallback.validateRuntimeAccess(),
                 declared.emitCompileDiagnostics() || fallback.emitCompileDiagnostics());
     }
@@ -708,7 +704,6 @@ public final class ToolRunner {
         var options = new LinkedHashSet<>(resolutionOptions.options());
         options.remove("module=single");
         return new ResolutionOptions(options,
-                resolutionOptions.compileTime(),
                 resolutionOptions.validateRuntimeAccess(),
                 resolutionOptions.emitCompileDiagnostics());
     }

@@ -42,15 +42,15 @@ public enum BuiltinCommand {
     GENERATE("generate", HelpGroup.DEVELOP, "Update generated source", workflow(requiresProvider("javac")),
             javac()),
     FMT("fmt", HelpGroup.DEVELOP, "Format source", new ToolBacked("jfmt"),
-            sourceTool(false)),
+            sourceTool()),
     COMPILE("compile", HelpGroup.DEVELOP, "Compile source modules", new Materialize(),
             standardOptions("module-path", "upgrade-module-path").withCompileDiagnostics()),
     RUN("run", HelpGroup.DEVELOP, "Run a module", new LaunchJava(),
             javaLauncher()),
     TEST("test", HelpGroup.DEVELOP, "Run tests", new ToolBacked("junit"),
-            ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.withCompileTime(true)),
+            ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS),
     BENCH("bench", HelpGroup.DEVELOP, "Run benchmarks", new ToolBacked("jmh"),
-            runtimeTool(false)),
+            runtimeTool()),
 
     LIST("list", HelpGroup.EXPLORE, "List observable modules", new LaunchJava(),
             standardOptions("module-path", "upgrade-module-path", "add-modules")),
@@ -61,9 +61,9 @@ public enum BuiltinCommand {
             HelpGroup.EXPLORE,
             "Find or browse Java APIs",
             workflow(requiresProvider("jist"), requiresProvider("jdocserver")),
-            sourceTool(true)),
+            sourceTool()),
     SOURCE("source", HelpGroup.EXPLORE, "Show Java source", workflow(requiresProvider("jist")),
-            sourceTool(true)),
+            sourceTool()),
 
     ASSEMBLE(
             "assemble",
@@ -157,23 +157,23 @@ public enum BuiltinCommand {
     }
 
     private static ResolutionOptions standardOptions(String... options) {
-        return new ResolutionOptions(Set.of(options), false, false);
+        return new ResolutionOptions(Set.of(options), false);
     }
 
     private static ResolutionOptions javac() {
         return ResolutionOptions.JAVAC;
     }
 
-    private static ResolutionOptions sourceTool(boolean compileTime) {
-        return ResolutionOptions.sourceList(compileTime);
+    private static ResolutionOptions sourceTool() {
+        return ResolutionOptions.sourceList();
     }
 
     private static ResolutionOptions javaLauncher() {
         return ResolutionOptions.JAVA;
     }
 
-    private static ResolutionOptions runtimeTool(boolean compileTime) {
-        return ResolutionOptions.runtimeWithAccess(compileTime);
+    private static ResolutionOptions runtimeTool() {
+        return ResolutionOptions.runtimeWithAccess();
     }
 
     sealed interface ToolRequirement {

@@ -312,7 +312,7 @@ class CommandRunnerTest {
         var discovery = jigInvocations.get(0);
         assertEquals(List.of("com.example.application"), optionValues(discovery, "-m", "--module"));
         assertEquals(optionList(MODULE_PATH_OPTIONS), discovery.get(discovery.indexOf("--resolve-options") + 1));
-        assertTrue(discovery.contains("--compile-time"));
+        assertFalse(discovery.contains("--compile-time"));
         var execution = jigInvocations.get(1);
         assertEquals(List.of("com.example.application", "com.example.tool"), optionValues(execution, "-m", "--module"));
         assertEquals(
@@ -374,7 +374,7 @@ class CommandRunnerTest {
         var tools = ToolServices.of(tool("jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
-                    if (arguments.contains("--compile-time")) {
+                    if (arguments.get(arguments.indexOf("--resolve-options") + 1).equals(optionList(MODULE_PATH_OPTIONS))) {
                         output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.application,com.example.framework\n");
                     } else if (joinedPair(arguments, "--add-requires", "com.example.tool@2.0")) {
                         output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.tool\n");
@@ -1462,7 +1462,7 @@ class CommandRunnerTest {
                 "jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
-                    assertTrue(arguments.contains("--compile-time"));
+                    assertFalse(arguments.contains("--compile-time"));
                     assertTrue(arguments.contains("--no-compile-diagnostics"));
                     output.print("--module-source-path\ncom.example.app=" + module + "\n--processor-module-path\n" + processorPath + "\n--module\ncom.example.app\n");
                     return 0;
@@ -1512,7 +1512,7 @@ class CommandRunnerTest {
         var tools = ToolServices.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
-                    assertTrue(arguments.contains("--compile-time"));
+                    assertFalse(arguments.contains("--compile-time"));
                     output.print("--module-source-path\ncom.example.app=" + module + "\n--module\ncom.example.app\n");
                     return 0;
                 }),
@@ -1846,7 +1846,7 @@ class CommandRunnerTest {
                     assertTrue(option >= 0);
                     var options = arguments.get(option + 1);
                     if (options.equals(optionList(MODULE_PATH_OPTIONS))) {
-                        assertTrue(arguments.contains("--compile-time"));
+                        assertFalse(arguments.contains("--compile-time"));
                         return 0;
                     }
                     if (jigRuns.getAndIncrement() == 0) {
@@ -1882,7 +1882,6 @@ class CommandRunnerTest {
                 Optional.of("1"),
                 Set.of("module-path", "upgrade-module-path", "patch-module", "add-modules", "enable-preview", "enable-native-access",
                         "enable-final-field-mutation", "add-opens", "add-exports"),
-                false,
                 true,
                 List.of("execute"),
                 Optional.empty(),
@@ -1924,7 +1923,7 @@ class CommandRunnerTest {
                     assertTrue(option >= 0);
                     String capabilities = arguments.get(option + 1);
                     if (capabilities.equals(optionList(CONFIGURATION_OPTIONS))) {
-                        assertTrue(arguments.contains("--compile-time"));
+                        assertFalse(arguments.contains("--compile-time"));
                         return 0;
                     }
                     assertEquals("add-modules,module-path,module=roots,multi-release,upgrade-module-path", capabilities);
@@ -2031,7 +2030,8 @@ class CommandRunnerTest {
                 "jig",
                 (output, arguments) -> {
                     var options = arguments.get(arguments.indexOf("--resolve-options") + 1);
-                    if (options.equals(optionList(MODULE_PATH_OPTIONS)) && arguments.contains("--compile-time")) {
+                    if (options.equals(optionList(MODULE_PATH_OPTIONS))) {
+                        assertFalse(arguments.contains("--compile-time"));
                         output.print("--module-path\n" + application + File.pathSeparator + activation + "\n--add-modules\ncom.example.app,com.example.formatter\n");
                         return 0;
                     }
@@ -2137,9 +2137,11 @@ class CommandRunnerTest {
                 (output, arguments) -> {
                     String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
                     resolutions.add(options);
+                    assertFalse(arguments.contains("--compile-time"));
                     output.print("--module-path\n"
                             + application
-                            + (arguments.contains("--compile-time") ? System.getProperty("path.separator") + optional : "")
+                            + System.getProperty("path.separator")
+                            + optional
                             + "\n--module\ncom.example.foo/com.example.Main\n");
                     return 0;
                 }),
@@ -2365,9 +2367,7 @@ class CommandRunnerTest {
                             .sorted()
                             .collect(Collectors.joining(","));
                     assertEquals(optionList, arguments.get(option + 1));
-                    if (options.equals(Set.of("compile"))) {
-                        assertTrue(arguments.contains("--compile-time"));
-                    }
+                    assertFalse(arguments.contains("--compile-time"));
                     output.print(argumentFileContents);
                     return 0;
                 });

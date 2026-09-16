@@ -56,9 +56,6 @@ public final class ModuleResolver {
             arguments.add("--resolve-options");
             arguments.add(optionSpecifications(options.options()));
         }
-        if (options.compileTime()) {
-            arguments.add("--compile-time");
-        }
         if (options.validateRuntimeAccess()) {
             arguments.add("--validate-runtime-access");
         }

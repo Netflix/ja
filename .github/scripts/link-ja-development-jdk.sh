@@ -47,7 +47,6 @@ curl --fail --silent --show-error --location \
 resolve=(
     --add-requires "com.netflix.tools.ja@$ja_version"
     --target-platform CURRENT
-    --compile-time
     --resolve-options "module-path,add-modules,module=main"
 )
 "$java" \

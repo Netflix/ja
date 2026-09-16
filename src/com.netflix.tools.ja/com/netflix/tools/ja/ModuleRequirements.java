@@ -151,7 +151,7 @@ final class ModuleRequirements {
         arguments.add("--update-module-hashes");
         List<String> resolved = moduleResolver.resolve(
                 arguments,
-                new ResolutionOptions(Set.of("module-path", "module-source-path", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"), false, true),
+                new ResolutionOptions(Set.of("module-path", "module-source-path", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"), true),
                 in,
                 err);
         return AutomaticModules.find(resolved);

@@ -37,14 +37,12 @@ class ToolDefinitionTest {
                 """
                         module=com.netflix.tools.jist@1.0
                         options=module-path,module-source-path,module=list
-                        compile-time=true
                         """);
 
         assertEquals(Launch.PROVIDER, definition.launch());
         assertEquals(Optional.of("com.netflix.tools.jist"), definition.module());
         assertEquals(Optional.of("1.0"), definition.version());
         assertEquals(Set.of("module-path", "module-source-path", "module=list"), definition.options());
-        assertTrue(definition.compileTime());
         assertFalse(definition.validateRuntimeAccess());
         assertEquals(-1, definition.isSupportedOption("--verbose"));
     }

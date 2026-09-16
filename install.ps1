@@ -147,7 +147,6 @@ try {
         --add-requires "com.netflix.tools.ja@$JaVersion" `
         --prefer-jmod `
         --target-platform CURRENT `
-        --compile-time `
         --resolve-options module-path,upgrade-module-path)
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to resolve Ja"

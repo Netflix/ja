@@ -211,8 +211,6 @@ public final class CommandRunner {
                 resolutionArguments = new ArrayList<>(initialToolResolution.orElseThrow()
                         .arguments(resolutionArguments));
             }
-            var includeStatic = commandLine.command() instanceof Command.Install(var request)
-                    && request.includeStatic();
             List<String> configurationArguments = List.of();
             Set<ModuleDescriptor> resolvedDescriptors = Set.of();
             Optional<ToolRunner.PreparedInvocation> toolInvocation = Optional.empty();
@@ -244,8 +242,6 @@ public final class CommandRunner {
             var requestedOptions = toolInvocation.isPresent()
                     ? toolInvocation.orElseThrow().resolutionOptions()
                     : workflowResolutionOptions(commandLine, selectedToolRunner);
-            if (includeStatic)
-                requestedOptions = requestedOptions.withCompileTime(true);
             List<String> launchArguments = requestedOptions.active() ? moduleResolver.resolve(resolutionArguments, requestedOptions,
                     commandLine.toolArguments(), in, err)
                     : List.of();

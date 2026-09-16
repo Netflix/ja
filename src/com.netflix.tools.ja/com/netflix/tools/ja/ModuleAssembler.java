@@ -135,7 +135,7 @@ final class ModuleAssembler {
         selectedArguments.add("--verify-module-hashes");
         selectedArguments.add("--module-version");
         selectedArguments.add(options.version());
-        var artifactRuntime = new ResolutionOptions(ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.options(), false, false);
+        var artifactRuntime = new ResolutionOptions(ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.options(), false);
         writeOptions(selectedArguments, artifactRuntime, work.resolve("selected-runtime.args"), err);
         var plans = new ArrayList<Plan>();
         int index = 0;
@@ -154,7 +154,7 @@ final class ModuleAssembler {
             arguments.add(options.version());
             writeOptions(arguments, ResolutionOptions.JAVAC, compileArguments, err);
             writeOptions(arguments, artifactRuntime, runtimeArguments, err);
-            writeOptions(arguments, new ResolutionOptions(Set.of("main-class", "module-version"), false, false),
+            writeOptions(arguments, new ResolutionOptions(Set.of("main-class", "module-version"), false),
                     jarArguments, err);
             writeOptions(arguments, javadocOptions, javadocArguments, err);
             plans.add(
@@ -181,9 +181,6 @@ final class ModuleAssembler {
         arguments.add(options.options().stream()
                 .sorted()
                 .collect(Collectors.joining(",")));
-        if (options.compileTime()) {
-            arguments.add("--compile-time");
-        }
         if (options.validateRuntimeAccess()) {
             arguments.add("--validate-runtime-access");
         }

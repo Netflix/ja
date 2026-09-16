@@ -312,7 +312,7 @@ public final class ToolServices {
         }
         var checker = optionChecker(name);
         return new ResolutionOptions(checker == null ? Set.of() : ModuleOptions.supportedBy(checker),
-                false, false);
+                false);
     }
 
     public OptionChecker optionChecker(String name, OptionChecker fallback) {
