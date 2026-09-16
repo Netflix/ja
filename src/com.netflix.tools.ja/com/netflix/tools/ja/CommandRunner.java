@@ -51,7 +51,6 @@ public final class CommandRunner {
     private final TemporaryDirectoryProvider temporaryDirectoryProvider;
     private final JavaLauncher javaLauncher;
     private final Installer installer;
-    private final DocumentationBrowser documentationBrowser;
 
     public CommandRunner(ModuleLayer layer) throws IOException {
         this(layer, ToolServices.load(layer));
@@ -59,7 +58,7 @@ public final class CommandRunner {
 
     private CommandRunner(ModuleLayer layer, ToolServices tools) {
         this(layer, tools, () -> ToolCatalog.load(layer, toolModules(tools)),
-                TemporaryDirectory::create, JavaProcess::launch, null, null);
+                TemporaryDirectory::create, JavaProcess::launch, null);
     }
 
     public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
@@ -71,7 +70,7 @@ public final class CommandRunner {
     public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalogProvider catalogProvider,
                          TemporaryDirectoryProvider temporaryDirectoryProvider) {
         this(layer, tools, catalogProvider, temporaryDirectoryProvider, JavaProcess::launch,
-                null, null);
+                null);
     }
 
     public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
@@ -81,20 +80,7 @@ public final class CommandRunner {
 
     public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
                          TemporaryDirectoryProvider temporaryDirectoryProvider, JavaLauncher javaLauncher, Installer installer) {
-        this(layer, tools, catalog, temporaryDirectoryProvider, javaLauncher, installer,
-                null);
-    }
-
-    public CommandRunner(
-            ModuleLayer layer,
-            ToolServices tools,
-            ToolCatalog catalog,
-            TemporaryDirectoryProvider temporaryDirectoryProvider,
-            JavaLauncher javaLauncher,
-            Installer installer,
-            DocumentationBrowser documentationBrowser) {
-        this(layer, tools, () -> catalog, temporaryDirectoryProvider, javaLauncher,
-                installer, documentationBrowser);
+        this(layer, tools, () -> catalog, temporaryDirectoryProvider, javaLauncher, installer);
     }
 
     private CommandRunner(
@@ -103,8 +89,7 @@ public final class CommandRunner {
             ToolCatalogProvider catalogProvider,
             TemporaryDirectoryProvider temporaryDirectoryProvider,
             JavaLauncher javaLauncher,
-            Installer installer,
-            DocumentationBrowser documentationBrowser) {
+            Installer installer) {
         this.layer = layer;
         this.tools = tools;
         this.moduleResolver = new ModuleResolver(tools);
@@ -112,7 +97,6 @@ public final class CommandRunner {
         this.temporaryDirectoryProvider = temporaryDirectoryProvider;
         this.javaLauncher = javaLauncher;
         this.installer = installer;
-        this.documentationBrowser = documentationBrowser;
     }
 
     public int run(JaInvocation commandLine, InputStream in, PrintStream out,
@@ -120,7 +104,7 @@ public final class CommandRunner {
             throws IOException {
         if (commandLine.verbose() && !tools.verbose()) {
             var catalog = usesToolCatalog(commandLine) ? catalogProvider.load() : new ToolCatalog(List.of());
-            return new CommandRunner(layer, tools.withVerbose(catalog.definitions(), err), () -> catalog, temporaryDirectoryProvider, verbose(javaLauncher, err), installer, documentationBrowser)
+            return new CommandRunner(layer, tools.withVerbose(catalog.definitions(), err), () -> catalog, temporaryDirectoryProvider, verbose(javaLauncher, err), installer)
                     .run(commandLine, in, out, err);
         }
         if (commandLine.command() instanceof Command.Init(var request)) {
@@ -287,7 +271,7 @@ public final class CommandRunner {
                 return javaLauncher.run(arguments, in, out, err);
             }
             return runWorkflow(commandLine, resolved, resolutionArguments, filteringCompileArguments, applicationTarget, selectedCatalog,
-                    in, out, err);
+                    selectedToolRunner, in, out, err);
         } finally {
             if (temporaryDirectory.isPresent())
                 temporaryDirectory.get().close();
@@ -336,16 +320,35 @@ public final class CommandRunner {
             List<String> filteringCompileArguments,
             Optional<ApplicationTarget> applicationTarget,
             ToolCatalog selectedCatalog,
+            ToolRunner toolRunner,
             InputStream in,
             PrintStream out,
             PrintStream err)
             throws IOException {
         if (commandLine.command() instanceof Command.Doc(var request)) {
-            DocumentationBrowser browser = documentationBrowser == null ? DocumentationServer::browse : documentationBrowser;
-            return new DocumentationCommand(tools, browser).run(request, resolved.arguments(), in, out, err);
+            String provider;
+            var arguments = new ArrayList<String>();
+            switch (request) {
+                case DocRequest.Terminal(var symbol) -> {
+                    provider = "jist";
+                    arguments.addAll(List.of("--source", "doc", "--break", "--no-line-number", symbol));
+                }
+                case DocRequest.Browse(var type) -> {
+                    provider = "jdocserver";
+                    arguments.add(type.map(value -> "--browse=" + value).orElse("--browse"));
+                }
+            }
+            return toolRunner.run(toolInvocation(commandLine, provider, arguments), resolutionArguments, resolved,
+                    in, out, err);
         }
         if (commandLine.command() instanceof Command.Source(var symbol)) {
-            return new SourceCommand(tools).run(symbol, resolved.arguments(), in, out, err);
+            return toolRunner.run(
+                    toolInvocation(commandLine, "jist", List.of("--source", "symbol", symbol)),
+                    resolutionArguments,
+                    resolved,
+                    in,
+                    out,
+                    err);
         }
         if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.GENERATE))) {
             return new SourceGenerator(tools).generate(
@@ -364,6 +367,17 @@ public final class CommandRunner {
                             out, err);
         }
         throw new IllegalArgumentException("Command " + commandLine.command() + " is not implemented");
+    }
+
+    private static JaInvocation toolInvocation(JaInvocation invocation, String tool, List<String> arguments) {
+        return new JaInvocation(
+                invocation.workingDirectory(),
+                invocation.verbose(),
+                new Command.Tool(tool),
+                invocation.moduleSourcePath(),
+                invocation.rootModules(),
+                invocation.resolutionArguments(),
+                arguments);
     }
 
     private Optional<TemporaryDirectory> temporaryDirectory(JaInvocation commandLine) throws IOException {

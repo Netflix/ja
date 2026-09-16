@@ -103,24 +103,8 @@ if [[ -z "$add_modules" ]]; then
     exit 1
 fi
 
-# Bootstrap linking does not project runtime-access attributes from binary application modules.
-# Keep these in sync with the declarations on ja's static development-tool dependencies.
 cat > "$output_java_home/conf/com.netflix.tools.launcher/ja.args" <<EOF
 --enable-native-access=com.netflix.tools.ja
---add-exports=jdk.javadoc/jdk.javadoc.internal.doclets.formats.html=com.netflix.tools.jdocserver
---add-exports=jdk.javadoc/jdk.javadoc.internal.api=com.netflix.tools.jdocserver
---add-exports=jdk.javadoc/jdk.javadoc.internal.doclets.toolkit.util=com.netflix.tools.jdocserver
---add-exports=jdk.javadoc/jdk.javadoc.internal.tool=com.netflix.tools.jdocserver
---add-exports=jdk.compiler/com.sun.tools.javac.api=com.netflix.tools.jdocserver
---add-exports=jdk.compiler/com.sun.tools.javac.main=com.netflix.tools.jdocserver
---add-exports=jdk.compiler/com.sun.tools.javac.util=com.netflix.tools.jdocserver
---add-exports=jdk.compiler/com.sun.tools.javac.api=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.code=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.file=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.model=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.parser=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.tree=com.netflix.tools.jfmt
---add-exports=jdk.compiler/com.sun.tools.javac.util=com.netflix.tools.jfmt
 --add-modules=$add_modules
 -L-aot=auto
 EOF

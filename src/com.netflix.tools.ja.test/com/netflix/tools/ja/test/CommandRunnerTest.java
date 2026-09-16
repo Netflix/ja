@@ -30,7 +30,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.jar.JarFile;
 import java.util.spi.ToolProvider;
 import java.util.stream.Collectors;
@@ -809,17 +808,22 @@ class CommandRunnerTest {
                                 }),
                         tool("jdocserver", (_, _) -> 0));
         var output = new ByteArrayOutputStream();
+        var jist = new ToolDefinition(
+                "jist",
+                Launch.PROVIDER,
+                Optional.empty(),
+                Optional.empty(),
+                "jist",
+                Optional.empty(),
+                SOURCE_OPTIONS,
+                List.of());
 
         int result = new CommandRunner(
                 ModuleLayer.boot(),
                 tools,
-                new ToolCatalog(List.of()),
+                new ToolCatalog(List.of(jist)),
                 () -> null,
-                (_, _, _, _) -> 0,
-                null,
-                (_, _) -> {
-                    throw new AssertionError("Browser must not be started");
-                })
+                (_, _, _, _) -> 0)
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(output),
                         new PrintStream(new ByteArrayOutputStream()));
 
@@ -889,11 +893,20 @@ class CommandRunnerTest {
                                     return 0;
                                 }));
         var output = new ByteArrayOutputStream();
+        var jist = new ToolDefinition(
+                "jist",
+                Launch.PROVIDER,
+                Optional.empty(),
+                Optional.empty(),
+                "jist",
+                Optional.empty(),
+                SOURCE_OPTIONS,
+                List.of());
 
         int result = new CommandRunner(
                 ModuleLayer.boot(),
                 tools,
-                new ToolCatalog(List.of()),
+                new ToolCatalog(List.of(jist)),
                 () -> null,
                 (_, _, _, _) -> 0)
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(output),
@@ -914,8 +927,7 @@ class CommandRunnerTest {
         Path second = Files.createDirectories(temporaryDirectory.resolve("src/com.example.second"));
         Files.writeString(second.resolve("module-info.java"), "module com.example.second {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "--browse", "java.lang.String"});
-        var browserArguments = new ArrayList<String>();
-        var browsedType = new AtomicReference<Optional<String>>();
+        var jdocserverArguments = new ArrayList<String>();
         ToolServices tools = ToolServices.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
@@ -933,7 +945,10 @@ class CommandRunnerTest {
                 tool("jist", (_, _) -> {
                     throw new AssertionError("Jist must not run");
                 }),
-                tool("jdocserver", (_, _) -> 0));
+                tool("jdocserver", (_, arguments) -> {
+                    jdocserverArguments.addAll(arguments);
+                    return 0;
+                }));
         var jdocserver = new ToolDefinition(
                 "jdocserver",
                 Launch.PROVIDER,
@@ -949,19 +964,15 @@ class CommandRunnerTest {
                 tools,
                 new ToolCatalog(List.of(jdocserver)),
                 () -> null,
-                (_, _, _, _) -> 0,
-                null,
-                (arguments, type) -> {
-                    browserArguments.addAll(arguments);
-                    browsedType.set(type);
-                    return 0;
-                })
+                (_, _, _, _) -> 0)
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
                         new PrintStream(new ByteArrayOutputStream()));
 
         assertEquals(0, result);
-        assertEquals(List.of("--module-source-path", "src", "--module", "com.example.first,com.example.second"), browserArguments);
-        assertEquals(Optional.of("java.lang.String"), browsedType.get());
+        assertEquals(
+                List.of("--module-source-path", "src", "--module", "com.example.first,com.example.second",
+                        "--module-version", "1", "--browse=java.lang.String"),
+                jdocserverArguments);
     }
 
     @Test
