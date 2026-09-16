@@ -67,8 +67,6 @@ final class ResolvedModules {
                 continue;
             }
             descriptor.requires().stream()
-                    .filter(requirement -> !requirement.modifiers()
-                            .contains(ModuleDescriptor.Requires.Modifier.STATIC))
                     .map(ModuleDescriptor.Requires::name)
                     .forEach(pending::addLast);
         }
@@ -128,8 +126,6 @@ final class ResolvedModules {
                 continue;
             }
             descriptor.requires().stream()
-                    .filter(requirement -> !requirement.modifiers()
-                            .contains(ModuleDescriptor.Requires.Modifier.STATIC))
                     .map(ModuleDescriptor.Requires::name)
                     .forEach(pending::addLast);
         }

@@ -235,8 +235,6 @@ class ToolRunnerTest {
             @Override
             public int run(PrintWriter out, PrintWriter err, String... arguments) {
                 jigArguments.addAll(List.of(arguments));
-                out.println("--add-exports");
-                out.println("jdk.compiler/com.sun.tools.javac.api=" + moduleName);
                 out.println("--add-modules");
                 out.println(moduleName);
                 return 0;
@@ -271,10 +269,12 @@ class ToolRunnerTest {
                 System.err);
 
         assertEquals(23, result);
+        assertTrue(joinedPair(jigArguments, "--module-path", modules.resolve(moduleName).toString()));
         assertTrue(joinedPair(jigArguments, "--add-modules", moduleName));
         assertTrue(jigArguments.contains("--validate-runtime-access"));
+        assertTrue(joinedPair(jigArguments, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
         assertEquals(
-                List.of("--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName, "--add-modules", moduleName, "--module",
+                List.of("--add-modules", moduleName, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName, "--module",
                         "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher", "runtime-probe", "explicit"),
                 launchedWith);
     }

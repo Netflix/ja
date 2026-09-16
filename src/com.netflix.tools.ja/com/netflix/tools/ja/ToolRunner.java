@@ -476,19 +476,37 @@ public final class ToolRunner {
                                   PrintStream err) throws IOException {
         var module = directTools.moduleName(definition.provider())
                 .or(() -> definition.module());
-        if (module.isEmpty() || !declaresRuntimeAccess(module.orElseThrow())) {
+        var requiredAccess = module.isEmpty()
+                ? Optional.<ModuleRuntimeAccessOptions>empty()
+                : declaredRuntimeAccess(module.orElseThrow());
+        if (requiredAccess.isEmpty()) {
             return tools.run(definition.provider(),
                     in,
                     out,
                     err,
                     toolArguments.toArray(String[]::new));
         }
-        var runtimeArguments =
+        var accessArguments = runtimeAccessArguments(requiredAccess.orElseThrow());
+        var providerResolutionArguments = new ArrayList<String>();
+        layer.configuration()
+                .findModule(module.orElseThrow())
+                .flatMap(resolved -> resolved.reference().location())
+                .filter(location -> "file".equalsIgnoreCase(location.getScheme()))
+                .map(Path::of)
+                .ifPresent(path -> {
+                    providerResolutionArguments.add("--module-path");
+                    providerResolutionArguments.add(path.toString());
+                });
+        providerResolutionArguments.add("--add-modules");
+        providerResolutionArguments.add(module.orElseThrow());
+        var runtimeArguments = new ArrayList<>(
                 new ModuleResolver(tools)
-                        .resolve(List.of("--add-modules", module.orElseThrow()),
+                        .resolve(providerResolutionArguments,
                                 providerRuntimeOptions(),
+                                accessArguments,
                                 in,
-                                err);
+                                err));
+        runtimeArguments.addAll(accessArguments);
         if (runtimeAccessIsEffective(layer, runtimeArguments)) {
             return tools.run(definition.provider(),
                     in,
@@ -501,12 +519,26 @@ public final class ToolRunner {
         return launchProvider(definition.provider(), runtimeArguments, toolArguments, in, out, err);
     }
 
-    private boolean declaresRuntimeAccess(String module) throws IOException {
+    private Optional<ModuleRuntimeAccessOptions> declaredRuntimeAccess(String module) throws IOException {
         var resolved = layer.configuration().findModule(module).orElse(null);
-        return resolved != null
-                && ModuleRuntimeAccess.read(resolved.reference())
-                        .filter(access -> !access.isEmpty())
-                        .isPresent();
+        return resolved == null
+                ? Optional.empty()
+                : ModuleRuntimeAccess.read(resolved.reference()).filter(access -> !access.isEmpty());
+    }
+
+    private static List<String> runtimeAccessArguments(ModuleRuntimeAccessOptions access) {
+        var arguments = new ArrayList<String>();
+        access.enableNativeAccess().forEach(module -> arguments.add("--enable-native-access=" + module));
+        access.enableFinalFieldMutation().forEach(module -> arguments.add("--enable-final-field-mutation=" + module));
+        access.addExports().forEach(value -> {
+            arguments.add("--add-exports");
+            arguments.add(value.toFlagValue());
+        });
+        access.addOpens().forEach(value -> {
+            arguments.add("--add-opens");
+            arguments.add(value.toFlagValue());
+        });
+        return List.copyOf(arguments);
     }
 
     private int launchProvider(String provider,
