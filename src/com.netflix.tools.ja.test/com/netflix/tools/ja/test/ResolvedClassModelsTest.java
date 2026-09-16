@@ -163,7 +163,8 @@ class ResolvedClassModelsTest {
         var runtimeArguments = List.of(
                 "--module-path", runtimeModules.toString(),
                 "--add-modules", "example.tool",
-                "--add-exports", "jdk.compiler/com.sun.source.util=example.tool");
+                "--add-exports", "jdk.compiler/com.sun.source.util=example.tool",
+                "--add-exports", "jdk.javadoc/jdk.javadoc.internal.tool=example.tool");
         var classes = ResolvedClassModels.resolve(
                 parentConfiguration,
                 new ModuleInputs(Set.of("example.root"), List.of("--module-path", applicationModules.toString())),
@@ -175,6 +176,11 @@ class ResolvedClassModelsTest {
 
         assertNotEquals(parentTool.toUri(), resolvedTool.reference().location().orElseThrow());
         assertEquals(runtimeTool.toUri(), resolvedTool.reference().location().orElseThrow());
+        assertSame(layer, layer.findModule("jdk.compiler").orElseThrow().getLayer());
+        assertSame(layer, layer.findModule("jdk.internal.md").orElseThrow().getLayer());
+        assertSame(layer, layer.findModule("jdk.internal.opt").orElseThrow().getLayer());
+        assertSame(layer, layer.findModule("jdk.javadoc").orElseThrow().getLayer());
+        assertSame(layer, layer.findModule("jdk.zipfs").orElseThrow().getLayer());
     }
 
     @Test

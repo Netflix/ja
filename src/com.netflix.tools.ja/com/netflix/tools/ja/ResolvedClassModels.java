@@ -640,10 +640,23 @@ public final class ResolvedClassModels {
             addRuntimeAccessModules(configuration, names, open.sourceModule(), open.targetModule());
         }
         var references = new LinkedHashMap<String, ModuleReference>();
-        for (var name : names) {
-            configuration.findModule(name)
-                    .map(module -> module.reference())
-                    .ifPresent(reference -> references.put(name, reference));
+        var pending = new ArrayDeque<>(names);
+        while (!pending.isEmpty()) {
+            var name = pending.removeFirst();
+            if (references.containsKey(name)) {
+                continue;
+            }
+            var module = configuration.findModule(name).orElse(null);
+            if (module == null || !canDefineForRuntimeAccess(configuration, name)) {
+                continue;
+            }
+            var reference = module.reference();
+            references.put(name, reference);
+            if (reference.location().map(location -> location.getScheme().equals("jrt")).orElse(false)) {
+                module.reads().stream()
+                        .map(read -> read.name())
+                        .forEach(pending::addLast);
+            }
         }
         return Map.copyOf(references);
     }
