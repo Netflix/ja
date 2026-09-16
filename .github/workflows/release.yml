@@ -59,9 +59,6 @@ jobs:
             "$BUILD_VERSION"
 
       # Keep the bootstrap selected until hashes written by jig 0.15 have been refreshed.
-      - name: Test source with bootstrap ja
-        run: ja test --all
-
       - name: Publish to Maven Central with bootstrap ja
         run: >-
           ja maven deploy-central

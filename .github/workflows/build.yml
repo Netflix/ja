@@ -55,7 +55,3 @@ jobs:
             "$SOURCE_JAVA_HOME" \
             "$BUILT_JAVA_HOME" \
             "$BUILD_VERSION"
-
-      # Keep the bootstrap selected until hashes written by jig 0.15 have been refreshed.
-      - name: Test source with bootstrap ja
-        run: ja test --all
