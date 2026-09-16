@@ -20,7 +20,7 @@ fi
 source_java_home="$1"
 output_java_home="$2"
 ja_version="$3"
-bootstrap_jig_version=0.13.6
+bootstrap_jig_version=0.16.2
 
 if [[ -e "$output_java_home" ]]; then
     echo "Output path already exists: $output_java_home" >&2
@@ -50,6 +50,7 @@ module_arguments="$work/modules.args"
     --module com.netflix.tools.jig \
     --module-path "$source_java_home/jmods" \
     --add-requires "com.netflix.tools.ja@$ja_version" \
+    --add-modules com.netflix.tools.jfmt,com.netflix.tools.jist,com.netflix.tools.jdocserver \
     --prefer-jmod \
     --target-platform CURRENT \
     --resolve-options module-path \

@@ -11,7 +11,7 @@
 # the License.
 
 param(
-    [string] $JigVersion = "0.13.6",
+    [string] $JigVersion = "0.16.2",
     [string] $JaVersion,
     [string] $Output
 )
@@ -145,6 +145,7 @@ try {
 
     $ResolvedArguments = @(& $Java @JigArguments `
         --add-requires "com.netflix.tools.ja@$JaVersion" `
+        --add-modules "com.netflix.tools.jfmt,com.netflix.tools.jist,com.netflix.tools.jdocserver" `
         --prefer-jmod `
         --target-platform CURRENT `
         --resolve-options module-path,upgrade-module-path)

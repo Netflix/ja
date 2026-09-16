@@ -22,7 +22,7 @@ configured_java_home="${JAVA_HOME:-}"
 java_on_path="$(type -P java || true)"
 java_properties=""
 
-jig_version="${JIG_VERSION:-0.13.6}"
+jig_version="${JIG_VERSION:-0.16.2}"
 ja_version="${JA_VERSION:-}"
 if [[ -n "$configured_java_home" ]]; then
     source_java_home="$configured_java_home"
@@ -148,6 +148,7 @@ fi
 resolved_arguments="$work/resolved.args"
 "${jig_command[@]}" \
     --add-requires "com.netflix.tools.ja@$ja_version" \
+    --add-modules com.netflix.tools.jfmt,com.netflix.tools.jist,com.netflix.tools.jdocserver \
     --prefer-jmod \
     --target-platform CURRENT \
     --resolve-options module-path,upgrade-module-path \
