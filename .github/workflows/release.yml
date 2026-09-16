@@ -43,7 +43,7 @@ jobs:
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
       - name: Set up bootstrap ja
-        uses: Netflix/ja/.github/actions/setup-ja@v0.18.7
+        uses: Netflix/ja/.github/actions/setup-ja@v0.20.0
 
       - name: Build native launchers with Zig
         run: src/launcher/build.sh
@@ -57,9 +57,13 @@ jobs:
             "$SOURCE_JAVA_HOME" \
             "$BUILT_JAVA_HOME" \
             "$BUILD_VERSION"
+          echo "JAVA_HOME=$BUILT_JAVA_HOME" >> "$GITHUB_ENV"
+          echo "$BUILT_JAVA_HOME/bin" >> "$GITHUB_PATH"
 
-      # Keep the bootstrap selected until hashes written by jig 0.15 have been refreshed.
-      - name: Publish to Maven Central with bootstrap ja
+      - name: Test source with built ja
+        run: ja test --all
+
+      - name: Publish to Maven Central with built ja
         run: >-
           ja maven deploy-central
           --module-version "$BUILD_VERSION"
