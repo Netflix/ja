@@ -70,6 +70,14 @@ class CommandRunnerTest {
             "upgrade-module-path");
     private static final Set<String> SOURCE_OPTIONS = Set.of("add-exports", "enable-preview", "module=list", "module-path", "module-source-path", "release");
     private static final Set<String> MODULE_PATH_OPTIONS = Set.of("add-modules", "module-path", "module-source-path", "upgrade-module-path");
+    private static final Set<String> REQUIRE_OPTIONS = Set.of(
+            "add-exports",
+            "add-opens",
+            "enable-final-field-mutation",
+            "enable-native-access",
+            "module-path",
+            "module-source-path",
+            "upgrade-module-path");
     private static final Set<String> RUNTIME_ACCESS_OPTIONS = Set.of(
             "add-exports",
             "add-modules",
@@ -992,7 +1000,7 @@ class CommandRunnerTest {
         ToolServices tools = ToolServices.of(tool(
                 "jig",
                 (output, arguments) -> {
-                    assertEquals("add-exports,add-opens,enable-final-field-mutation,enable-native-access,module-path," + "module-source-path", arguments.get(arguments.indexOf("--resolve-options") + 1));
+                    assertEquals(optionList(REQUIRE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
                     assertTrue(arguments.contains("--validate-runtime-access"));
                     Path stagedModule = moduleSource(arguments, "com.example.app");
                     String stagedDescriptor = Files.readString(stagedModule.resolve("module-info.java"));
@@ -1089,6 +1097,7 @@ class CommandRunnerTest {
                         return 0;
                     }
                     assertTrue(arguments.contains("--update-module-hashes"));
+                    assertEquals(optionList(REQUIRE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
                     assertEquals(-1, arguments.indexOf("--verify-module-hashes"));
                     var stagedModule = moduleSource(arguments, "com.example.app");
                     assertTrue(Files.readString(stagedModule.resolve("module-info.java")).contains("requires org.example.library; // @1.2.0"));
