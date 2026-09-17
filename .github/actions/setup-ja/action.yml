@@ -15,10 +15,13 @@ description: Add the ja and jig native toolchain to a Zulu JDK
 
 inputs:
   ja-version:
-    description: Ja version; defaults to the version in the action tag
+    description: ja version; defaults to the version in the action tag
     required: false
 
 outputs:
+  ja-version:
+    description: Installed ja version
+    value: ${{ steps.configuration.outputs.ja-version }}
   java-home:
     description: Linked ja toolchain JDK
     value: ${{ steps.configuration.outputs.java-home }}

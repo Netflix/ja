@@ -94,11 +94,24 @@ if [[ -e "$install_root" || -L "$install_root" ]]; then
     echo "Output path already exists: $install_root" >&2
     exit 1
 fi
+if [[ -n "$mac_bundle" ]]; then
+    source_java_home_physical="$(cd "$source_java_home" && pwd -P)"
+    source_contents="$(dirname "$source_java_home_physical")"
+    if [[ "$(basename "$source_java_home_physical")" != Home
+            || "$(basename "$source_contents")" != Contents
+            || ! -f "$source_contents/Info.plist"
+            || ! -d "$source_contents/MacOS" ]]; then
+        echo "The default macOS installation requires a native JDK bundle" >&2
+        echo "Pass an output directory to install from this JDK" >&2
+        exit 1
+    fi
+fi
 
 java_selection=path
 jenv_root="${JENV_ROOT:-$HOME/.jenv}"
 sdkman_candidates="${SDKMAN_CANDIDATES_DIR:-${SDKMAN_DIR:-$HOME/.sdkman}/candidates}"
-if [[ "$java_on_path" == "$jenv_root/shims/java" ]]; then
+if [[ "$java_on_path" == "$jenv_root/shims/java"
+        || "$configured_java_home" == "$jenv_root/versions/"* ]]; then
     java_selection=jenv
 elif [[ "$configured_java_home" == "$sdkman_candidates/java/"* ]]; then
     java_selection=sdkman
@@ -121,13 +134,23 @@ case ":${PATH:-}:" in
 esac
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/ja-install.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+stage_parent=""
+cleanup() {
+    rm -rf "$work"
+    if [[ -n "$stage_parent" ]]; then
+        rm -rf "$stage_parent"
+    fi
+}
+trap cleanup EXIT
 
 jig_home="$work/home"
 mkdir -p "$jig_home"
 
+if [[ -z "$ja_version" ]]; then
+    printf 'Finding the latest ja release...\n'
+fi
 jig="$work/com.netflix.tools.jig-$jig_version.jar"
-curl --fail --location --output "$jig" \
+curl --fail --silent --show-error --location --output "$jig" \
     "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.jig/$jig_version/com.netflix.tools.jig-$jig_version.jar"
 
 jig_command=(
@@ -140,10 +163,11 @@ if [[ -z "$ja_version" ]]; then
     ja_version="$("${jig_command[@]}" \
         --list-module-versions com.netflix.tools.ja | tail -n 1)"
     if [[ -z "$ja_version" ]]; then
-        echo "Unable to determine the latest Ja version" >&2
+        echo "Unable to determine the latest ja version" >&2
         exit 1
     fi
 fi
+printf 'Installing ja %s with JDK %s...\n' "$ja_version" "$java_version"
 
 resolved_arguments="$work/resolved.args"
 "${jig_command[@]}" \
@@ -178,109 +202,86 @@ link_options=()
 if [[ "$openj9" == false ]]; then
     link_options+=(--generate-cds-archive)
 fi
-mkdir -p "$(dirname "$ja_home")"
-"$jlink" --module-path "$module_path" --add-modules ALL-MODULE-PATH "${link_options[@]}" --output "$ja_home"
-cp "$source_java_home/lib/src.zip" "$ja_home/lib/src.zip"
+install_parent="$(dirname "$install_root")"
+mkdir -p "$install_parent"
+stage_parent="$(mktemp -d "$install_parent/.ja-install.XXXXXX")"
+staged_install_root="$stage_parent/ja"
+if [[ -n "$mac_bundle" ]]; then
+    staged_ja_home="$staged_install_root/Contents/Home"
+else
+    staged_ja_home="$staged_install_root"
+fi
+
+jlink_output="$work/jlink-output"
+if ! "$jlink" --module-path "$module_path" --add-modules ALL-MODULE-PATH \
+        "${link_options[@]}" --output "$staged_ja_home" > "$jlink_output" 2>&1; then
+    cat "$jlink_output" >&2
+    echo "Unable to create the ja-enabled JDK" >&2
+    exit 1
+fi
+cp "$source_java_home/lib/src.zip" "$staged_ja_home/lib/src.zip"
 
 if [[ -d "$source_java_home/jmods" ]]; then
-    mkdir -p "$ja_home/jmods"
-    cp "$source_java_home/jmods/"*.jmod "$ja_home/jmods/"
-    find "$jig_home" -type f -name '*.jmod' -exec cp {} "$ja_home/jmods/" \;
+    mkdir -p "$staged_ja_home/jmods"
+    cp "$source_java_home/jmods/"*.jmod "$staged_ja_home/jmods/"
+    find "$jig_home" -type f -name '*.jmod' -exec cp {} "$staged_ja_home/jmods/" \;
 fi
-mkdir -p "$ja_home/lib/ja/modules"
-find "$jig_home" -type f -name '*.jar' -exec cp {} "$ja_home/lib/ja/modules/" \;
+mkdir -p "$staged_ja_home/lib/ja/modules"
+find "$jig_home" -type f -name '*.jar' -exec cp {} "$staged_ja_home/lib/ja/modules/" \;
 if [[ "$openj9" == true ]]; then
-    for options in "$ja_home/conf/com.netflix.tools.launcher/"*.args; do
+    for options in "$staged_ja_home/conf/com.netflix.tools.launcher/"*.args; do
         [[ -f "$options" ]] || continue
         grep -Fxq -- -L-aot=auto "$options" || continue
         command="${options##*/}"
         command="${command%.args}"
-        "$ja_home/bin/$command" -L-aot=create --help >/dev/null
+        warmup_output="$work/$command-warmup-output"
+        if ! "$staged_ja_home/bin/$command" -L-aot=create --help \
+                > "$warmup_output" 2>&1; then
+            cat "$warmup_output" >&2
+            echo "Unable to warm the $command shared class cache" >&2
+            exit 1
+        fi
     done
 fi
 
 if [[ -n "$mac_bundle" ]]; then
-    contents="$mac_bundle/Contents"
-    source_java_home_physical="$(cd "$source_java_home" && pwd -P)"
-    source_contents="$(dirname "$source_java_home_physical")"
-    if [[ "$(basename "$source_java_home_physical")" == Home
-            && "$(basename "$source_contents")" == Contents
-            && -f "$source_contents/Info.plist" ]]; then
-        cp "$source_contents/Info.plist" "$contents/Info.plist"
-    else
-        java_platform_version="${java_version%%+*}"
-        java_platform_version="${java_platform_version%%-*}"
-        cat > "$contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>libjli.dylib</string>
-    <key>CFBundleGetInfoString</key>
-    <string>Ja $ja_version, JDK $java_platform_version</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.netflix.tools.ja.jdk</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>7.0</string>
-    <key>CFBundleName</key>
-    <string>Ja $ja_version</string>
-    <key>CFBundlePackageType</key>
-    <string>BNDL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$java_platform_version</string>
-    <key>CFBundleVersion</key>
-    <string>$java_feature</string>
-    <key>JavaVM</key>
-    <dict>
-        <key>JVMCapabilities</key>
-        <array>
-            <string>CommandLine</string>
-        </array>
-        <key>JVMPlatformVersion</key>
-        <string>$java_platform_version</string>
-        <key>JVMVendor</key>
-        <string>Netflix, Inc.</string>
-        <key>JVMVersion</key>
-        <string>$java_platform_version</string>
-    </dict>
-</dict>
-</plist>
-EOF
-    fi
-    plutil -replace CFBundleIdentifier -string com.netflix.tools.ja.jdk "$contents/Info.plist"
-    plutil -replace CFBundleName -string "Ja $ja_version" "$contents/Info.plist"
-    plutil -replace CFBundleGetInfoString -string "Ja $ja_version, JDK $java_version" "$contents/Info.plist"
-    mkdir -p "$contents/MacOS"
-    cp "$ja_home/lib/libjli.dylib" "$contents/MacOS/libjli.dylib"
-    codesign --force --sign - "$contents/MacOS/libjli.dylib"
-    if ! /usr/libexec/java_home -V 2>&1 | grep -Fq "$ja_home"; then
-        echo "The Ja JDK was not discovered by /usr/libexec/java_home: $ja_home" >&2
-        exit 1
-    fi
+    contents="$staged_install_root/Contents"
+    cp "$source_contents/Info.plist" "$contents/Info.plist"
+    cp -R "$source_contents/MacOS" "$contents/MacOS"
 fi
 
-printf 'Ja %s installed in %s\n' "$ja_version" "$ja_home"
+installed_version="$("$staged_ja_home/bin/ja" -L-aot=off --version)"
+if [[ "$installed_version" != "ja $ja_version" ]]; then
+    echo "Unable to verify ja $ja_version, found $installed_version" >&2
+    exit 1
+fi
+if [[ -e "$install_root" || -L "$install_root" ]]; then
+    echo "Output path was created during installation: $install_root" >&2
+    exit 1
+fi
+mv "$staged_install_root" "$install_root"
+
+printf 'ja %s installed in %s\n' "$ja_version" "$ja_home"
 ja_alias="ja-$java_feature"
 case "$java_selection" in
     jenv)
-        printf '\nThe source JDK is selected by jenv. Register and select Ja with:\n\n'
+        printf '\nThe source JDK is selected by jenv. Register and select ja with:\n\n'
         printf '  jenv add %q %q\n' "$ja_alias" "$ja_home"
         printf '  jenv shell %q\n' "$ja_alias"
-        printf '\nUse jenv local or jenv global instead to select Ja more broadly.\n'
+        printf '\nUse jenv local or jenv global instead to select ja more broadly.\n'
         ;;
     sdkman)
-        printf '\nThe source JDK is selected by SDKMAN!. Register and select Ja with:\n\n'
+        printf '\nThe source JDK is selected by SDKMAN!. Register and select ja with:\n\n'
         printf '  sdk install java %q %q\n' "$ja_alias" "$ja_home"
         printf '  sdk use java %q\n' "$ja_alias"
-        printf '\nUse sdk default instead to select Ja in future shells.\n'
+        printf '\nUse sdk default instead to select ja in future shells.\n'
         ;;
     java_home)
         activation_path="$ja_home/bin"
         if [[ "$ja_bin_on_path" == false ]]; then
             activation_path="$activation_path:$ja_bin_home"
         fi
-        printf '\nTo use Ja in this shell:\n\n'
+        printf '\nTo use ja in this shell:\n\n'
         printf '  export JAVA_HOME=%q\n' "$ja_home"
         printf "  export PATH=%q:\"\$PATH\"\n" "$activation_path"
         ;;
@@ -289,7 +290,7 @@ case "$java_selection" in
         if [[ "$ja_bin_on_path" == false ]]; then
             activation_path="$activation_path:$ja_bin_home"
         fi
-        printf '\nTo use Ja in this shell:\n\n'
+        printf '\nTo use ja in this shell:\n\n'
         printf "  export PATH=%q:\"\$PATH\"\n" "$activation_path"
         ;;
 esac

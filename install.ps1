@@ -139,7 +139,7 @@ try {
         $JaVersion = & $Java @JigArguments `
             --list-module-versions com.netflix.tools.ja | Select-Object -Last 1
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($JaVersion)) {
-            throw "Unable to determine the latest Ja version"
+            throw "Unable to determine the latest ja version"
         }
     }
 
@@ -150,7 +150,7 @@ try {
         --target-platform CURRENT `
         --resolve-options module-path,upgrade-module-path)
     if ($LASTEXITCODE -ne 0) {
-        throw "Unable to resolve Ja"
+        throw "Unable to resolve ja"
     }
     $ModulePath = $null
     $UpgradeModulePath = $null
@@ -193,7 +193,7 @@ try {
     $LinkArguments += @("--output", $Output)
     & $Jlink @LinkArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Unable to link the Ja JDK"
+        throw "Unable to link the ja-enabled JDK"
     }
     Copy-Item -LiteralPath $Sources -Destination (Join-Path $Output "lib\src.zip")
 
@@ -223,9 +223,9 @@ try {
         }
     }
 
-    Write-Output "Ja $JaVersion installed in $Output"
+    Write-Output "ja $JaVersion installed in $Output"
     Write-Output ""
-    Write-Output "To use Ja in this PowerShell session:"
+    Write-Output "To use ja in this PowerShell session:"
     Write-Output ""
     $PathEntries = @((Join-Path $Output "bin"))
     if (-not $JaBinOnPath) {

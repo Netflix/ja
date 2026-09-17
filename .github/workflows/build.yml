@@ -21,6 +21,36 @@ permissions:
   contents: read
 
 jobs:
+  install:
+    name: Install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Zulu JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version-file: .java-version
+
+      - name: Preserve source JDK
+        run: echo "SOURCE_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      - name: Set up bootstrap ja
+        id: bootstrap
+        uses: ./.github/actions/setup-ja
+        with:
+          ja-version: 0.20.0
+
+      - name: Test installer
+        run: >-
+          JAVA_HOME="$SOURCE_JAVA_HOME"
+          .github/scripts/test-install.sh
+          "${{ steps.bootstrap.outputs.ja-version }}"
+
   build:
     name: Build
     runs-on: ubuntu-latest
