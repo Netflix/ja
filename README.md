@@ -35,48 +35,7 @@ On Windows PowerShell:
 irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
-The default installation is discoverable by common development tools. On macOS it is a user JDK bundle under `~/Library/Java/JavaVirtualMachines`. On Linux and Windows it is under `~/.jdks`, following the IntelliJ IDEA convention also recognized by Gradle.
-
-The installer does not modify shell configuration. It prints activation steps matching the way the source JDK was selected, including jenv, SDKMAN!, `JAVA_HOME`, or `PATH`. The steps also add `~/.local/bin` when needed so commands created by `ja install` are available, and show how to enable completions for `ja` and the bundled tools.
-
-Pass an output directory to use a custom location instead:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
-  bash -s -- /path/to/output
-```
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1))) `
-  -Output C:\path\to\output
-```
-
-Set `JA_VERSION` on macOS and Linux, or pass `-JaVersion` on Windows, to install an exact version instead of the latest release:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
-  JA_VERSION=0.17.0 bash
-```
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1))) `
-  -JaVersion 0.17.0
-```
-
-Take `ja` for a spin by installing an application:
-
-```console
-$ ja install com.github.ricksbrown.cowsay@1.1.0
-$ cowsay 'Holy cow, Java modules!'
- _________________________
-< Holy cow, Java modules! >
- -------------------------
-        \   ^__^
-         \  (oo)\_______
-            (__)\       )\/\
-                ||----w |
-                ||     ||
-```
+The installer prints the steps needed to activate `ja`. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, shell setup and completions, custom locations, and version pinning.
 
 ## Quick start
 
@@ -128,6 +87,7 @@ While `com.example.hello` is fine for this example, for a module you intend to p
 
 The [wiki](https://github.com/Netflix/ja/wiki) covers:
 
+- [Installation](https://github.com/Netflix/ja/wiki/Installation)
 - [Module layout](https://github.com/Netflix/ja/wiki/Module-Layout)
 - [Dependencies](https://github.com/Netflix/ja/wiki/Dependencies)
 - [Development](https://github.com/Netflix/ja/wiki/Development)
