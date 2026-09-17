@@ -35,9 +35,7 @@ On Windows PowerShell:
 irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
-The default installation is discoverable by common development tools. On macOS it is a user JDK bundle under `~/Library/Java/JavaVirtualMachines`; on Linux and Windows it is under `~/.jdks`, following the IntelliJ IDEA convention also recognized by Gradle.
-
-On macOS and Linux, we recommend using [jenv](https://www.jenv.be/) to select both the source JDK and the installed JDK. Running `jenv local` records the selection in `.java-version`, allowing each repository to select its `ja`-enabled JDK and compatible bundled toolchain automatically.
+The default installation is discoverable by common development tools. On macOS it is a user JDK bundle under `~/Library/Java/JavaVirtualMachines`. On Linux and Windows it is under `~/.jdks`, following the IntelliJ IDEA convention also recognized by Gradle.
 
 The installer does not modify shell configuration. It prints activation steps matching the way the source JDK was selected, including jenv, SDKMAN!, `JAVA_HOME`, or `PATH`. The steps also add `~/.local/bin` when needed so commands created by `ja install` are available, and show how to enable completions for `ja` and the bundled tools.
 
