@@ -164,6 +164,12 @@ try {
             default { throw "Unexpected Jig argument: $($ResolvedArguments[$Index])" }
         }
     }
+    $ResolvedModulePathEntries = @()
+    foreach ($PathList in @($UpgradeModulePath, $ModulePath)) {
+        if (-not [string]::IsNullOrWhiteSpace($PathList)) {
+            $ResolvedModulePathEntries += $PathList -split [Regex]::Escape([IO.Path]::PathSeparator)
+        }
+    }
     $ModulePathEntries = @()
     if (-not [string]::IsNullOrWhiteSpace($UpgradeModulePath)) {
         $ModulePathEntries += $UpgradeModulePath
@@ -201,8 +207,15 @@ try {
         $OutputJmods = Join-Path $Output "jmods"
         New-Item -ItemType Directory -Path $OutputJmods | Out-Null
         Copy-Item -Path (Join-Path $JdkModulePath "*.jmod") -Destination $OutputJmods
-        Get-ChildItem -Path $JigHome -Recurse -File -Filter "*.jmod" |
-            Copy-Item -Destination $OutputJmods
+        foreach ($ResolvedModule in $ResolvedModulePathEntries) {
+            if ([IO.Path]::GetExtension($ResolvedModule) -ne ".jmod" -or
+                    -not (Test-Path -LiteralPath $ResolvedModule -PathType Leaf)) {
+                continue
+            }
+            $ModuleName = ([IO.Path]::GetFileNameWithoutExtension($ResolvedModule) -split "-", 2)[0]
+            Copy-Item -LiteralPath $ResolvedModule `
+                -Destination (Join-Path $OutputJmods "$ModuleName.jmod") -Force
+        }
     }
     $OutputModules = Join-Path $Output "lib\ja\modules"
     New-Item -ItemType Directory -Force -Path $OutputModules | Out-Null

@@ -187,6 +187,10 @@ while IFS= read -r option && IFS= read -r value; do
         *) echo "Unexpected Jig argument: $option" >&2; exit 1 ;;
     esac
 done < "$resolved_arguments"
+resolved_module_path="$module_path"
+if [[ -n "$upgrade_module_path" ]]; then
+    resolved_module_path="$upgrade_module_path${resolved_module_path:+:$resolved_module_path}"
+fi
 if [[ -n "$jdk_module_path" ]]; then
     module_path="$jdk_module_path${module_path:+:$module_path}"
 fi
@@ -224,7 +228,13 @@ cp "$source_java_home/lib/src.zip" "$staged_ja_home/lib/src.zip"
 if [[ -d "$source_java_home/jmods" ]]; then
     mkdir -p "$staged_ja_home/jmods"
     cp "$source_java_home/jmods/"*.jmod "$staged_ja_home/jmods/"
-    find "$jig_home" -type f -name '*.jmod' -exec cp {} "$staged_ja_home/jmods/" \;
+    IFS=: read -r -a resolved_modules <<< "$resolved_module_path"
+    for resolved_module in "${resolved_modules[@]}"; do
+        [[ "$resolved_module" == *.jmod && -f "$resolved_module" ]] || continue
+        module_name="${resolved_module##*/}"
+        module_name="${module_name%%-*}"
+        cp "$resolved_module" "$staged_ja_home/jmods/$module_name.jmod"
+    done
 fi
 mkdir -p "$staged_ja_home/lib/ja/modules"
 find "$jig_home" -type f -name '*.jar' -exec cp {} "$staged_ja_home/lib/ja/modules/" \;

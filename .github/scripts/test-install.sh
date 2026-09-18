@@ -141,6 +141,16 @@ else
 fi
 if [[ "$expected_link_mode" == jmods ]]; then
     [[ -f "$ja_home/jmods/java.base.jmod" ]]
+    while IFS= read -r -d '' retained_jmod; do
+        description="$("$ja_home/bin/jmod" describe "$retained_jmod")"
+        module="${description%%@*}"
+        module="${module%%$'\n'*}"
+        expected_name="$module.jmod"
+        if [[ "${retained_jmod##*/}" != "$expected_name" ]]; then
+            echo "Retained JMOD is not named for its module: $retained_jmod" >&2
+            exit 1
+        fi
+    done < <(find "$ja_home/jmods" -maxdepth 1 -type f -name '*.jmod' -print0)
 else
     [[ ! -d "$ja_home/jmods" ]]
 fi
