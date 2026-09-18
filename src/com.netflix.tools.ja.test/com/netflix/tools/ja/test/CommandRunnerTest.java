@@ -46,7 +46,7 @@ import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -186,7 +186,7 @@ class CommandRunnerTest {
 
         var jigInvocations = new ArrayList<List<String>>();
         var formatterArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
@@ -227,7 +227,7 @@ class CommandRunnerTest {
         Files.writeString(second.resolve("module-info.java"), "module com.example.second {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"fmt", "explicit"});
         var formatterArguments = new ArrayList<String>();
-        var tools = ToolServices.of(ToolProvider.findFirst("jig").orElseThrow(),
+        var tools = ToolRuntime.of(ToolProvider.findFirst("jig").orElseThrow(),
                 tool("formatter",
                         (_, arguments) -> {
                             formatterArguments.addAll(arguments);
@@ -298,7 +298,7 @@ class CommandRunnerTest {
         Files.writeString(toolModule.resolve("module-info.java"), "not a module descriptor\n");
 
         var jigInvocations = new ArrayList<List<String>>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
                     output.print("--module-path\n" + modules + "\n--add-modules\ncom.example.application,com.example.tool\n");
@@ -378,7 +378,7 @@ class CommandRunnerTest {
 
         var commandLine = JaInvocation.parse(application, new String[] {"tool", "probe", "explicit"});
         var jigInvocations = new ArrayList<List<String>>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
                     if (arguments.get(arguments.indexOf("--resolve-options") + 1).equals(optionList(MODULE_PATH_OPTIONS))) {
@@ -440,7 +440,7 @@ class CommandRunnerTest {
                 """);
         Files.createFile(application.resolve("module-info.hash"));
         var commandLine = JaInvocation.parse(application, new String[] {"tool", "probe"});
-        var tools = ToolServices.of(tool("jig", (_, _) -> {
+        var tools = ToolRuntime.of(tool("jig", (_, _) -> {
             throw new AssertionError("source scope must not be resolved");
         }),
                 tool("probe", (_, _) -> 0));
@@ -459,7 +459,7 @@ class CommandRunnerTest {
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool", "discovered-probe", "explicit"});
         var arguments = new ArrayList<String>();
         var jigRuns = new AtomicInteger();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (_, _) -> {
                     jigRuns.incrementAndGet();
                     return 0;
@@ -591,7 +591,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(source, new String[] {"tool", "jshell"});
         var jshellArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals("add-modules,enable-preview,module-path", arguments.get(arguments.indexOf("--resolve-options") + 1));
                     output.print("--module-path\nmodules\n--add-modules\ncom.example.app\n");
@@ -629,7 +629,7 @@ class CommandRunnerTest {
         var commandLine = JaInvocation.parse(foo, new String[] {"tool", "javap"});
         var jigInvocations = new ArrayList<List<String>>();
         var toolArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
                     output.print("--module-path\nmodules\n");
@@ -669,7 +669,7 @@ class CommandRunnerTest {
         Files.writeString(bar.resolve("module-info.java"), "module com.example.bar {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool", "javap"});
         var jigInvoked = new AtomicBoolean();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (_, _) -> {
                     jigInvoked.set(true);
                     return 0;
@@ -707,7 +707,7 @@ class CommandRunnerTest {
                 new String[] {"tool", "probe", "--module", "com.example.bar", "Main"});
         var jigInvocations = new ArrayList<List<String>>();
         var toolArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigInvocations.add(List.copyOf(arguments));
                     var options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -752,7 +752,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"list"});
         var javaArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(fakeJig(Set.of("add-modules", "module-path", "upgrade-module-path"),
+        ToolRuntime tools = ToolRuntime.of(fakeJig(Set.of("add-modules", "module-path", "upgrade-module-path"),
                         """
                                 --module-path
                                 modules
@@ -801,7 +801,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "java.lang.String.isEmpty"});
         var jistArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(fakeJig(Set.of("compile"),
+        ToolRuntime tools = ToolRuntime.of(fakeJig(Set.of("compile"),
                         """
                                 --module-source-path
                                 src
@@ -853,7 +853,7 @@ class CommandRunnerTest {
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
         var jistArguments = new ArrayList<String>();
-        var tools = ToolServices.of(ToolProvider.findFirst("jig").orElseThrow(),
+        var tools = ToolRuntime.of(ToolProvider.findFirst("jig").orElseThrow(),
                 tool("jist",
                         (toolOutput, arguments) -> {
                             jistArguments.addAll(arguments);
@@ -887,7 +887,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"source", "java.lang.String.isEmpty"});
         var jistArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(fakeJig(Set.of("compile"),
+        ToolRuntime tools = ToolRuntime.of(fakeJig(Set.of("compile"),
                         """
                                 --module-source-path
                                 src
@@ -936,7 +936,7 @@ class CommandRunnerTest {
         Files.writeString(second.resolve("module-info.java"), "module com.example.second {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "--browse", "java.lang.String"});
         var jdocserverArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
                     output
@@ -997,7 +997,7 @@ class CommandRunnerTest {
                 temporaryDirectory,
                 new String[] {"require", "--enable-native-access", "org.example.nativebinding,org.example.other", "--enable-final-field-mutation=org.example.model", "--add-exports", "jdk.compiler/com.sun.tools.javac.tree=com.example.app",
                         "--add-opens=java.base/java.lang=com.example.app", "org.example.library@1.2.3"});
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     assertEquals(optionList(REQUIRE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
@@ -1034,7 +1034,7 @@ class CommandRunnerTest {
         Files.writeString(module.resolve("module-info.java"), "module com.example.app {}\n");
         Path dependency = TestModules.writeAutomaticJar(temporaryDirectory.resolve("org.example.library-1.2.3.jar"));
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "org.example.library@1.2.3"});
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     Path stagedModule = moduleSource(arguments, "com.example.app");
@@ -1061,7 +1061,7 @@ class CommandRunnerTest {
     @Test
     void reliesOnTheModuleGraphForJigAvailability() {
         assertDoesNotThrow(
-                () -> new CommandRunner(ModuleLayer.boot(), ToolServices.of(), new ToolCatalog(List.of()),
+                () -> new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(), new ToolCatalog(List.of()),
                         () -> null));
     }
 
@@ -1089,7 +1089,7 @@ class CommandRunnerTest {
         var hash = Files.writeString(module.resolve("module-info.hash"), "existing\n");
         Path automatic = TestModules.writeAutomaticJar(temporaryDirectory.resolve("org.example.library-1.2.0.jar"));
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u"});
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     if (arguments.contains("--list-module-versions")) {
@@ -1143,7 +1143,7 @@ class CommandRunnerTest {
         var module = Files.createDirectories(temporaryDirectory.resolve("src/com.example.app"));
         var descriptor = Files.writeString(module.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "org.example.library"});
-        var tools = ToolServices.of(tool("jig", (output, arguments) -> {
+        var tools = ToolRuntime.of(tool("jig", (output, arguments) -> {
             if (arguments.contains("--list-module-versions")) {
                 output.print("not-semver\n2.4.0\n3.0.0\n4.0.0-beta.1\n");
             } else {
@@ -1169,7 +1169,7 @@ class CommandRunnerTest {
         var descriptor = Files.writeString(module.resolve("module-info.java"), "module com.example.app {}\n");
         String packageUrl = "pkg:maven/org.example/example-library@1.2.3?repository_url=https%3A%2F%2Frepo.example";
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", packageUrl});
-        var tools = ToolServices.of(tool("jig", (output, arguments) -> {
+        var tools = ToolRuntime.of(tool("jig", (output, arguments) -> {
             if (arguments.contains("--lookup-module")) {
                 assertEquals(packageUrl, arguments.get(arguments.indexOf("--lookup-module") + 1));
                 output.println("org.example.library");
@@ -1210,7 +1210,7 @@ class CommandRunnerTest {
         Files.writeString(application.resolve("module-info.hash"), "existing app\n");
         Files.writeString(library.resolve("module-info.hash"), "existing lib\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u"});
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     int versions = arguments.indexOf("--list-module-versions");
@@ -1250,7 +1250,7 @@ class CommandRunnerTest {
                         """);
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u"});
         var resolutionRuns = new AtomicInteger();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     if (arguments.contains("--list-module-versions")) {
                         return 0;
@@ -1286,7 +1286,7 @@ class CommandRunnerTest {
                 """);
         Files.writeString(hash, "existing\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "--static", "--transitive", "org.example.library@1.2.3"});
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     int option = arguments.indexOf("--module-source-path");
@@ -1317,7 +1317,7 @@ class CommandRunnerTest {
         Files.writeString(descriptor, "module com.example.app {}\n");
         Files.writeString(hash, "existing\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "org.example.library@1.2.3"});
-        ToolServices tools = ToolServices.of(tool("jig", (output, arguments) -> 1));
+        ToolRuntime tools = ToolRuntime.of(tool("jig", (output, arguments) -> 1));
         CommandRunner engine = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()),
                 () -> null);
 
@@ -1335,7 +1335,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"compile"});
         var catalogLoads = new AtomicInteger();
-        var tools = ToolServices.of(tool("jig", (_, _) -> 0));
+        var tools = ToolRuntime.of(tool("jig", (_, _) -> 0));
 
         int result = new CommandRunner(ModuleLayer.boot(), tools,
                 () -> {
@@ -1357,7 +1357,7 @@ class CommandRunnerTest {
         var definition = ToolDefinition.read("probe", new ByteArrayInputStream("provider=probe\n".getBytes(StandardCharsets.UTF_8)));
         var output = new ByteArrayOutputStream();
 
-        int result = new CommandRunner(ModuleLayer.boot(), ToolServices.of(),
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(),
                 () -> {
                     catalogLoads.incrementAndGet();
                     return new ToolCatalog(List.of(definition));
@@ -1377,7 +1377,7 @@ class CommandRunnerTest {
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"--verbose", "compile"});
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     runWith.addAll(arguments);
                     return 0;
@@ -1404,7 +1404,7 @@ class CommandRunnerTest {
     void verboseIsPassedOnlyToToolsDeclaringSupport() throws Exception {
         var supportedArguments = new ArrayList<String>();
         var unsupportedArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool("supported",
+        var tools = ToolRuntime.of(tool("supported",
                 (_, arguments) -> {
                     supportedArguments.addAll(arguments);
                     return 0;
@@ -1449,7 +1449,7 @@ class CommandRunnerTest {
         var workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var materializedModule = temporaryDirectory.resolve("cas/modules/content-hash");
         var compilerRuns = new AtomicInteger();
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     assertFalse(arguments.contains("-d"));
@@ -1478,7 +1478,7 @@ class CommandRunnerTest {
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"generate", "-Astyle=records"});
         var workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var compilerRuns = new AtomicInteger();
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
@@ -1529,7 +1529,7 @@ class CommandRunnerTest {
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"generate"});
         var workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var compilerRuns = new AtomicInteger();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals(optionList(COMPILE_OPTIONS), arguments.get(arguments.indexOf("--resolve-options") + 1));
                     assertFalse(arguments.contains("--compile-time"));
@@ -1563,7 +1563,7 @@ class CommandRunnerTest {
         var launchedArguments = new ArrayList<String>();
         var standardOutput = new ByteArrayOutputStream();
         var standardError = new ByteArrayOutputStream();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     jigRuns.incrementAndGet();
@@ -1625,7 +1625,7 @@ class CommandRunnerTest {
 
         var result = new CommandRunner(
                 ModuleLayer.boot(),
-                ToolServices.load(ModuleLayer.boot()),
+                ToolRuntime.load(ModuleLayer.boot()),
                 ToolCatalog.load(ModuleLayer.boot()),
                 () -> {
                     throw new AssertionError("run must not request a ja compilation directory");
@@ -1669,7 +1669,7 @@ class CommandRunnerTest {
 
         var result = new CommandRunner(
                 ModuleLayer.boot(),
-                ToolServices.load(ModuleLayer.boot()),
+                ToolRuntime.load(ModuleLayer.boot()),
                 ToolCatalog.load(ModuleLayer.boot()),
                 () -> {
                     throw new AssertionError("run must not request a ja compilation directory");
@@ -1704,7 +1704,7 @@ class CommandRunnerTest {
 
         var result = new CommandRunner(
                 ModuleLayer.boot(),
-                ToolServices.load(ModuleLayer.boot()),
+                ToolRuntime.load(ModuleLayer.boot()),
                 ToolCatalog.load(ModuleLayer.boot()),
                 () -> {
                     throw new AssertionError("run must not request a ja compilation directory");
@@ -1734,7 +1734,7 @@ class CommandRunnerTest {
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var jigRuns = new AtomicInteger();
         var launched = new AtomicBoolean();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigRuns.incrementAndGet();
                     return 9;
@@ -1767,7 +1767,7 @@ class CommandRunnerTest {
         }
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"compile"});
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertFalse(arguments.contains("-d"));
                     return 9;
@@ -1788,7 +1788,7 @@ class CommandRunnerTest {
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var materializedModule = temporaryDirectory.resolve("cas/modules/content-hash");
         var launchedArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals("describe-module,module-path,upgrade-module-path", arguments.get(arguments.indexOf("--resolve-options") + 1));
                     output.print("--module-path\n" + materializedModule + "\n--describe-module\ncom.example.app\n");
@@ -1822,7 +1822,7 @@ class CommandRunnerTest {
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         var materializedModule = temporaryDirectory.resolve("cas/modules/content-hash");
         var launchedArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     assertEquals(
                             List.of("-m", "com.example.app", "--module-source-path", sourcePath.toString(), "--verify-module-hashes",
@@ -1859,7 +1859,7 @@ class CommandRunnerTest {
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         Files.createDirectories(workspace.modules());
         var jigRuns = new AtomicInteger();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     int option = arguments.indexOf("--resolve-options");
@@ -1936,7 +1936,7 @@ class CommandRunnerTest {
         TemporaryDirectory workspace = TemporaryDirectory.unmanaged(temporaryDirectory.resolve("shared"));
         Files.createDirectories(workspace.modules());
         var jdepsArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     int option = arguments.indexOf("--resolve-options");
@@ -1995,7 +1995,7 @@ class CommandRunnerTest {
         TestModules.writeModuleInfo(compiled, "com.example.benchmark");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"bench"});
         var resolutions = new ArrayList<List<String>>();
-        var tools = ToolServices.of(tool("jig",
+        var tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     resolutions.add(List.copyOf(arguments));
                     String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -2046,7 +2046,7 @@ class CommandRunnerTest {
         TestModules.writeModuleInfo(activation, "com.example.formatter");
         var jigRuns = new AtomicInteger();
         var toolArguments = new ArrayList<String>();
-        var tools = ToolServices.of(tool(
+        var tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     var options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -2091,7 +2091,7 @@ class CommandRunnerTest {
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
         var jigArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool("jig",
+        ToolRuntime tools = ToolRuntime.of(tool("jig",
                 (output, arguments) -> {
                     jigArguments.addAll(arguments);
                     output.print("--module-path\n" + application + "\n--module\ncom.example.foo/com.example.Main\n");
@@ -2152,7 +2152,7 @@ class CommandRunnerTest {
         Path optional = TestModules.writeJar(temporaryDirectory.resolve("com.example.optional-1.0.jar"), "com.example.optional");
         Path store = temporaryDirectory.resolve("store");
         var resolutions = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -2224,7 +2224,7 @@ class CommandRunnerTest {
         Path commands = temporaryDirectory.resolve("commands");
         var installedArguments = new ArrayList<String>();
         var resolutions = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jig",
                 (output, arguments) -> {
                     String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -2318,7 +2318,7 @@ class CommandRunnerTest {
                         .formatted(current));
         Files.writeString(module.resolve("module-info.hash"), "existing\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", option, "org.example.library"});
-        var tools = ToolServices.of(tool("jig", (output, arguments) -> {
+        var tools = ToolRuntime.of(tool("jig", (output, arguments) -> {
             if (arguments.contains("--list-module-versions")) {
                 versions.forEach(output::println);
             } else {

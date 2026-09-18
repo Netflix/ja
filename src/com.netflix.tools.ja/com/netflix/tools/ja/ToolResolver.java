@@ -23,7 +23,7 @@ import java.util.List;
 final class ToolResolver {
     private final ModuleResolver moduleResolver;
 
-    ToolResolver(ToolServices tools) {
+    ToolResolver(ToolRuntime tools) {
         this.moduleResolver = new ModuleResolver(tools);
     }
 

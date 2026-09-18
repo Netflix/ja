@@ -15,7 +15,7 @@
 package com.netflix.tools.ja.test;
 
 import java.io.ByteArrayOutputStream;
-import java.io.PrintWriter;
+import java.io.PrintStream;
 import java.lang.classfile.Annotation;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
@@ -135,8 +135,8 @@ class ExecutionTraceInstrumentationTest {
         var trace = new ExecutionTrace();
         int result;
         try (var ignored = ExecutionTraceInstrumentation.recordWith(trace);
-             var out = new PrintWriter(output, true, StandardCharsets.UTF_8);
-             var err = new PrintWriter(errors, true, StandardCharsets.UTF_8)) {
+             var out = new PrintStream(output, true, StandardCharsets.UTF_8);
+             var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
             result = runtime.run(out, err, "execute", "--select-module", moduleName, "--disable-banner",
                     "--details=summary");
         }

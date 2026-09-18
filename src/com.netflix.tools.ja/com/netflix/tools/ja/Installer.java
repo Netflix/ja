@@ -77,25 +77,25 @@ public final class Installer {
         Set<String> resolve(ApplicationTarget target, List<String> launchArguments, boolean includeStatic);
     }
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final InstallationDirectories directories;
     private final boolean windows;
     private final CommandModuleFactory commandModules;
     private final NativeLauncher nativeLauncher;
     private final RuntimeModuleResolver runtimeModuleResolver;
 
-    public Installer(ToolServices tools, InstallationDirectories directories, boolean windows) {
+    public Installer(ToolRuntime tools, InstallationDirectories directories, boolean windows) {
         this(tools, directories, windows, null, null,
                 Installer::runtimeModules);
     }
 
-    public Installer(ToolServices tools, InstallationDirectories directories, boolean windows,
+    public Installer(ToolRuntime tools, InstallationDirectories directories, boolean windows,
                      CommandModuleFactory commandModules, NativeLauncher nativeLauncher) {
         this(tools, directories, windows, commandModules, nativeLauncher,
                 Installer::runtimeModules);
     }
 
-    public Installer(ToolServices tools, InstallationDirectories directories, boolean windows,
+    public Installer(ToolRuntime tools, InstallationDirectories directories, boolean windows,
                      CommandModuleFactory commandModules, NativeLauncher nativeLauncher, RuntimeModuleResolver runtimeModuleResolver) {
         this.tools = tools;
         this.directories = directories;

@@ -45,7 +45,7 @@ public final class CommandRunner {
     }
 
     private final ModuleLayer layer;
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final ModuleResolver moduleResolver;
     private final ToolCatalogProvider catalogProvider;
     private final TemporaryDirectoryProvider temporaryDirectoryProvider;
@@ -53,39 +53,39 @@ public final class CommandRunner {
     private final Installer installer;
 
     public CommandRunner(ModuleLayer layer) throws IOException {
-        this(layer, ToolServices.load(layer));
+        this(layer, ToolRuntime.load(layer));
     }
 
-    private CommandRunner(ModuleLayer layer, ToolServices tools) {
+    private CommandRunner(ModuleLayer layer, ToolRuntime tools) {
         this(layer, tools, () -> ToolCatalog.load(layer, toolModules(tools)),
                 TemporaryDirectory::create, JavaProcess::launch, null);
     }
 
-    public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
+    public CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalog catalog,
                          TemporaryDirectoryProvider temporaryDirectoryProvider) {
         this(layer, tools, catalog, temporaryDirectoryProvider, JavaProcess::launch,
                 null);
     }
 
-    public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalogProvider catalogProvider,
+    public CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalogProvider catalogProvider,
                          TemporaryDirectoryProvider temporaryDirectoryProvider) {
         this(layer, tools, catalogProvider, temporaryDirectoryProvider, JavaProcess::launch,
                 null);
     }
 
-    public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
+    public CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalog catalog,
                          TemporaryDirectoryProvider temporaryDirectoryProvider, JavaLauncher javaLauncher) {
         this(layer, tools, catalog, temporaryDirectoryProvider, javaLauncher, null);
     }
 
-    public CommandRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog,
+    public CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalog catalog,
                          TemporaryDirectoryProvider temporaryDirectoryProvider, JavaLauncher javaLauncher, Installer installer) {
         this(layer, tools, () -> catalog, temporaryDirectoryProvider, javaLauncher, installer);
     }
 
     private CommandRunner(
             ModuleLayer layer,
-            ToolServices tools,
+            ToolRuntime tools,
             ToolCatalogProvider catalogProvider,
             TemporaryDirectoryProvider temporaryDirectoryProvider,
             JavaLauncher javaLauncher,
@@ -430,7 +430,7 @@ public final class CommandRunner {
         var scopedLayer = controller.layer();
         var moduleCatalog = ToolCatalog.load(scopedLayer, moduleNames);
         requireNoDuplicateTools(catalog, moduleCatalog);
-        var scopedServices = ToolServices.load(scopedLayer, moduleNames);
+        var scopedServices = ToolRuntime.load(scopedLayer, moduleNames);
         var selectedServices = tools.withAdditional(scopedServices);
         moduleCatalog = moduleCatalog.withDiscovered(scopedServices);
         requireNoDuplicateTools(catalog, moduleCatalog, scopedServices);
@@ -455,7 +455,7 @@ public final class CommandRunner {
         requireNoDuplicateTools(catalog, scopedCatalog, null);
     }
 
-    private static void requireNoDuplicateTools(ToolCatalog catalog, ToolCatalog scopedCatalog, ToolServices scopedServices) {
+    private static void requireNoDuplicateTools(ToolCatalog catalog, ToolCatalog scopedCatalog, ToolRuntime scopedServices) {
         scopedCatalog.definitions().stream()
                 .map(ToolDefinition::name)
                 .filter(name -> catalog.find(name).isPresent())
@@ -468,7 +468,7 @@ public final class CommandRunner {
 
     private static boolean providesDeclaredTool(ToolDefinition definition,
             ToolDefinition scopedDefinition,
-            ToolServices scopedServices) {
+            ToolRuntime scopedServices) {
         var providerModule = scopedServices.moduleName(scopedDefinition.provider());
         return definition.provider().equals(scopedDefinition.provider())
                 && (definition.activation().equals(providerModule) || definition.module().equals(providerModule));
@@ -481,7 +481,7 @@ public final class CommandRunner {
         };
     }
 
-    private static Set<String> toolModules(ToolServices tools) {
+    private static Set<String> toolModules(ToolRuntime tools) {
         return tools.names().stream()
                 .map(tools::moduleName)
                 .flatMap(Optional::stream)
@@ -527,7 +527,7 @@ public final class CommandRunner {
         return tools.contains(definition.provider());
     }
 
-    private record ScopedTools(ModuleLayer.Controller controller, ToolServices services, ToolCatalog catalog,
+    private record ScopedTools(ModuleLayer.Controller controller, ToolRuntime services, ToolCatalog catalog,
             List<String> resolutionArguments, List<String> configurationArguments, ResolvedModules resolvedModules) {
         ScopedTools {
             resolutionArguments = List.copyOf(resolutionArguments);

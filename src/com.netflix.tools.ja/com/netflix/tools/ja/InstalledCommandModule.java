@@ -50,7 +50,7 @@ public final class InstalledCommandModule {
             String mainClass,
             List<Path> applicationModulePath,
             Path output,
-            ToolServices tools,
+            ToolRuntime tools,
             InputStream in,
             PrintStream out,
             PrintStream err)
@@ -66,7 +66,7 @@ public final class InstalledCommandModule {
             Optional<String> version,
             List<Path> applicationModulePath,
             Path output,
-            ToolServices tools,
+            ToolRuntime tools,
             InputStream in,
             PrintStream out,
             PrintStream err)
@@ -91,7 +91,7 @@ public final class InstalledCommandModule {
             boolean warmup,
             List<Path> applicationModulePath,
             Path output,
-            ToolServices tools,
+            ToolRuntime tools,
             InputStream in,
             PrintStream out,
             PrintStream err)
@@ -118,7 +118,7 @@ public final class InstalledCommandModule {
             boolean warmup,
             List<Path> applicationModulePath,
             Path output,
-            ToolServices tools,
+            ToolRuntime tools,
             InputStream in,
             PrintStream out,
             PrintStream err)

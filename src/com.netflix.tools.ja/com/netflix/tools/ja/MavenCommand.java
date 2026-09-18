@@ -22,11 +22,11 @@ import java.util.List;
 
 /** Exports Maven build projects and deploys assembled source modules. */
 final class MavenCommand {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final List<ToolDefinition> definitions;
     private final ResolutionOptions javadocOptions;
 
-    MavenCommand(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+    MavenCommand(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
         this.javadocOptions = javadocOptions;

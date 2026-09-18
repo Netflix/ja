@@ -27,12 +27,12 @@ import java.util.List;
 final class ModuleVersions {
     private ModuleVersions() {}
 
-    static String latestAvailable(ToolServices tools, String moduleName, PrintStream err) {
+    static String latestAvailable(ToolRuntime tools, String moduleName, PrintStream err) {
         List<String> versions = list(tools, moduleName, err);
         return SemanticVersion.latestAvailable(versions).orElseThrow(() -> new IllegalArgumentException("Module has no stable SemVer version: " + moduleName));
     }
 
-    static List<String> list(ToolServices tools, String moduleName, PrintStream err) {
+    static List<String> list(ToolRuntime tools, String moduleName, PrintStream err) {
         var bytes = new ByteArrayOutputStream();
         int result;
         try (var output = new PrintStream(bytes, true, StandardCharsets.UTF_8)) {

@@ -41,9 +41,9 @@ final class ModuleRequirements {
             String selected) {}
 
     private final ModuleResolver moduleResolver;
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    ModuleRequirements(ModuleResolver moduleResolver, ToolServices tools) {
+    ModuleRequirements(ModuleResolver moduleResolver, ToolRuntime tools) {
         this.moduleResolver = moduleResolver;
         this.tools = tools;
     }

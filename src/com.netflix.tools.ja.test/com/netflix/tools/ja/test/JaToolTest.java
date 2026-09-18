@@ -37,7 +37,7 @@ import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.cli.CommandLine.ToolOption;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.JaTool;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -103,7 +103,7 @@ class JaToolTest {
 
         assertEquals(
                 List.of("compile"),
-                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolServices.of()).stream()
+                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolRuntime.of()).stream()
                         .map(completion -> completion.value())
                         .toList());
         assertEquals(
@@ -161,7 +161,7 @@ class JaToolTest {
     @Test
     void delegatesSourceAndDocumentationValueCompletionToJist() {
         var jist = new CompletingJist();
-        var tools = ToolServices.of(jist);
+        var tools = ToolRuntime.of(jist);
 
         assertEquals(List.of("candidate"),
                 Ja.complete(new CompletionRequest(ToolInvocation.of("source"), "Str"), tools).stream()
@@ -182,7 +182,7 @@ class JaToolTest {
 
     @Test
     void completesSourceAndDocumentationSymbolsWithJist() {
-        var tools = ToolServices.load(Ja.class
+        var tools = ToolRuntime.load(Ja.class
                 .getModule()
                 .getLayer());
 

@@ -22,7 +22,7 @@ import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.ja.BuiltinCommand;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.SelectorCompletion;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SelectorCompletionTest {
     @Test
     void wiresJUnitDiscoveryIntoTestCompletion() {
-        var completions = Ja.complete(new CompletionRequest(ToolInvocation.of("test"), "SelectorCompletion"), ToolServices.of()).stream()
+        var completions = Ja.complete(new CompletionRequest(ToolInvocation.of("test"), "SelectorCompletion"), ToolRuntime.of()).stream()
                 .map(Completion::value)
                 .toList();
 
@@ -39,7 +39,7 @@ class SelectorCompletionTest {
         assertTrue(completions.contains("com.netflix.tools.ja.test.SelectorCompletionTest.readsClassesAndMethodsFromJUnitDiscovery"));
         assertTrue(Ja.complete(
                         new CompletionRequest(ToolInvocation.of("test", "--tag"), "SelectorCompletion"),
-                        ToolServices.of())
+                        ToolRuntime.of())
                 .isEmpty());
     }
 

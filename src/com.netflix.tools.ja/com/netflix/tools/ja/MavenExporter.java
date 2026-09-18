@@ -21,9 +21,9 @@ import java.util.ArrayList;
 
 /** Exports source modules as a Maven build project. */
 final class MavenExporter {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    MavenExporter(ToolServices tools) {
+    MavenExporter(ToolRuntime tools) {
         this.tools = tools;
     }
 

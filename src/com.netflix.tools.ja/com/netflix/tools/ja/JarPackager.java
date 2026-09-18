@@ -28,9 +28,9 @@ import java.util.List;
 final class JarPackager {
     record Result(int exitCode, boolean automatic) {}
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    JarPackager(ToolServices tools) {
+    JarPackager(ToolRuntime tools) {
         this.tools = tools;
     }
 

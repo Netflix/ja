@@ -70,7 +70,7 @@ public final class Ja {
                     : 0;
             if (args.length == commandIndex || args[commandIndex].equals("-h") || args[commandIndex].equals("--help")) {
                 var layer = Ja.class.getModule().getLayer();
-                help(out, ToolServices.load(layer), ToolCatalog.load(layer));
+                help(out, ToolRuntime.load(layer), ToolCatalog.load(layer));
                 return 0;
             }
             var commandHelp = commandHelp(args, commandIndex);
@@ -97,7 +97,7 @@ public final class Ja {
         }
     }
 
-    public static void help(PrintStream out, ToolServices tools, ToolCatalog catalog) {
+    public static void help(PrintStream out, ToolRuntime tools, ToolCatalog catalog) {
         out.println("Usage: ja [--verbose] <command> [command-arguments]");
         out.println("       ja [--verbose] tool [<name> [tool-arguments]]");
         out.println();
@@ -167,7 +167,7 @@ public final class Ja {
             throw new IllegalArgumentException("Usage: ja completion [SHELL]");
         }
         CompletionShell shell = arguments.length == commandIndex + 2 ? CompletionShell.parse(arguments[commandIndex + 1]) : CompletionShell.detect().orElseThrow(() -> new IllegalArgumentException("Cannot determine completion shell; use ja completion bash|zsh|fish|powershell"));
-        var tools = ToolServices.load(Ja.class
+        var tools = ToolRuntime.load(Ja.class
                 .getModule()
                 .getLayer());
         var completions = CompletionBundle.builder().add("ja");
@@ -182,12 +182,12 @@ public final class Ja {
     }
 
     static List<Completion> complete(CompletionRequest request) {
-        return complete(request, ToolServices.load(Ja.class
+        return complete(request, ToolRuntime.load(Ja.class
                 .getModule()
                 .getLayer()));
     }
 
-    public static List<Completion> complete(CompletionRequest request, ToolServices tools) {
+    public static List<Completion> complete(CompletionRequest request, ToolRuntime tools) {
         var prepared = COMMAND_LINE.prepare(request.invocation());
         var arguments = prepared.arguments();
         int commandIndex = !arguments.isEmpty() && arguments.getFirst().equals("--verbose")

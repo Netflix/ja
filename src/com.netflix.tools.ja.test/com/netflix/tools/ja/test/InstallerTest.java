@@ -43,7 +43,7 @@ import com.netflix.tools.ja.Installer.CommandModuleFactory;
 import com.netflix.tools.ja.Installer.NativeLauncher;
 import com.netflix.tools.ja.Installer.RuntimeModuleResolver;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,7 +61,7 @@ class InstallerTest {
     void requiresAnApplicationMainClass() throws Exception {
         Path application = Files.writeString(temporaryDirectory.resolve("foo-1.2.3.jar"), "application");
         var installer = new Installer(
-                ToolServices.of(tool("jlink", (out, arguments) -> 0)),
+                ToolRuntime.of(tool("jlink", (out, arguments) -> 0)),
                 new InstallationDirectories(temporaryDirectory.resolve("store"), temporaryDirectory.resolve("commands")),
                 false,
                 commandModule(),
@@ -92,7 +92,7 @@ class InstallerTest {
         writeModuleInfo(unrelated, "com.example.unrelated");
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
-        ToolServices tools = ToolServices.of(tool("javac",
+        ToolRuntime tools = ToolRuntime.of(tool("javac",
                 (out, arguments) -> {
                     Path output = Path.of(arguments.get(arguments.indexOf("-d") + 1));
                     Files.createDirectories(output);
@@ -130,7 +130,7 @@ class InstallerTest {
         Files.writeString(applicationPackage.resolve("Main.class"), "application");
         writeModuleInfo(application, "com.example.foo");
         Path store = temporaryDirectory.resolve("store");
-        ToolServices tools = ToolServices.of(tool("javac",
+        ToolRuntime tools = ToolRuntime.of(tool("javac",
                 (out, arguments) -> {
                     Path output = Path.of(arguments.get(arguments.indexOf("-d") + 1));
                     Files.createDirectories(output);
@@ -160,7 +160,7 @@ class InstallerTest {
     void installsAnApplicationWithAnUpgradePathModule() throws Exception {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path store = temporaryDirectory.resolve("store");
-        ToolServices tools = ToolServices.of(tool("jlink",
+        ToolRuntime tools = ToolRuntime.of(tool("jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
                     Files.createDirectories(image.resolve("bin"));
@@ -188,7 +188,7 @@ class InstallerTest {
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
         var jlinkArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     jlinkArguments.addAll(arguments);
@@ -266,7 +266,7 @@ class InstallerTest {
     void enablesAotForAnInstalledToolWithAWarmupContract() throws Exception {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path store = temporaryDirectory.resolve("store");
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
@@ -306,7 +306,7 @@ class InstallerTest {
         Path modules = Files.createDirectory(temporaryDirectory.resolve("modules"));
         Path store = temporaryDirectory.resolve("store");
         var jlinkArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     jlinkArguments.addAll(arguments);
@@ -336,7 +336,7 @@ class InstallerTest {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path output = temporaryDirectory.resolve("images/foo");
         Path commands = temporaryDirectory.resolve("commands");
-        ToolServices tools = ToolServices.of(tool("jlink",
+        ToolRuntime tools = ToolRuntime.of(tool("jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
                     Files.createDirectories(image.resolve("bin"));
@@ -363,7 +363,7 @@ class InstallerTest {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path output = temporaryDirectory.resolve("images/foo");
         var generation = new AtomicInteger();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
@@ -415,7 +415,7 @@ class InstallerTest {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo", "com.example.library");
         Path automaticDependency = TestModules.writeAutomaticJar(temporaryDirectory.resolve("com.example.library-1.2.3.jar"));
         var jlinkArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (output, arguments) -> {
                     jlinkArguments.addAll(arguments);
@@ -456,7 +456,7 @@ class InstallerTest {
         Path application = TestModules.writeJarWithStatic(temporaryDirectory.resolve("foo.jar"), "com.example.foo", "com.example.optional");
         Path optional = TestModules.writeJar(temporaryDirectory.resolve("optional.jar"), "com.example.optional");
         Path store = temporaryDirectory.resolve("store");
-        ToolServices tools = ToolServices.of(tool("jlink",
+        ToolRuntime tools = ToolRuntime.of(tool("jlink",
                 (output, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
                     Files.createDirectories(image.resolve("bin"));
@@ -481,7 +481,7 @@ class InstallerTest {
     void versionsTheGeneratedCommandModuleFromTheApplication() throws Exception {
         Path application = TestModules.writeAutomaticJar(temporaryDirectory.resolve("com.example.foo-1.2.3.jar"));
         var javacArguments = new ArrayList<String>();
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "javac",
                 (output, arguments) -> {
                     javacArguments.addAll(arguments);
@@ -521,7 +521,7 @@ class InstallerTest {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
-        ToolServices tools = ToolServices.of(tool("jlink",
+        ToolRuntime tools = ToolRuntime.of(tool("jlink",
                 (out, arguments) -> {
                     Path output = Path.of(arguments.get(arguments.indexOf("--output") + 1));
                     Files.createDirectories(output.resolve("bin"));
@@ -568,7 +568,7 @@ class InstallerTest {
         Files.setLastModifiedTime(commandClasses.resolve("module-info.class"), initialTime);
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
-        var installer = new Installer(ToolServices.of(tool("jlink",
+        var installer = new Installer(ToolRuntime.of(tool("jlink",
                 (out, arguments) -> {
                     Path output = Path.of(arguments.get(arguments.indexOf("--output") + 1));
                     Files.createDirectories(output.resolve("bin"));
@@ -602,7 +602,7 @@ class InstallerTest {
         Path dependency = Files.writeString(repository.resolve("library-4.5.6.jar"), "dependency");
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
-        ToolServices tools = ToolServices.of(tool("jlink", (out, arguments) -> 1));
+        ToolRuntime tools = ToolRuntime.of(tool("jlink", (out, arguments) -> 1));
         var installer = new Installer(tools, new InstallationDirectories(store, commands), false, commandModule(),
                 nativeLauncher(), fixedRuntimeModules());
 
@@ -625,7 +625,7 @@ class InstallerTest {
         Path store = Files.createDirectories(temporaryDirectory.resolve("windows"));
         Files.writeString(store.resolve("foo.exe"), "other launcher");
         var installer = new Installer(
-                ToolServices.of(tool("jlink", (out, arguments) -> 0)),
+                ToolRuntime.of(tool("jlink", (out, arguments) -> 0)),
                 new InstallationDirectories(store, store),
                 true,
                 commandModule(),
@@ -648,7 +648,7 @@ class InstallerTest {
     void exportsWindowsCommandThroughPathextName() throws Exception {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path root = temporaryDirectory.resolve("windows");
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
@@ -679,7 +679,7 @@ class InstallerTest {
         Path application = TestModules.writeJar(temporaryDirectory.resolve("foo.jar"), "com.example.foo");
         Path store = temporaryDirectory.resolve("store");
         Path commands = temporaryDirectory.resolve("commands");
-        ToolServices tools = ToolServices.of(tool(
+        ToolRuntime tools = ToolRuntime.of(tool(
                 "jlink",
                 (out, arguments) -> {
                     Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));

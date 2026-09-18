@@ -110,7 +110,7 @@ final class ResolvedModules {
         return descriptors.values().stream()
                 .filter(descriptor -> descriptor.provides().stream()
                         .map(ModuleDescriptor.Provides::service)
-                        .anyMatch(ToolServices.TOOL_SERVICE_NAMES::contains))
+                        .anyMatch(ToolRuntime.TOOL_SERVICE_NAMES::contains))
                 .map(ModuleDescriptor::name)
                 .collect(Collectors.toUnmodifiableSet());
     }

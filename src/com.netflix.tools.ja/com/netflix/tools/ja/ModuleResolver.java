@@ -31,9 +31,9 @@ import java.util.stream.Collectors;
  * interpret source descriptors or construct a parallel project model.
  */
 public final class ModuleResolver {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    public ModuleResolver(ToolServices tools) {
+    public ModuleResolver(ToolRuntime tools) {
         this.tools = tools;
     }
 

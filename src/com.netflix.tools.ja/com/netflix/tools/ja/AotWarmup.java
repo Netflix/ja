@@ -26,7 +26,7 @@ final class AotWarmup {
 
     static int run(PrintStream err) throws IOException {
         var layer = AotWarmup.class.getModule().getLayer();
-        var tools = ToolServices.load(layer);
+        var tools = ToolRuntime.load(layer);
         var catalog = ToolCatalog.load(layer).withDiscovered(tools);
         try (var work = TemporaryDirectory.create();
              var out = new PrintStream(OutputStream.nullOutputStream())) {
@@ -122,7 +122,7 @@ final class AotWarmup {
         }
     }
 
-    private static boolean available(BuiltinCommand command, ToolServices tools,
+    private static boolean available(BuiltinCommand command, ToolRuntime tools,
             ToolCatalog catalog) {
         return CommandAvailability.missingTools(command, tools, catalog).isEmpty();
     }

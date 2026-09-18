@@ -36,10 +36,10 @@ final class MavenDeploymentCommand {
             String name,
             boolean manual) {}
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final ModuleAssembler assembler;
 
-    MavenDeploymentCommand(ToolServices tools, List<ToolDefinition> definitions,
+    MavenDeploymentCommand(ToolRuntime tools, List<ToolDefinition> definitions,
             ResolutionOptions javadocOptions) {
         this.tools = tools;
         assembler = new ModuleAssembler(tools, definitions, javadocOptions);

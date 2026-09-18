@@ -62,13 +62,13 @@ final class ModuleAssembler {
             "addOpens:X",
             "addExports:X");
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final List<ToolDefinition> definitions;
     private final ResolutionOptions javadocOptions;
     private final JarPackager jars;
     private final JmodPackager jmods;
 
-    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+    ModuleAssembler(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
         this.javadocOptions = javadocOptions;

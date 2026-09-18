@@ -61,7 +61,7 @@ import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolRunner;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -151,7 +151,7 @@ class ToolRunnerTest {
     @Test
     void passesResolvedArgumentsAndDefaultsToAToolProvider() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jshell", runWith));
+        var tools = ToolRuntime.of(tool("jshell", runWith));
         var definition = new ToolDefinition(
                 "jshell",
                 Launch.PROVIDER,
@@ -185,6 +185,7 @@ class ToolRunnerTest {
         Files.writeString(source.resolve("module-info.java"),
                 """
                 module com.example.runtime.tool {
+                    requires java.compiler;
                     provides java.util.spi.ToolProvider with com.example.Probe;
                 }
                 """);
@@ -192,8 +193,11 @@ class ToolRunnerTest {
         Files.writeString(packageDirectory.resolve("Probe.java"),
                 """
                 package com.example;
-                public final class Probe implements java.util.spi.ToolProvider {
+                public final class Probe implements java.util.spi.ToolProvider, javax.tools.OptionChecker {
                     public String name() { return "runtime-probe"; }
+                    public int isSupportedOption(String option) {
+                        throw new AssertionError("provider option checks must run in a Java process");
+                    }
                     public int run(java.io.PrintWriter out, java.io.PrintWriter err,
                                    String... arguments) {
                         throw new AssertionError("provider must run in a Java process");
@@ -225,22 +229,7 @@ class ToolRunnerTest {
                 .map(ServiceLoader.Provider::get)
                 .findFirst()
                 .orElseThrow();
-        var jigArguments = new ArrayList<String>();
-        var jig = new ToolProvider() {
-            @Override
-            public String name() {
-                return "jig";
-            }
-
-            @Override
-            public int run(PrintWriter out, PrintWriter err, String... arguments) {
-                jigArguments.addAll(List.of(arguments));
-                out.println("--add-modules");
-                out.println(moduleName);
-                return 0;
-            }
-        };
-        var tools = ToolServices.of(jig, provider);
+        var tools = ToolRuntime.of(provider);
         var definition = new ToolDefinition(
                 "runtime-probe",
                 Launch.PROVIDER,
@@ -248,14 +237,20 @@ class ToolRunnerTest {
                 Optional.of(moduleName),
                 "runtime-probe",
                 Optional.of("1"),
-                Set.of(),
+                Set.of("add-modules"),
                 List.of());
         var launchedWith = new ArrayList<String>();
+        var optionChecks = new ArrayList<List<String>>();
         var runner = new ToolRunner(
                 controller.layer(),
                 tools,
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
+                    if (arguments.contains("--is-supported-option")) {
+                        optionChecks.add(List.copyOf(arguments));
+                        out.println("1");
+                        return 0;
+                    }
                     launchedWith.addAll(arguments);
                     return 23;
                 });
@@ -263,26 +258,30 @@ class ToolRunnerTest {
         int result = runner.run(
                 toolCommandLine("runtime-probe", List.of("explicit")),
                 List.of(),
-                new ResolvedToolArguments(List.of(), Set.of(), Map.of()),
+                new ResolvedToolArguments(
+                        List.of("--add-modules", "com.example.application"),
+                        Set.of(ModuleDescriptor.newModule("com.example.application").build()),
+                        Map.of()),
                 InputStream.nullInputStream(),
                 System.out,
                 System.err);
 
         assertEquals(23, result);
-        assertTrue(joinedPair(jigArguments, "--module-path", modules.resolve(moduleName).toString()));
-        assertTrue(joinedPair(jigArguments, "--add-modules", moduleName));
-        assertTrue(jigArguments.contains("--validate-runtime-access"));
-        assertTrue(joinedPair(jigArguments, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
+        assertEquals(1, optionChecks.size());
+        assertTrue(joinedPair(optionChecks.getFirst(), "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
+        assertTrue(joinedPair(launchedWith, "--module-path", modules.resolve(moduleName).toString()));
+        assertTrue(joinedPair(launchedWith, "--add-modules", moduleName));
+        assertTrue(joinedPair(launchedWith, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
         assertEquals(
-                List.of("--add-modules", moduleName, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName, "--module",
-                        "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher", "runtime-probe", "explicit"),
-                launchedWith);
+                List.of("--module", "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher",
+                        "runtime-probe", "--add-modules", "com.example.application", "explicit"),
+                launchedWith.subList(launchedWith.size() - 6, launchedWith.size()));
     }
 
     @Test
     void combinesTheProviderOptionCheckerWithTheDeclaredContract() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(checkingTool("probe", runWith,
+        var tools = ToolRuntime.of(checkingTool("probe", runWith,
                 option -> option.equals("--enable-preview") || option.equals("--verbose")
                         ? 0
                         : -1));
@@ -311,7 +310,7 @@ class ToolRunnerTest {
 
     @Test
     void passesVerboseToAJavaStyleTool() throws Exception {
-        var tools = ToolServices.of(tool("jig", new ArrayList<>()));
+        var tools = ToolRuntime.of(tool("jig", new ArrayList<>()));
         var definition = ToolDefinition.read("source-test", new ByteArrayInputStream("launch=java\nmodule=com.example.test\nversion=1\noptions=verbose\n".getBytes(StandardCharsets.UTF_8)));
         var launchedWith = new ArrayList<String>();
         var runner = new ToolRunner(
@@ -368,7 +367,7 @@ class ToolRunnerTest {
         var testState = incrementalTestState(directory);
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(tool("jig", resolvedWith)),
+                ToolRuntime.of(tool("jig", resolvedWith)),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     launchedWith.addAll(arguments);
@@ -416,7 +415,7 @@ class ToolRunnerTest {
                 Optional.empty(),
                 Set.of("module-path", "add-modules"),
                 List.of("execute"));
-        var runner = new ToolRunner(testLayer(), ToolServices.of(tool("jig", resolvedWith)), new ToolCatalog(List.of(definition)),
+        var runner = new ToolRunner(testLayer(), ToolRuntime.of(tool("jig", resolvedWith)), new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> 0);
         var engine = ModuleDescriptor.newModule("org.junit.platform.engine")
                 .version("6.1.3")
@@ -457,7 +456,7 @@ class ToolRunnerTest {
                 List.of("execute"));
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(tool("jig", resolvedWith, List.of("--enable-preview"))),
+                ToolRuntime.of(tool("jig", resolvedWith, List.of("--enable-preview"))),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     launchedWith.addAll(arguments);
@@ -531,7 +530,7 @@ class ToolRunnerTest {
         var testState = incrementalTestState(directory);
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(jig),
+                ToolRuntime.of(jig),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     launchedWith.addAll(arguments);
@@ -603,7 +602,7 @@ class ToolRunnerTest {
         var testState = incrementalTestState(directory);
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(jig),
+                ToolRuntime.of(jig),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     launchedWith.addAll(arguments);
@@ -849,7 +848,7 @@ class ToolRunnerTest {
         var testState = incrementalTestState(directory);
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(),
+                ToolRuntime.of(),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     throw new AssertionError("Java must not be launched");
@@ -935,7 +934,7 @@ class ToolRunnerTest {
         var testState = incrementalTestState(directory);
         return new ToolRunner(
                 testLayer(),
-                ToolServices.of(),
+                ToolRuntime.of(),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     throw new AssertionError("Java must not be launched");
@@ -1092,7 +1091,7 @@ class ToolRunnerTest {
     @Test
     void rejectsArgumentsOutsideTheOwnedTestInterface() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("junit", runWith));
+        var tools = ToolRuntime.of(tool("junit", runWith));
         var definition = new ToolDefinition(
                 "junit",
                 Launch.PROVIDER,
@@ -1142,7 +1141,7 @@ class ToolRunnerTest {
     @Test
     void explicitTagFilterSelectsRootModulesAndBypassesCachePlanning() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("junit", runWith));
+        var tools = ToolRuntime.of(tool("junit", runWith));
         var definition = new ToolDefinition(
                 "junit",
                 Launch.PROVIDER,
@@ -1182,7 +1181,7 @@ class ToolRunnerTest {
     @Test
     void explicitTestSelectorsFilterDiscoveredMethodsWithoutCachePlanning() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("junit", runWith));
+        var tools = ToolRuntime.of(tool("junit", runWith));
         var definition = new ToolDefinition(
                 "junit",
                 Launch.PROVIDER,
@@ -1221,7 +1220,7 @@ class ToolRunnerTest {
     @Test
     void explicitBenchmarkSelectorsFilterJmhDiscovery() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jmh", runWith));
+        var tools = ToolRuntime.of(tool("jmh", runWith));
         var definition = new ToolDefinition(
                 "jmh",
                 Launch.PROVIDER,
@@ -1260,7 +1259,7 @@ class ToolRunnerTest {
     @Test
     void listsTestSelectorsThroughJUnitDiscovery() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("junit", runWith));
+        var tools = ToolRuntime.of(tool("junit", runWith));
         var definition = new ToolDefinition(
                 "junit",
                 Launch.PROVIDER,
@@ -1300,7 +1299,7 @@ class ToolRunnerTest {
     @Test
     void listsBenchmarkSelectorsThroughJmhDiscovery() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("jmh", runWith));
+        var tools = ToolRuntime.of(tool("jmh", runWith));
         var definition = new ToolDefinition(
                 "jmh",
                 Launch.PROVIDER,
@@ -1375,7 +1374,7 @@ class ToolRunnerTest {
                 List.of());
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(tool),
+                ToolRuntime.of(tool),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     throw new AssertionError("Java must not be launched");
@@ -1458,7 +1457,7 @@ class ToolRunnerTest {
                 List.of());
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(tool),
+                ToolRuntime.of(tool),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     throw new AssertionError("Java must not be launched");
@@ -1504,7 +1503,7 @@ class ToolRunnerTest {
     @Test
     void rejectsJUnitOutputConfiguration() throws Exception {
         var runWith = new ArrayList<String>();
-        var tools = ToolServices.of(tool("junit", runWith));
+        var tools = ToolRuntime.of(tool("junit", runWith));
         var definition = new ToolDefinition(
                 "junit",
                 Launch.PROVIDER,
@@ -1553,7 +1552,7 @@ class ToolRunnerTest {
                 Optional.empty(),
                 Set.of("module-path", "add-modules"),
                 List.of());
-        var runner = new ToolRunner(testLayer(), ToolServices.of(), new ToolCatalog(List.of(junit)),
+        var runner = new ToolRunner(testLayer(), ToolRuntime.of(), new ToolCatalog(List.of(junit)),
                 (arguments, in, out, err) -> 0);
         var commandLine = new JaInvocation(
                 Path.of("").toAbsolutePath(),
@@ -1603,7 +1602,7 @@ class ToolRunnerTest {
                 List.of());
         var runner = new ToolRunner(
                 testLayer(),
-                ToolServices.of(tool),
+                ToolRuntime.of(tool),
                 new ToolCatalog(List.of(definition)),
                 (arguments, in, out, err) -> {
                     throw new AssertionError("Java must not be launched");

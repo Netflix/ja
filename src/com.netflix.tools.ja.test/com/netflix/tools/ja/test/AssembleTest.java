@@ -42,7 +42,7 @@ import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -226,7 +226,7 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
+        ToolRuntime tools = ToolRuntime.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", (output, arguments) -> 0));
         ToolDefinition testing = new ToolDefinition(
                 "testing",
@@ -296,7 +296,7 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
+        ToolRuntime tools = ToolRuntime.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", (output, arguments) -> 0));
         var commandLine = JaInvocation.parse(directory, new String[] {"assemble", "--module-version", "1.0", "artifacts"});
 
@@ -394,7 +394,7 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(
+        ToolRuntime tools = ToolRuntime.of(
                 jig,
                 ToolProvider.findFirst("jar").orElseThrow(),
                 ToolProvider.findFirst("jmod").orElseThrow(),

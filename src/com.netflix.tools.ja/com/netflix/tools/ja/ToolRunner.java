@@ -30,10 +30,7 @@ import java.util.regex.Pattern;
 import javax.lang.model.SourceVersion;
 import javax.tools.OptionChecker;
 
-import com.netflix.module.ModuleRuntimeAccess;
-import com.netflix.module.ModuleRuntimeAccessOptions;
 import com.netflix.tools.launcher.ModuleOptions;
-import com.netflix.tools.launcher.ToolLauncher;
 
 /**
  * Runs a discovered tool with only the resolved module arguments accepted by
@@ -115,18 +112,18 @@ public final class ToolRunner {
 
     private final ModuleLayer layer;
     private final ModuleLayer.Controller controller;
-    private final ToolServices tools;
-    private final ToolServices directTools;
+    private final ToolRuntime tools;
+    private final ToolRuntime directTools;
     private final ToolCatalog catalog;
     private final JavaLauncher javaLauncher;
     private final TestRunner testRunner;
 
-    public ToolRunner(ModuleLayer layer, ToolServices tools, ToolCatalog catalog, JavaLauncher javaLauncher) {
+    public ToolRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalog catalog, JavaLauncher javaLauncher) {
         this(layer, tools, catalog, javaLauncher, TestResultStore.defaults());
     }
 
     public ToolRunner(ModuleLayer layer,
-                      ToolServices tools,
+                      ToolRuntime tools,
                       ToolCatalog catalog,
                       JavaLauncher javaLauncher,
                       TestResultStore testResults) {
@@ -140,29 +137,29 @@ public final class ToolRunner {
     }
 
     public ToolRunner(ModuleLayer layer,
-                      ToolServices tools,
+                      ToolRuntime tools,
                       ToolCatalog catalog,
                       JavaLauncher javaLauncher,
                       TestResultStore testResults,
                       RuntimeImageHash runtimeImage) {
         this.layer = layer;
         this.controller = null;
-        this.tools = tools;
-        this.directTools = tools;
+        this.tools = tools.withJavaLauncher(javaLauncher);
+        this.directTools = this.tools;
         this.catalog = catalog;
         this.javaLauncher = javaLauncher;
         this.testRunner = new TestRunner(testResults, runtimeImage);
     }
 
     ToolRunner(ModuleLayer.Controller controller,
-               ToolServices tools,
-               ToolServices directTools,
+               ToolRuntime tools,
+               ToolRuntime directTools,
                ToolCatalog catalog,
                JavaLauncher javaLauncher) {
         this.layer = controller.layer();
         this.controller = controller;
-        this.tools = tools;
-        this.directTools = directTools;
+        this.tools = tools.withJavaLauncher(javaLauncher);
+        this.directTools = directTools.withJavaLauncher(javaLauncher);
         this.catalog = catalog;
         this.javaLauncher = javaLauncher;
         this.testRunner = new TestRunner();
@@ -466,93 +463,11 @@ public final class ToolRunner {
                     out,
                     err);
         }
-        return runDirectProvider(definition, arguments, in, out, err);
-    }
-
-    private int runDirectProvider(ToolDefinition definition,
-                                  List<String> toolArguments,
-                                  InputStream in,
-                                  PrintStream out,
-                                  PrintStream err) throws IOException {
-        var module = directTools.moduleName(definition.provider())
-                .or(() -> definition.module());
-        var requiredAccess = module.isEmpty()
-                ? Optional.<ModuleRuntimeAccessOptions>empty()
-                : declaredRuntimeAccess(module.orElseThrow());
-        if (requiredAccess.isEmpty()) {
-            return tools.run(definition.provider(),
-                    in,
-                    out,
-                    err,
-                    toolArguments.toArray(String[]::new));
-        }
-        var accessArguments = runtimeAccessArguments(requiredAccess.orElseThrow());
-        var providerResolutionArguments = new ArrayList<String>();
-        layer.configuration()
-                .findModule(module.orElseThrow())
-                .flatMap(resolved -> resolved.reference().location())
-                .filter(location -> "file".equalsIgnoreCase(location.getScheme()))
-                .map(Path::of)
-                .ifPresent(path -> {
-                    providerResolutionArguments.add("--module-path");
-                    providerResolutionArguments.add(path.toString());
-                });
-        providerResolutionArguments.add("--add-modules");
-        providerResolutionArguments.add(module.orElseThrow());
-        var runtimeArguments = new ArrayList<>(
-                new ModuleResolver(tools)
-                        .resolve(providerResolutionArguments,
-                                providerRuntimeOptions(),
-                                accessArguments,
-                                in,
-                                err));
-        runtimeArguments.addAll(accessArguments);
-        if (runtimeAccessIsEffective(layer, runtimeArguments)) {
-            return tools.run(definition.provider(),
-                    in,
-                    out,
-                    err,
-                    toolArguments.toArray(String[]::new));
-        }
-        // A controller cannot grant access from a module in a parent layer. Launching the
-        // provider applies boot-layer access before any of its classes are loaded.
-        return launchProvider(definition.provider(), runtimeArguments, toolArguments, in, out, err);
-    }
-
-    private Optional<ModuleRuntimeAccessOptions> declaredRuntimeAccess(String module) throws IOException {
-        var resolved = layer.configuration().findModule(module).orElse(null);
-        return resolved == null
-                ? Optional.empty()
-                : ModuleRuntimeAccess.read(resolved.reference()).filter(access -> !access.isEmpty());
-    }
-
-    private static List<String> runtimeAccessArguments(ModuleRuntimeAccessOptions access) {
-        var arguments = new ArrayList<String>();
-        access.enableNativeAccess().forEach(module -> arguments.add("--enable-native-access=" + module));
-        access.enableFinalFieldMutation().forEach(module -> arguments.add("--enable-final-field-mutation=" + module));
-        access.addExports().forEach(value -> {
-            arguments.add("--add-exports");
-            arguments.add(value.toFlagValue());
-        });
-        access.addOpens().forEach(value -> {
-            arguments.add("--add-opens");
-            arguments.add(value.toFlagValue());
-        });
-        return List.copyOf(arguments);
-    }
-
-    private int launchProvider(String provider,
-                               List<String> runtimeArguments,
-                               List<String> toolArguments,
-                               InputStream in,
-                               PrintStream out,
-                               PrintStream err) throws IOException {
-        var arguments = new ArrayList<>(runtimeArguments);
-        arguments.add("--module");
-        arguments.add(ToolLauncher.class.getModule().getName() + "/" + ToolLauncher.class.getName());
-        arguments.add(provider);
-        arguments.addAll(toolArguments);
-        return javaLauncher.run(arguments, in, out, err);
+        return tools.run(definition.provider(),
+                in,
+                out,
+                err,
+                arguments.toArray(String[]::new));
     }
 
     private static ResolutionOptions providerRuntimeOptions() {
@@ -614,100 +529,19 @@ public final class ToolRunner {
                                           Set.of(module));
             executionController = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(executionLayer), ClassLoader.getSystemClassLoader());
             executionLayer = executionController.layer();
-            executionTools = tools.withAdditional(ToolServices.load(executionLayer, Set.of(module)));
+            executionTools = tools.withAdditional(ToolRuntime.load(executionLayer, Set.of(module)));
         }
         if (!executionTools.contains(definition.provider())) {
             throw new IllegalArgumentException("Module " + module + " does not provide tool " + definition.provider());
         }
-        if (!configureLayer(executionController, executionLayer, runtimeArguments)) {
-            return launchProvider(definition.provider(), runtimeArguments, toolArguments, in, out, err);
+        if (!ToolRuntime.configureLayer(executionController, executionLayer, runtimeArguments)) {
+            return tools.launch(definition.provider(), runtimeArguments, toolArguments, in, out, err);
         }
         return executionTools.run(definition.provider(),
                 in,
                 out,
                 err,
                 toolArguments.toArray(String[]::new));
-    }
-
-    @SuppressWarnings("restricted")
-    static boolean runtimeAccessIsEffective(ModuleLayer layer, List<String> arguments) {
-        var access = ModuleRuntimeAccess.parseArguments(arguments);
-        if (!access.enableFinalFieldMutation().isEmpty())
-            return false;
-        for (String name : access.enableNativeAccess()) {
-            var module = layer.findModule(name).orElse(null);
-            if (module == null || !module.isNativeAccessEnabled())
-                return false;
-        }
-        for (var export : access.addExports()) {
-            if (!hasAccess(layer, export, false))
-                return false;
-        }
-        for (var open : access.addOpens()) {
-            if (!hasAccess(layer, open, true))
-                return false;
-        }
-        return true;
-    }
-
-    @SuppressWarnings("restricted")
-    static boolean configureLayer(ModuleLayer.Controller controller,
-            ModuleLayer layer,
-            List<String> arguments) {
-        var access = ModuleRuntimeAccess.parseArguments(arguments);
-        if (!access.enableFinalFieldMutation().isEmpty())
-            return false;
-        for (String name : access.enableNativeAccess()) {
-            var module = layer.findModule(name).orElse(null);
-            if (module == null)
-                return false;
-            if (!module.isNativeAccessEnabled()) {
-                if (module.getLayer() != layer)
-                    return false;
-                controller.enableNativeAccess(module);
-            }
-        }
-        for (var export : access.addExports()) {
-            if (!addAccess(controller, layer, export, false))
-                return false;
-        }
-        for (var open : access.addOpens()) {
-            if (!addAccess(controller, layer, open, true))
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean hasAccess(ModuleLayer layer,
-            ModuleRuntimeAccessOptions.PackageAccess access,
-            boolean open) {
-        var source = layer.findModule(access.sourceModule()).orElse(null);
-        var target = layer.findModule(access.targetModule()).orElse(null);
-        return source != null
-                && target != null
-                && (open
-                        ? source.isOpen(access.packageName(), target)
-                        : source.isExported(access.packageName(), target));
-    }
-
-    private static boolean addAccess(ModuleLayer.Controller controller,
-            ModuleLayer layer,
-            ModuleRuntimeAccessOptions.PackageAccess access,
-            boolean open) {
-        if (hasAccess(layer, access, open))
-            return true;
-        var source = layer.findModule(access.sourceModule()).orElse(null);
-        var target = layer.findModule(access.targetModule()).orElse(null);
-        if (source == null || target == null)
-            return false;
-        if (source.getLayer() != layer)
-            return false;
-        if (open) {
-            controller.addOpens(source, access.packageName(), target);
-        } else {
-            controller.addExports(source, access.packageName(), target);
-        }
-        return true;
     }
 
     private ResolutionOptions contractResolutionOptions(JaInvocation commandLine, ToolDefinition definition) {

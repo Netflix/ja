@@ -18,7 +18,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.io.PrintWriter;
 import java.lang.ModuleLayer.Controller;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.CodeBuilder;
@@ -32,12 +31,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.IntSupplier;
-import java.util.spi.ToolProvider;
 import java.util.stream.Stream;
 
 import static java.lang.constant.ConstantDescs.CD_Object;
@@ -70,31 +65,15 @@ public final class JUnitExecutionTrace {
     private static final MethodTypeDesc UNIQUE_ID = MethodTypeDesc.of(CD_String);
     private static final byte[] CONTENT = listenerClass();
 
-    public record Runtime(Controller controller, ToolProvider tool) {
+    public record Runtime(Controller controller, ToolRuntime tools) {
         public int run(PrintStream out, PrintStream err, String... arguments) {
-            return withContextClassLoader(() -> tool.run(out, err, arguments(arguments)));
-        }
-
-        public int run(PrintWriter out, PrintWriter err, String... arguments) {
-            return withContextClassLoader(() -> tool.run(out, err, arguments(arguments)));
+            return tools.run("junit", InputStream.nullInputStream(), out, err, arguments(arguments));
         }
 
         private static String[] arguments(String[] arguments) {
             var traced = Arrays.copyOf(arguments, arguments.length + 1);
             traced[arguments.length] = DISABLE_PARALLEL_EXECUTION;
             return traced;
-        }
-
-        private int withContextClassLoader(IntSupplier invocation) {
-            var thread = Thread.currentThread();
-            var previous = thread.getContextClassLoader();
-            thread.setContextClassLoader(tool.getClass()
-                    .getClassLoader());
-            try {
-                return invocation.getAsInt();
-            } finally {
-                thread.setContextClassLoader(previous);
-            }
         }
     }
 
@@ -111,7 +90,7 @@ public final class JUnitExecutionTrace {
     static Optional<Runtime> runtimeIfSupported(ResolvedClassModels classes, ModuleLayer parent, List<String> runtimeArguments) throws IOException {
         var controller = classes.instrumentedLayer(parent, runtimeModules(), List.of(listenerModule()));
         var layer = controller.layer();
-        if (!ToolRunner.configureLayer(controller, layer, runtimeArguments)) {
+        if (!ToolRuntime.configureLayer(controller, layer, runtimeArguments)) {
             return Optional.empty();
         }
         var commons = layer.findModule(COMMONS_MODULE).orElseThrow();
@@ -130,20 +109,11 @@ public final class JUnitExecutionTrace {
                 }
             }
         }
-        var tool = ServiceLoader.load(layer, ToolProvider.class).stream()
-                .filter(provider -> provider.type()
-                        .getModule()
-                        .getLayer()
-                        == layer)
-                .filter(provider -> provider.type()
-                        .getModule()
-                        .getName()
-                        .equals(CONSOLE_MODULE))
-                .map(Provider::get)
-                .filter(provider -> provider.name().equals("junit"))
-                .findFirst()
-                .orElseThrow();
-        return Optional.of(new Runtime(controller, tool));
+        var tools = ToolRuntime.load(layer, Set.of(CONSOLE_MODULE));
+        if (!tools.contains("junit")) {
+            throw new IllegalStateException("JUnit console module does not provide the junit tool");
+        }
+        return Optional.of(new Runtime(controller, tools));
     }
 
     public static ModuleReference listenerModule() {

@@ -26,7 +26,7 @@ import com.netflix.tools.ja.ModuleAssembler.Options;
 final class AssembleCommand {
     private final ModuleAssembler assembler;
 
-    AssembleCommand(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+    AssembleCommand(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         assembler = new ModuleAssembler(tools, definitions, javadocOptions);
     }
 

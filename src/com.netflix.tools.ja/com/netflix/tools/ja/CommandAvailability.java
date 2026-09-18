@@ -27,7 +27,7 @@ import com.netflix.tools.ja.BuiltinCommand.ToolRequirement.Provider;
 public final class CommandAvailability {
     private CommandAvailability() {}
 
-    public static void require(JaInvocation commandLine, ToolServices tools, ToolCatalog catalog) {
+    public static void require(JaInvocation commandLine, ToolRuntime tools, ToolCatalog catalog) {
         var missing = missingTools(commandLine, tools, catalog);
         if (missing.isEmpty()) {
             return;
@@ -35,11 +35,11 @@ public final class CommandAvailability {
         throw new IllegalArgumentException(message(commandName(commandLine.command()), missing));
     }
 
-    public static List<String> missingTools(BuiltinCommand command, ToolServices tools, ToolCatalog catalog) {
+    public static List<String> missingTools(BuiltinCommand command, ToolRuntime tools, ToolCatalog catalog) {
         return missingTools(command.requiredTools(), tools, catalog);
     }
 
-    private static List<String> missingTools(JaInvocation commandLine, ToolServices tools, ToolCatalog catalog) {
+    private static List<String> missingTools(JaInvocation commandLine, ToolRuntime tools, ToolCatalog catalog) {
         var command = BuiltinCommand.from(commandLine.command()).orElse(null);
         if (command == null) {
             return List.of();
@@ -47,7 +47,7 @@ public final class CommandAvailability {
         return missingTools(command.requiredTools(), tools, catalog);
     }
 
-    private static List<String> missingTools(List<ToolRequirement> requirements, ToolServices tools, ToolCatalog catalog) {
+    private static List<String> missingTools(List<ToolRequirement> requirements, ToolRuntime tools, ToolCatalog catalog) {
         var missing = new ArrayList<String>();
         for (ToolRequirement requirement : requirements) {
             switch (requirement) {
