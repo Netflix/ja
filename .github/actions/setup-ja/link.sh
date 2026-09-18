@@ -20,7 +20,7 @@ fi
 source_java_home="$1"
 output_java_home="$2"
 ja_version="$3"
-bootstrap_jig_version=0.16.2
+bootstrap_jig_version=0.16.3
 
 if [[ -e "$output_java_home" ]]; then
     echo "Output path already exists: $output_java_home" >&2

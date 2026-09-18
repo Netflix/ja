@@ -11,7 +11,7 @@
 # the License.
 
 param(
-    [string] $JigVersion = "0.16.2",
+    [string] $JigVersion = "0.16.3",
     [string] $JaVersion,
     [string] $Output
 )
