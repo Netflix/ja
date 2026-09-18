@@ -21,7 +21,7 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 > [!NOTE]
 > Netflix engineers should use the internally bundled toolchain rather than installing `ja` or its tools separately.
 
-Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer creates a `ja`-enabled copy without modifying the source JDK. On macOS, the copy preserves the source JDK's native bundle metadata.
+Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer creates a `ja`-enabled copy without modifying the source JDK.
 
 On macOS and Linux:
 
