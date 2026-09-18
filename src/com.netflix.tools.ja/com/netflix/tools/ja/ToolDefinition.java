@@ -43,7 +43,6 @@ public record ToolDefinition(String name,
                              String provider,
                              Optional<String> version,
                              Set<String> options,
-                             boolean validateRuntimeAccess,
                              java.util.List<String> defaults,
                              Optional<String> classSuffix,
                              Optional<String> packageSuffix) implements OptionChecker {
@@ -95,33 +94,9 @@ public record ToolDefinition(String name,
              provider,
              version,
              options,
-             false,
              defaults,
              Optional.empty(),
              Optional.empty());
-    }
-
-    public ToolDefinition(String name,
-                          Launch launch,
-                          Optional<String> activation,
-                          Optional<String> module,
-                          String provider,
-                          Optional<String> version,
-                          Set<String> options,
-                          java.util.List<String> defaults,
-                          Optional<String> classSuffix,
-                          Optional<String> packageSuffix) {
-        this(name,
-             launch,
-             activation,
-             module,
-             provider,
-             version,
-             options,
-             false,
-             defaults,
-             classSuffix,
-             packageSuffix);
     }
 
     public ToolDefinition {
@@ -176,7 +151,6 @@ public record ToolDefinition(String name,
         }
         var version = moduleVersion.or(() -> declaredVersion);
         var options = Set.copyOf(commaSeparatedValues(properties, "options"));
-        boolean validateRuntimeAccess = booleanProperty(properties, "validate-runtime-access");
         var defaults = optional(properties, "defaults").map(ArgumentFiles::parse).orElseGet(java.util.List::of);
         var classSuffix = optional(properties, "class-suffix");
         var packageSuffix = optional(properties, "package-suffix");
@@ -187,7 +161,6 @@ public record ToolDefinition(String name,
                 provider,
                 version,
                 options,
-                validateRuntimeAccess,
                 defaults,
                 classSuffix,
                 packageSuffix);
@@ -199,7 +172,7 @@ public record ToolDefinition(String name,
     }
 
     ResolutionOptions resolutionOptions() {
-        return new ResolutionOptions(ModuleOptions.resolutionOptions(options), validateRuntimeAccess);
+        return new ResolutionOptions(ModuleOptions.resolutionOptions(options), false);
     }
 
     public String resolveVersion(Optional<ModuleDescriptor.Version> selectedVersion) {
@@ -229,17 +202,6 @@ public record ToolDefinition(String name,
         return Optional.ofNullable(properties.getProperty(key))
                 .map(String::strip)
                 .filter(value -> !value.isEmpty());
-    }
-
-    private static boolean booleanProperty(Properties properties, String key) {
-        var value = optional(properties, key);
-        if (value.isEmpty())
-            return false;
-        if (value.get().equals("true"))
-            return true;
-        if (value.get().equals("false"))
-            return false;
-        throw new IllegalArgumentException(key + " must be true or false");
     }
 
     private static void requireIdentifier(String field, String value) {

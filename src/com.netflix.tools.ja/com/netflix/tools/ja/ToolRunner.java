@@ -320,7 +320,6 @@ public final class ToolRunner {
                 definition.provider(),
                 definition.version(),
                 definition.options(),
-                definition.validateRuntimeAccess(),
                 defaults,
                 definition.classSuffix(),
                 definition.packageSuffix());
@@ -497,7 +496,6 @@ public final class ToolRunner {
             var scopedArguments = new ArrayList<>(commandLine.resolutionArguments());
             scopedArguments.add("-m");
             scopedArguments.add(module);
-            scopedArguments.add("--verify-module-hashes");
             resolutionArguments = scopedArguments;
         } else {
             String moduleRequirement = module
@@ -507,7 +505,6 @@ public final class ToolRunner {
                 var scopedArguments = new ArrayList<>(ResolutionArguments.rootsAsAddedModules(commandLine.resolutionArguments()));
                 scopedArguments.add("--add-requires");
                 scopedArguments.add(moduleRequirement);
-                scopedArguments.add("--verify-module-hashes");
                 resolutionArguments = scopedArguments;
             } else {
                 resolutionArguments = List.of("--add-requires", moduleRequirement);
@@ -558,7 +555,7 @@ public final class ToolRunner {
                 ? fallback.options()
                 : resolutionOptions(definition).options();
         return new ResolutionOptions(options,
-                declared.validateRuntimeAccess() || fallback.validateRuntimeAccess(),
+                fallback.validateRuntimeAccess(),
                 declared.emitCompileDiagnostics() || fallback.emitCompileDiagnostics());
     }
 

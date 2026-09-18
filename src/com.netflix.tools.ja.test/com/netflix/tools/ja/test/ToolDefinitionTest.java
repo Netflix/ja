@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolDefinitionTest {
     @Test
@@ -43,7 +42,6 @@ class ToolDefinitionTest {
         assertEquals(Optional.of("com.netflix.tools.jist"), definition.module());
         assertEquals(Optional.of("1.0"), definition.version());
         assertEquals(Set.of("module-path", "module-source-path", "module=list"), definition.options());
-        assertFalse(definition.validateRuntimeAccess());
         assertEquals(-1, definition.isSupportedOption("--verbose"));
     }
 
@@ -56,7 +54,6 @@ class ToolDefinitionTest {
                         module=org.junit.platform.console
                         defaults=execute --disable-banner "--reports-dir=test reports"
                         options=module-path,add-modules,enable-preview,add-opens,verbose
-                        validate-runtime-access=true
                         class-suffix=Test
                         package-suffix=test
                         """);
@@ -72,7 +69,6 @@ class ToolDefinitionTest {
                 definition.options());
         assertEquals(Optional.of("Test"), definition.classSuffix());
         assertEquals(Optional.of("test"), definition.packageSuffix());
-        assertTrue(definition.validateRuntimeAccess());
         assertEquals(1, definition.isSupportedOption("--module-path"));
         assertEquals(0, definition.isSupportedOption("--enable-preview"));
         assertEquals(0, definition.isSupportedOption("--verbose"));

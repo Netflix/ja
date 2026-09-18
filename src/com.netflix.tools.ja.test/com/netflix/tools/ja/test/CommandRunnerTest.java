@@ -400,8 +400,12 @@ class CommandRunnerTest {
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(error));
 
         assertEquals(0, result, error.toString());
-        assertTrue(jigInvocations.stream()
-                .anyMatch(arguments -> joinedPair(arguments, "--add-requires", "com.example.tool@2.0")));
+        assertTrue(jigInvocations.getFirst().contains("--verify-module-hashes"));
+        var providerResolution = jigInvocations.stream()
+                .filter(arguments -> joinedPair(arguments, "--add-requires", "com.example.tool@2.0"))
+                .findFirst()
+                .orElseThrow();
+        assertFalse(providerResolution.contains("--verify-module-hashes"));
         assertTrue(output.toString().endsWith("explicit\n"));
     }
 
@@ -1871,7 +1875,7 @@ class CommandRunnerTest {
                     }
                     if (jigRuns.getAndIncrement() == 0) {
                         assertEquals(optionList(RUNTIME_ACCESS_OPTIONS), options);
-                        assertTrue(arguments.contains("--validate-runtime-access"));
+                        assertFalse(arguments.contains("--validate-runtime-access"));
                         output.print("--module-path\n" + workspace.modules() + "\n--add-modules\ncom.example.app,com.example.library\n");
                     } else {
                         assertEquals(
@@ -1902,7 +1906,6 @@ class CommandRunnerTest {
                 Optional.of("1"),
                 Set.of("module-path", "upgrade-module-path", "patch-module", "add-modules", "enable-preview", "enable-native-access",
                         "enable-final-field-mutation", "add-opens", "add-exports"),
-                true,
                 List.of("execute"),
                 Optional.empty(),
                 Optional.empty());
