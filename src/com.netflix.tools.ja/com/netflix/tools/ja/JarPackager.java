@@ -68,13 +68,13 @@ final class JarPackager {
             if (result != 0) {
                 return new Result(result, false);
             }
-            var automaticModules = AutomaticModules.find(runtimeArguments);
-            if (!automaticModules.isEmpty()) {
+            var filenameDerivedModules = AutomaticModules.findFilenameDerived(runtimeArguments);
+            if (!filenameDerivedModules.isEmpty()) {
                 AutomaticModuleArchives.rewrite(staged, moduleName);
-                AutomaticModules.warnExport(moduleName, automaticModules, omitJmod, err);
+                AutomaticModules.warnExport(moduleName, filenameDerivedModules, omitJmod, err);
             }
             publish(staged, archive);
-            return new Result(0, !automaticModules.isEmpty());
+            return new Result(0, !filenameDerivedModules.isEmpty());
         } finally {
             Files.deleteIfExists(staged);
         }

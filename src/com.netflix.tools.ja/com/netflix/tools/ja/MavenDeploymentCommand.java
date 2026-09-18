@@ -65,6 +65,8 @@ final class MavenDeploymentCommand {
         var arguments = new ArrayList<String>();
         arguments.add("maven");
         arguments.add(request.operation());
+        arguments.add("--module-version");
+        arguments.add(request.assembly().version());
         if (request.repository() != null) {
             arguments.add("--repository");
             arguments.add(request.repository());

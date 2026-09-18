@@ -362,7 +362,7 @@ class AssembleTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void assemblyExportsAnAutomaticModuleForAnyAutomaticDependency(boolean explicitName, @TempDir Path directory) throws Exception {
+    void assemblyDowngradesOnlyForFilenameDerivedAutomaticDependencies(boolean explicitName, @TempDir Path directory) throws Exception {
         Path source = sourceModule(directory, "com.example.app");
         Files.writeString(source.resolve("module-info.java"),
                 """
@@ -370,11 +370,22 @@ class AssembleTest {
                     requires org.example.library;
                 }
                 """);
+        Path deploymentMetadata = source.resolve("META-INF/com.netflix.tools.ja/maven/deploy.pom");
+        Files.createDirectories(deploymentMetadata.getParent());
+        Files.writeString(deploymentMetadata,
+                """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <name>Example application</name>
+                </project>
+                """);
         Path automatic = explicitName ? writeAutomaticJar(directory.resolve("legacy-library-1.2.3.jar"), "org.example.library") : TestModules.writeAutomaticJar(directory.resolve("org.example.library-1.2.3.jar"));
         ToolProvider jig = tool(
                 "jig",
                 (output, arguments) -> {
-                    assertTrue(arguments.contains("--no-compile-diagnostics"));
+                    if (!arguments.contains("--generate-consumer-pom")) {
+                        assertTrue(arguments.contains("--no-compile-diagnostics"));
+                    }
                     Path module = Files.createDirectories(directory.resolve("compiled"));
                     if (explicitName) {
                         TestModules.writeModuleInfo(module, "com.example.app", "org.example.library");
@@ -385,6 +396,29 @@ class AssembleTest {
                     Files.writeString(packageDirectory.resolve("App.class"), "application");
                     if (!explicitName) {
                         Files.writeString(packageDirectory.resolve("Provider.class"), "provider");
+                    }
+                    int consumerPom = arguments.indexOf("--generate-consumer-pom");
+                    if (consumerPom >= 0) {
+                        Path pomOutput = Files.createDirectories(Path.of(arguments.get(consumerPom + 1))
+                                .resolve("com.example.app"));
+                        Files.writeString(pomOutput.resolve("com.example.app-1.0.pom"),
+                                """
+                                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                                  <modelVersion>4.0.0</modelVersion>
+                                  <groupId>com.example</groupId>
+                                  <artifactId>com.example.app</artifactId>
+                                  <version>1.0</version>
+                                  <packaging>jar</packaging>
+                                  <dependencies>
+                                    <dependency>
+                                      <groupId>org.example</groupId>
+                                      <artifactId>org.example.library</artifactId>
+                                      <version>1.2.3</version>
+                                    </dependency>
+                                  </dependencies>
+                                </project>
+                                """);
+                        return 0;
                     }
                     int write = arguments.indexOf("--write-argfile");
                     if (write >= 0) {
@@ -413,29 +447,38 @@ class AssembleTest {
                 .find("com.example.app")
                 .orElseThrow()
                 .descriptor();
-        assertTrue(descriptor.isAutomatic());
-        try (var archive = new JarFile(artifact.toFile())) {
-            assertNull(archive.getEntry("module-info.class"));
-            assertEquals("com.example.app",
-                    archive.getManifest()
-                           .getMainAttributes()
-                           .getValue("Automatic-Module-Name"));
-            if (!explicitName) {
+        Path jmod = artifact.resolveSibling("com.example.app.jmod");
+        if (explicitName) {
+            assertFalse(descriptor.isAutomatic());
+            assertTrue(descriptor.requires().stream()
+                    .anyMatch(requirement -> requirement.name().equals("org.example.library")));
+            assertTrue(Files.isRegularFile(jmod));
+            assertEquals("", errors.toString());
+        } else {
+            assertTrue(descriptor.isAutomatic());
+            try (var archive = new JarFile(artifact.toFile())) {
+                assertNull(archive.getEntry("module-info.class"));
+                assertEquals("com.example.app",
+                        archive.getManifest()
+                               .getMainAttributes()
+                               .getValue("Automatic-Module-Name"));
                 assertEquals("com.example.Provider\n", new String(archive.getInputStream(archive.getEntry("META-INF/services/java.util.spi.ToolProvider"))
                         .readAllBytes(),
                         StandardCharsets.UTF_8));
             }
+            assertFalse(Files.exists(jmod));
+            String pom = Files.readString(artifact.resolveSibling("com.example.app.pom"));
+            assertTrue(pom.contains("<name>Example application</name>"), pom);
+            assertTrue(pom.contains("<artifactId>org.example.library</artifactId>"), pom);
+            assertEquals(
+                    """
+                    warning: com.example.app requires automatic modules with filename-derived names:
+                      org.example.library
+                    com.example.app will be exported as an automatic module.
+                    The com.example.app jmod artifact will be omitted.
+                    """,
+                    errors.toString().replace(System.lineSeparator(), "\n"));
         }
-        Path jmod = artifact.resolveSibling("com.example.app.jmod");
-        assertFalse(Files.exists(jmod));
-        assertEquals(
-                """
-                warning: com.example.app requires automatic modules:
-                  org.example.library
-                com.example.app will be exported as an automatic module.
-                The com.example.app jmod artifact will be omitted.
-                """,
-                errors.toString().replace(System.lineSeparator(), "\n"));
     }
 
     @Test

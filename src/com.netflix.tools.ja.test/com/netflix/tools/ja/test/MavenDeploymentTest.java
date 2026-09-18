@@ -54,6 +54,7 @@ class MavenDeploymentTest {
         assertEquals(0, result);
         assertEquals("maven", deployment.get(0));
         assertEquals("deploy-central", deployment.get(1));
+        assertEquals("1.0", value(deployment, "--module-version"));
         assertEquals("Example 1.0", value(deployment, "--name"));
         assertTrue(deployment.contains("--manual"));
         Path artifacts = Path.of(deployment.getLast());
@@ -86,6 +87,7 @@ class MavenDeploymentTest {
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "deploy"), deployment.subList(0, 2));
+        assertEquals("1.0", value(deployment, "--module-version"));
         assertEquals(repository.toString(), value(deployment, "--repository"));
         assertTrue(deployment.contains("--sign"));
     }
@@ -115,6 +117,7 @@ class MavenDeploymentTest {
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "install"), deployment.subList(0, 2));
+        assertEquals("1.0", value(deployment, "--module-version"));
     }
 
     private static ToolRuntime tools(Path directory, List<String> deployment, boolean expectMetadata) throws Exception {

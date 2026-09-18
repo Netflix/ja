@@ -49,6 +49,8 @@ final class ModuleAssembler {
             Path jarArguments,
             Path javadocArguments,
             Path javadocOutput,
+            List<String> resolutionArguments,
+            String moduleVersion,
             String targetPlatform,
             boolean jmod) {}
 
@@ -168,6 +170,8 @@ final class ModuleAssembler {
                             jarArguments,
                             javadocArguments,
                             javadocOutput,
+                            List.copyOf(arguments),
+                            options.version(),
                             options.targetPlatform(),
                             options.jmod()));
         }
@@ -202,7 +206,6 @@ final class ModuleAssembler {
     private int assemble(Plan plan, Path output, InputStream in,
                          PrintStream out, PrintStream err)
             throws IOException {
-        copyDeploymentMetadata(plan, output);
         List<String> compileArguments = ArgumentFiles.parse(Files.readString(plan.compileArguments()));
         List<String> runtimeArguments = ArgumentFiles.parse(Files.readString(plan.runtimeArguments()));
         int sourcesResult = archiveSources(plan, output.resolve(plan.moduleName() + "-sources.jar"), in,
@@ -248,10 +251,40 @@ final class ModuleAssembler {
                     in,
                     out,
                     err);
-            if (jar.exitCode() != 0 || jar.automatic()) {
+            if (jar.exitCode() != 0) {
                 return jar.exitCode();
             }
+            if (jar.automatic()) {
+                writeAutomaticModulePom(plan, output, err);
+                return 0;
+            }
+            copyDeploymentMetadata(plan, output);
             return jmods.create(jmodArtifacts, in, out, err);
+        }
+    }
+
+    private void writeAutomaticModulePom(Plan plan, Path output, PrintStream err)
+            throws IOException {
+        Path directory = plan.compilationRoot().getParent().resolve("consumer-poms");
+        var arguments = new ArrayList<>(plan.resolutionArguments());
+        arguments.add("--generate-consumer-pom");
+        arguments.add(directory.toString());
+        int result;
+        try (var toolOutput = new PrintStream(OutputStream.nullOutputStream())) {
+            result = tools.run("jig", InputStream.nullInputStream(), toolOutput, err,
+                    arguments.toArray(String[]::new));
+        }
+        if (result != 0) {
+            throw new ToolExecutionException(result);
+        }
+        Path generated = directory.resolve(plan.moduleName())
+                                  .resolve(plan.moduleName() + "-" + plan.moduleVersion() + ".pom");
+        Path target = output.resolve(plan.moduleName() + ".pom");
+        Path metadata = ModuleMetadata.deploymentPom(plan.moduleSource());
+        if (Files.isRegularFile(metadata)) {
+            MavenPomMetadata.merge(generated, metadata, target);
+        } else {
+            Files.copy(generated, target);
         }
     }
 
