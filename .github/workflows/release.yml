@@ -43,7 +43,7 @@ jobs:
           echo "BUILT_JAVA_HOME=$RUNNER_TEMP/ja-built" >> "$GITHUB_ENV"
 
       - name: Set up bootstrap ja
-        uses: Netflix/ja/.github/actions/setup-ja@v0.20.0
+        uses: Netflix/ja/.github/actions/setup-ja@v0.21.1
 
       - name: Build native launchers with Zig
         run: src/launcher/build.sh
