@@ -39,30 +39,37 @@ The installer prints the steps needed to activate `ja`. See the [installation gu
 
 ## Quick start
 
-Initialize the current directory as a module and declare its main class:
+Initialize the current directory as a module, declare its main class, and add a dependency by Java module name:
 
 ```sh
 ja init --main-class com.example.hello.Main com.example.hello
+ja require org.apache.commons.text@1.13.1
 ```
 
-This creates `module-info.java` in the current directory without moving existing source:
+These commands create `module-info.java` in the current directory without moving existing source. `ja` records the dependency version alongside the standard `requires` directive:
 
 ```java
 /**
  * @mainClass com.example.hello.Main
  */
 module com.example.hello {
+    requires org.apache.commons.text; // @1.13.1
 }
 ```
 
-Create `com/example/hello/Main.java`:
+Create `com/example/hello/Main.java` and use the dependency normally:
 
 ```java
 package com.example.hello;
 
+import java.util.Map;
+
+import org.apache.commons.text.StringSubstitutor;
+
 public final class Main {
     public static void main(String[] arguments) {
-        System.out.println("Hello");
+        var values = Map.of("name", "modules");
+        System.out.println(StringSubstitutor.replace("Hello, ${name}!", values));
     }
 }
 ```
@@ -73,10 +80,14 @@ Run your shiny new modular application:
 ja run
 ```
 
+```text
+Hello, modules!
+```
+
 The working directory determines which modules are in scope. `ja` supplies each command or tool with the standard Java arguments it accepts for those modules:
 
 ```sh
-ja tool javap com.example.hello.Main
+ja tool jdeps
 ```
 
 When moving to source control move to a module source path layout, `src/com.example.hello`. With that layout, `ja init` creates new modules alongside it under `src`.
