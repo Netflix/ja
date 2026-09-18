@@ -83,9 +83,10 @@ class JaToolTest {
                         .map(completion -> completion.value())
                         .toList());
 
-        var invocation = described.commandLine().prepare(ToolInvocation.of("-C", "project", "compile", "--recompile"));
+        var invocation = described.commandLine()
+                .prepare(ToolInvocation.of("--verbose", "-C", "project", "compile", "--recompile"));
         assertEquals(Path.of("project"), invocation.workingDirectory());
-        assertEquals(List.of("compile", "--recompile"), invocation.arguments());
+        assertEquals(List.of("--verbose", "compile", "--recompile"), invocation.arguments());
 
         var parsed = described.commandLine().parse("--verbose", "compile", "--recompile");
         var command = parsed.command().orElseThrow();
@@ -95,6 +96,15 @@ class JaToolTest {
                         .filter(option -> option.names().contains("--recompile"))
                         .findFirst()
                         .orElseThrow()));
+    }
+
+    @Test
+    void reportsVersionFromASelectedWorkingDirectory(@TempDir Path directory) {
+        Result result = run("-C", directory.toString(), "--version");
+
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output().startsWith("ja "), result.output());
+        assertEquals("", result.error());
     }
 
     @Test
@@ -232,8 +242,8 @@ class JaToolTest {
 
     @Test
     void appliesTheWorkingDirectoryConventionProgrammatically(@TempDir Path directory) {
-        Result result = run("-C", directory.toString(), "--module-source-path", directory.toString(),
-                "compile");
+        Result result = run("--verbose", "-C", directory.toString(), "--module-source-path",
+                directory.toString(), "compile");
 
         assertEquals(2, result.exitCode());
         assertEquals("ja: Unknown ja option: --module-source-path\n", result.error());

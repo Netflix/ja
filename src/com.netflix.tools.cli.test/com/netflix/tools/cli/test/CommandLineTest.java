@@ -133,6 +133,35 @@ class CommandLineTest {
     }
 
     @Test
+    void preparesWorkingDirectoriesAmongTopLevelOptions(@TempDir Path directory) {
+        var invocation = new ToolInvocation(directory,
+                List.of("--check", "-C", "source", "run", "-C", "content"));
+
+        assertEquals(
+                new ToolInvocation(directory.resolve("source"),
+                        List.of("--check", "run", "-C", "content")),
+                CommandLine.builder()
+                        .option(CHECK)
+                        .workingDirectory()
+                        .command("run", "Run the tool", CommandLine.builder().build())
+                        .build()
+                        .prepare(invocation));
+    }
+
+    @Test
+    void doesNotInterpretAnOptionValueAsAWorkingDirectory(@TempDir Path directory) {
+        var invocation = new ToolInvocation(directory, List.of("--output", "-C", "run"));
+
+        assertEquals(invocation,
+                CommandLine.builder()
+                        .option(OUTPUT)
+                        .workingDirectory()
+                        .command("run", "Run the tool", CommandLine.builder().build())
+                        .build()
+                        .prepare(invocation));
+    }
+
+    @Test
     void loadsOptInAmbientToolOptions(@TempDir Path directory) throws Exception {
         Path options = Files.createDirectories(directory.resolve(".java-tool-options"));
         Files.writeString(options.resolve("probe.args"), "--check\n");

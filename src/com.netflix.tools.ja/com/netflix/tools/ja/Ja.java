@@ -50,10 +50,6 @@ public final class Ja {
                    Path workingDirectory, String... args)
             throws IOException {
         try {
-            var version = COMMAND_LINE.runVersion("ja", new PrintWriter(out, true), args);
-            if (version.isPresent()) {
-                return version.orElseThrow();
-            }
             var completion = COMMAND_LINE.runCompletion(new PrintWriter(out, true), new PrintWriter(err, true), Ja::complete,
                     new ToolInvocation(workingDirectory, Arrays.asList(args)));
             if (completion.isPresent()) {
@@ -62,6 +58,10 @@ public final class Ja {
             var invocation = COMMAND_LINE.prepare(new ToolInvocation(workingDirectory, Arrays.asList(args)));
             workingDirectory = invocation.workingDirectory();
             args = invocation.arguments().toArray(String[]::new);
+            var version = COMMAND_LINE.runVersion("ja", new PrintWriter(out, true), args);
+            if (version.isPresent()) {
+                return version.orElseThrow();
+            }
             if (args.length == 1 && args[0].equals("--aot-warmup")) {
                 return AotWarmup.run(err);
             }
