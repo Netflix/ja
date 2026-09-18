@@ -250,9 +250,10 @@ if [[ -n "$mac_bundle" ]]; then
     cp -R "$source_contents/MacOS" "$contents/MacOS"
 fi
 
-installed_version="$("$staged_ja_home/bin/ja" -L-aot=off --version)"
-if [[ "$installed_version" != "ja $ja_version" ]]; then
-    echo "Unable to verify ja $ja_version, found $installed_version" >&2
+installed_module="$("$staged_ja_home/bin/java" --describe-module com.netflix.tools.ja)"
+installed_module="${installed_module%%$'\n'*}"
+if [[ "$installed_module" != "com.netflix.tools.ja@$ja_version" ]]; then
+    echo "Unable to verify ja $ja_version, found $installed_module" >&2
     exit 1
 fi
 if [[ -e "$install_root" || -L "$install_root" ]]; then

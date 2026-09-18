@@ -66,10 +66,12 @@ if [[ -s "$work/stderr" ]]; then
     exit 1
 fi
 
-installed_version="$("$ja_home/bin/ja" -L-aot=off --version)"
-installed_version="${installed_version#ja }"
+[[ -x "$ja_home/bin/ja" ]]
+installed_module="$("$ja_home/bin/java" --describe-module com.netflix.tools.ja)"
+installed_module="${installed_module%%$'\n'*}"
+installed_version="${installed_module#com.netflix.tools.ja@}"
 if [[ -n "$ja_version" && "$installed_version" != "$ja_version" ]]; then
-    echo "Expected ja $ja_version, found $installed_version" >&2
+    echo "Expected ja $ja_version, found $installed_module" >&2
     exit 1
 fi
 
