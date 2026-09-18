@@ -72,3 +72,26 @@ jobs:
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.ORG_SONATYPE_PASSWORD }}
           MAVEN_GPG_KEY: ${{ secrets.ORG_SIGNING_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.ORG_SIGNING_PASSWORD }}
+
+  github-release:
+    name: GitHub Release
+    if: ${{ github.repository == 'Netflix/ja' }}
+    needs: release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        run: |
+          arguments=(
+            "$GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --generate-notes
+          )
+          if [[ "$GITHUB_REF_NAME" == *-rc.* ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh release create "${arguments[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}
