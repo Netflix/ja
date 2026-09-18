@@ -61,7 +61,7 @@ jobs:
             vm: HotSpot
           - name: Linux linkable runtime
             os: ubuntu-latest
-            distribution: oracle-openjdk
+            distribution: temurin
             link_mode: linkable
             vm: HotSpot
           - name: Linux OpenJ9
