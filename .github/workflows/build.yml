@@ -69,6 +69,11 @@ jobs:
             distribution: semeru
             link_mode: jmods
             vm: OpenJ9
+          - name: Windows JMOD
+            os: windows-latest
+            distribution: zulu
+            link_mode: jmods
+            vm: HotSpot
     steps:
       - uses: actions/checkout@v6
 
@@ -88,12 +93,22 @@ jobs:
           fi
 
       - name: Test installer and installed ja
+        if: runner.os != 'Windows'
         env:
           EXPECTED_JAVA_VM: ${{ matrix.vm }}
           EXPECTED_LINK_MODE: ${{ matrix.link_mode }}
         run: >-
           .github/scripts/test-install.sh
           "${{ needs.bootstrap.outputs.ja-version }}"
+
+      - name: Test PowerShell installer and installed ja
+        if: runner.os == 'Windows'
+        env:
+          EXPECTED_JAVA_VM: ${{ matrix.vm }}
+          EXPECTED_LINK_MODE: ${{ matrix.link_mode }}
+        run: >-
+          ./.github/scripts/test-install.ps1
+          -JaVersion "${{ needs.bootstrap.outputs.ja-version }}"
 
   build:
     name: Build
