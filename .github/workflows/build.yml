@@ -22,22 +22,39 @@ permissions:
 
 jobs:
   install:
-    name: Install (${{ matrix.os }})
+    name: Install (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        include:
+          - name: macOS JMOD
+            os: macos-latest
+            distribution: zulu
+            link_mode: jmods
+            vm: HotSpot
+          - name: Linux JMOD
+            os: ubuntu-latest
+            distribution: zulu
+            link_mode: jmods
+            vm: HotSpot
+          - name: Linux linkable runtime
+            os: ubuntu-latest
+            distribution: oracle-openjdk
+            link_mode: linkable
+            vm: HotSpot
+          - name: Linux OpenJ9
+            os: ubuntu-latest
+            distribution: semeru
+            link_mode: jmods
+            vm: OpenJ9
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Zulu JDK
+      - name: Set up bootstrap JDK
         uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version-file: .java-version
-
-      - name: Preserve source JDK
-        run: echo "SOURCE_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
 
       - name: Set up bootstrap ja
         id: bootstrap
@@ -45,9 +62,26 @@ jobs:
         with:
           ja-version: 0.20.0
 
-      - name: Test installer
+      - name: Set up source JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version-file: .java-version
+
+      - name: Remove JMODs from linkable runtime
+        if: matrix.link_mode == 'linkable'
+        run: |
+          jlink_help="$("$JAVA_HOME/bin/jlink" --help 2>&1)"
+          grep -Fq "Linking from run-time image enabled" <<< "$jlink_help"
+          if [[ -d "$JAVA_HOME/jmods" ]]; then
+            mv "$JAVA_HOME/jmods" "$RUNNER_TEMP/source-jmods"
+          fi
+
+      - name: Test installer and installed ja
+        env:
+          EXPECTED_JAVA_VM: ${{ matrix.vm }}
+          EXPECTED_LINK_MODE: ${{ matrix.link_mode }}
         run: >-
-          JAVA_HOME="$SOURCE_JAVA_HOME"
           .github/scripts/test-install.sh
           "${{ steps.bootstrap.outputs.ja-version }}"
 

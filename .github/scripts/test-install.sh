@@ -29,6 +29,42 @@ if [[ ! "$java_version" =~ ^([0-9]+) ]]; then
     exit 1
 fi
 java_feature="${BASH_REMATCH[1]}"
+expected_java_vm="${EXPECTED_JAVA_VM:-HotSpot}"
+expected_link_mode="${EXPECTED_LINK_MODE:-jmods}"
+java_properties="$("$JAVA_HOME/bin/java" -XshowSettings:properties -version 2>&1)"
+java_vm_name="$(awk -F ' = ' '/^[[:space:]]*java.vm.name = / { print $2; exit }' <<< "$java_properties")"
+case "$expected_java_vm" in
+    HotSpot)
+        if [[ "$java_vm_name" == *OpenJ9* ]]; then
+            echo "Expected a HotSpot source JDK, found $java_vm_name" >&2
+            exit 1
+        fi
+        ;;
+    OpenJ9)
+        if [[ "$java_vm_name" != *OpenJ9* ]]; then
+            echo "Expected an OpenJ9 source JDK, found $java_vm_name" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Unsupported expected Java VM: $expected_java_vm" >&2
+        exit 2
+        ;;
+esac
+case "$expected_link_mode" in
+    jmods)
+        [[ -f "$JAVA_HOME/jmods/java.base.jmod" ]]
+        ;;
+    linkable)
+        [[ ! -d "$JAVA_HOME/jmods" ]]
+        jlink_help="$("$JAVA_HOME/bin/jlink" --help 2>&1)"
+        grep -Fq "Linking from run-time image enabled" <<< "$jlink_help"
+        ;;
+    *)
+        echo "Unsupported expected link mode: $expected_link_mode" >&2
+        exit 2
+        ;;
+esac
 
 case "$(uname -s)" in
     Darwin)
@@ -74,6 +110,14 @@ if [[ -n "$ja_version" && "$installed_version" != "$ja_version" ]]; then
     echo "Expected ja $ja_version, found $installed_module" >&2
     exit 1
 fi
+mkdir -p "$work/home"
+if ! HOME="$work/home" "$ja_home/bin/ja" --version \
+        > "$work/ja-stdout" 2> "$work/ja-stderr"; then
+    cat "$work/ja-stdout"
+    cat "$work/ja-stderr" >&2
+    exit 1
+fi
+grep -Fqx "ja $installed_version" "$work/ja-stdout"
 
 grep -Fqx "Installing ja $installed_version with JDK $java_version..." "$work/stdout"
 grep -Fqx "ja $installed_version installed in $ja_home" "$work/stdout"
@@ -86,6 +130,20 @@ fi
 [[ -f "$ja_home/lib/src.zip" ]]
 installed_modules="$("$ja_home/bin/java" --list-modules)"
 grep -Fqx "com.netflix.tools.ja@$installed_version" <<< "$installed_modules"
+installed_properties="$("$ja_home/bin/java" -XshowSettings:properties -version 2>&1)"
+installed_vm_name="$(awk -F ' = ' '/^[[:space:]]*java.vm.name = / { print $2; exit }' <<< "$installed_properties")"
+if [[ "$expected_java_vm" == OpenJ9 ]]; then
+    [[ "$installed_vm_name" == *OpenJ9* ]]
+    [[ -n "$(find "$ja_home/lib/ja/sharedclasses" -type f -print -quit)" ]]
+else
+    [[ "$installed_vm_name" != *OpenJ9* ]]
+    [[ -n "$(find "$ja_home/lib" -type f -name '*.jsa' -print -quit)" ]]
+fi
+if [[ "$expected_link_mode" == jmods ]]; then
+    [[ -f "$ja_home/jmods/java.base.jmod" ]]
+else
+    [[ ! -d "$ja_home/jmods" ]]
+fi
 
 if [[ "$(uname -s)" == Darwin ]]; then
     discovery_deadline=$((SECONDS + 60))
