@@ -147,7 +147,7 @@ try {
     } else {
         Assert-Condition ($InstalledVmName -notmatch "OpenJ9") `
             "Expected an installed HotSpot JDK, found $InstalledVmName"
-        $CdsArchives = @(Get-ChildItem -Path (Join-Path $JaHome "lib") -Recurse -File -Filter "*.jsa")
+        $CdsArchives = @(Get-ChildItem -Path $JaHome -Recurse -File -Filter "*.jsa")
         Assert-Condition ($CdsArchives.Count -gt 0) "The installed JDK does not contain a CDS archive"
     }
 
