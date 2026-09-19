@@ -1902,6 +1902,7 @@ class CommandRunnerTest {
                                         "com.example.app",
                                         "--add-modules",
                                         "com.example.library",
+                                        "--verify-module-hashes",
                                         "--add-requires",
                                         "org.junit.platform.console@1",
                                         "--resolve-options",

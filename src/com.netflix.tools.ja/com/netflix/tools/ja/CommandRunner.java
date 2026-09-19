@@ -41,6 +41,7 @@ import com.netflix.tools.ja.Command.Tool;
 import com.netflix.tools.ja.Command.Tools;
 import com.netflix.tools.ja.DocRequest.Browse;
 import com.netflix.tools.ja.DocRequest.Terminal;
+import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolRunner.PreparedInvocation;
 import com.netflix.tools.ja.ToolRunner.ResolutionRequest;
 
@@ -513,11 +514,16 @@ public final class CommandRunner {
             case Builtin(var builtin) -> builtin.execution() instanceof ToolBacked(var tool) ? catalog.find(tool) : Optional.empty();
             default -> Optional.empty();
         };
-        if (definition.isEmpty() || !tools.contains(definition.orElseThrow()
-                .provider())) {
+        if (definition.isEmpty()) {
             return commandLine.command() instanceof Tool || commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof ToolBacked;
         }
         var selected = definition.orElseThrow();
+        if (selected.launch() == Launch.JAVA) {
+            return false;
+        }
+        if (!tools.contains(selected.provider())) {
+            return commandLine.command() instanceof Tool || commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof ToolBacked;
+        }
         var module = selected.module().or(() -> tools.moduleName(selected.provider()));
         return module.isPresent() && sourceSelects(commandLine.moduleSourcePath().orElseThrow(),
                 module.orElseThrow());
