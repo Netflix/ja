@@ -790,8 +790,12 @@ class NativeLauncherTest {
 
     private static long staticTlsSize(Path binary) throws IOException {
         ByteBuffer elf = ByteBuffer.wrap(Files.readAllBytes(binary)).order(ByteOrder.LITTLE_ENDIAN);
-        if (elf.get(0) != 0x7f || elf.get(1) != 'E' || elf.get(2) != 'L' || elf.get(3) != 'F'
-                || elf.get(4) != 2 || elf.get(5) != 1) {
+        if (elf.get(0) != 0x7f
+                || elf.get(1) != 'E'
+                || elf.get(2) != 'L'
+                || elf.get(3) != 'F'
+                || elf.get(4) != 2
+                || elf.get(5) != 1) {
             throw new IOException("Expected a little-endian ELF64 executable: " + binary);
         }
         long programHeaders = elf.getLong(32);

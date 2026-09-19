@@ -16,6 +16,7 @@ package com.netflix.tools.ja;
 
 import java.io.IOException;
 import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleDescriptor.Builder;
 import java.lang.module.ModuleDescriptor.Requires.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,7 @@ import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.DirectiveTree;
 import com.sun.source.tree.ExportsTree;
 import com.sun.source.tree.ModuleTree;
+import com.sun.source.tree.ModuleTree.ModuleKind;
 import com.sun.source.tree.OpensTree;
 import com.sun.source.tree.ProvidesTree;
 import com.sun.source.tree.RequiresTree;
@@ -64,9 +66,10 @@ final class ModuleInfo {
 
     static ModuleDescriptor descriptor(Path descriptor) throws IOException {
         var module = parse(descriptor).module();
-        ModuleDescriptor.Builder builder = module.getModuleType() == ModuleTree.ModuleKind.OPEN
-                ? ModuleDescriptor.newOpenModule(module.getName().toString())
-                : ModuleDescriptor.newModule(module.getName().toString());
+        Builder builder = module.getModuleType() == ModuleKind.OPEN ? ModuleDescriptor.newOpenModule(module.getName()
+                .toString())
+                : ModuleDescriptor.newModule(module.getName()
+                .toString());
         for (var directive : module.getDirectives()) {
             if (directive instanceof RequiresTree requires) {
                 var modifiers = EnumSet.noneOf(Modifier.class);
@@ -76,31 +79,41 @@ final class ModuleInfo {
                 if (requires.isTransitive()) {
                     modifiers.add(Modifier.TRANSITIVE);
                 }
-                builder.requires(modifiers, requires.getModuleName().toString());
+                builder.requires(modifiers, requires.getModuleName()
+                        .toString());
             } else if (directive instanceof ExportsTree exports) {
                 var moduleNames = exports.getModuleNames();
                 if (moduleNames == null || moduleNames.isEmpty()) {
-                    builder.exports(exports.getPackageName().toString());
+                    builder.exports(exports.getPackageName()
+                                           .toString());
                 } else {
-                    builder.exports(exports.getPackageName().toString(), moduleNames.stream()
-                            .map(Object::toString)
-                            .collect(Collectors.toUnmodifiableSet()));
+                    builder.exports(
+                            exports.getPackageName().toString(),
+                            moduleNames.stream()
+                                    .map(Object::toString)
+                                    .collect(Collectors.toUnmodifiableSet()));
                 }
             } else if (directive instanceof OpensTree opens) {
                 var moduleNames = opens.getModuleNames();
                 if (moduleNames == null || moduleNames.isEmpty()) {
-                    builder.opens(opens.getPackageName().toString());
+                    builder.opens(opens.getPackageName()
+                                       .toString());
                 } else {
-                    builder.opens(opens.getPackageName().toString(), moduleNames.stream()
-                            .map(Object::toString)
-                            .collect(Collectors.toUnmodifiableSet()));
+                    builder.opens(
+                            opens.getPackageName().toString(),
+                            moduleNames.stream()
+                                    .map(Object::toString)
+                                    .collect(Collectors.toUnmodifiableSet()));
                 }
             } else if (directive instanceof ProvidesTree provides) {
-                builder.provides(provides.getServiceName().toString(), provides.getImplementationNames().stream()
-                        .map(Object::toString)
-                        .toList());
+                builder.provides(
+                        provides.getServiceName().toString(),
+                        provides.getImplementationNames().stream()
+                                .map(Object::toString)
+                                .toList());
             } else if (directive instanceof UsesTree uses) {
-                builder.uses(uses.getServiceName().toString());
+                builder.uses(uses.getServiceName()
+                                 .toString());
             }
         }
         return builder.build();

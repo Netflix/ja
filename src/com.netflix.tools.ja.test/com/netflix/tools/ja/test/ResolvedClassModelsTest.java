@@ -103,25 +103,29 @@ class ResolvedClassModelsTest {
     @Test
     void sourceModulesTakePrecedenceOverLinkedParentModules(@TempDir Path directory) throws Exception {
         var requirements = Map.of(
-                "com.netflix.tools.cli", List.<String>of(),
-                "com.netflix.tools.cli.test", List.of("com.netflix.tools.cli"),
-                "com.netflix.tools.ja", List.of("com.netflix.tools.cli"),
-                "com.netflix.tools.ja.test", List.of("com.netflix.tools.ja", "com.netflix.tools.cli"),
-                "com.netflix.tools.jmh", List.of("com.netflix.tools.cli"),
-                "com.netflix.tools.launcher", List.of("com.netflix.tools.cli"),
-                "com.netflix.tools.launcher.test", List.of("com.netflix.tools.launcher"));
+        "com.netflix.tools.cli", List.<String>of(),
+        "com.netflix.tools.cli.test", List.of("com.netflix.tools.cli"),
+        "com.netflix.tools.ja", List.of("com.netflix.tools.cli"),
+        "com.netflix.tools.ja.test", List.of("com.netflix.tools.ja", "com.netflix.tools.cli"),
+        "com.netflix.tools.jmh", List.of("com.netflix.tools.cli"),
+        "com.netflix.tools.launcher", List.of("com.netflix.tools.cli"),
+        "com.netflix.tools.launcher.test", List.of("com.netflix.tools.launcher"));
         var modules = Files.createDirectories(directory.resolve("modules"));
         var sourceClasses = new LinkedHashMap<String, String>();
         int index = 0;
         for (var entry : requirements.entrySet()) {
             var module = Files.createDirectories(modules.resolve(entry.getKey()));
-            TestModules.writeModuleInfo(module, entry.getKey(), entry.getValue().toArray(String[]::new));
+            TestModules.writeModuleInfo(module, entry.getKey(),
+                    entry.getValue().toArray(String[]::new));
             var className = "source.Module" + index++;
             writeClass(module, className);
             sourceClasses.put(entry.getKey(), className.replace('.', '/') + ".class");
         }
 
-        var classes = resolve(ResolvedClassModelsTest.class.getModule().getLayer().configuration(),
+        var classes = resolve(ResolvedClassModelsTest.class
+                .getModule()
+                .getLayer()
+                .configuration(),
                 List.copyOf(requirements.keySet()), List.of("--module-path", modules.toString()));
 
         for (var entry : sourceClasses.entrySet()) {
@@ -180,13 +184,15 @@ class ResolvedClassModelsTest {
         var parentTool = TestModules.writeJar(parentModules.resolve("example.tool.jar"), "example.tool");
         var parentConfiguration = Configuration.resolve(
                 ModuleFinder.of(parentModules),
-                List.of(ResolvedClassModelsTest.class.getModule().getLayer().configuration()),
+                List.of(ResolvedClassModelsTest.class
+                        .getModule()
+                        .getLayer()
+                        .configuration()),
                 ModuleFinder.of(),
                 Set.of("example.tool"));
-        var parentLayer = ModuleLayer.defineModulesWithOneLoader(
-                parentConfiguration,
-                List.of(ResolvedClassModelsTest.class.getModule().getLayer()),
-                ClassLoader.getSystemClassLoader()).layer();
+        var parentLayer = ModuleLayer.defineModulesWithOneLoader(parentConfiguration, List.of(ResolvedClassModelsTest.class.getModule().getLayer()),
+                ClassLoader.getSystemClassLoader())
+                .layer();
         var applicationModules = Files.createDirectories(directory.resolve("application-modules"));
         var root = Files.createDirectories(applicationModules.resolve("example.root"));
         TestModules.writeModuleInfo(root, "example.root");
@@ -195,10 +201,10 @@ class ResolvedClassModelsTest {
         var runtimeTool = Files.createDirectories(runtimeModules.resolve("example.tool"));
         TestModules.writeModuleInfo(runtimeTool, "example.tool");
         var runtimeArguments = List.of(
-                "--module-path", runtimeModules.toString(),
-                "--add-modules", "example.tool",
-                "--add-exports", "jdk.compiler/com.sun.source.util=example.tool",
-                "--add-exports", "jdk.javadoc/jdk.javadoc.internal.tool=example.tool");
+        "--module-path", runtimeModules.toString(),
+        "--add-modules", "example.tool",
+        "--add-exports", "jdk.compiler/com.sun.source.util=example.tool",
+        "--add-exports", "jdk.javadoc/jdk.javadoc.internal.tool=example.tool");
         var classes = ResolvedClassModels.resolve(
                 parentConfiguration,
                 new ModuleInputs(Set.of("example.root"), List.of("--module-path", applicationModules.toString())),
@@ -206,15 +212,38 @@ class ResolvedClassModelsTest {
                 "test-runtime");
 
         var layer = classes.instrumentedLayer(parentLayer, Set.of(), List.of()).layer();
-        var resolvedTool = layer.configuration().findModule("example.tool").orElseThrow();
+        var resolvedTool = layer.configuration()
+                                .findModule("example.tool")
+                                .orElseThrow();
 
-        assertNotEquals(parentTool.toUri(), resolvedTool.reference().location().orElseThrow());
-        assertEquals(runtimeTool.toUri(), resolvedTool.reference().location().orElseThrow());
-        assertSame(layer, layer.findModule("jdk.compiler").orElseThrow().getLayer());
-        assertSame(layer, layer.findModule("jdk.internal.md").orElseThrow().getLayer());
-        assertSame(layer, layer.findModule("jdk.internal.opt").orElseThrow().getLayer());
-        assertSame(layer, layer.findModule("jdk.javadoc").orElseThrow().getLayer());
-        assertSame(layer, layer.findModule("jdk.zipfs").orElseThrow().getLayer());
+        assertNotEquals(parentTool.toUri(),
+                resolvedTool.reference()
+                            .location()
+                            .orElseThrow());
+        assertEquals(runtimeTool.toUri(),
+                resolvedTool.reference()
+                            .location()
+                            .orElseThrow());
+        assertSame(layer,
+                layer.findModule("jdk.compiler")
+                     .orElseThrow()
+                     .getLayer());
+        assertSame(layer,
+                layer.findModule("jdk.internal.md")
+                     .orElseThrow()
+                     .getLayer());
+        assertSame(layer,
+                layer.findModule("jdk.internal.opt")
+                     .orElseThrow()
+                     .getLayer());
+        assertSame(layer,
+                layer.findModule("jdk.javadoc")
+                     .orElseThrow()
+                     .getLayer());
+        assertSame(layer,
+                layer.findModule("jdk.zipfs")
+                     .orElseThrow()
+                     .getLayer());
     }
 
     @Test
@@ -438,8 +467,10 @@ class ResolvedClassModelsTest {
                 Set.of(), List.of())
                            .layer();
 
-        assertTrue(layer.findModule("example.root").isPresent());
-        assertTrue(layer.findModule("example.dependency").isPresent());
+        assertTrue(layer.findModule("example.root")
+                        .isPresent());
+        assertTrue(layer.findModule("example.dependency")
+                        .isPresent());
     }
 
     @Test

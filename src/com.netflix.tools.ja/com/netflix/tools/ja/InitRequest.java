@@ -19,12 +19,11 @@ import java.util.Objects;
 import java.util.Optional;
 import javax.lang.model.SourceVersion;
 
+import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
+
 /** Describes the source module and module options supplied to {@code ja init}. */
-public record InitRequest(String moduleName,
-                          Optional<Integer> release,
-                          Optional<String> mainClass,
-                          boolean enablePreview,
-                          List<RequireRequest.RuntimeAccess> runtimeAccess) {
+public record InitRequest(String moduleName, Optional<Integer> release, Optional<String> mainClass,
+        boolean enablePreview, List<RuntimeAccess> runtimeAccess) {
 
     public InitRequest {
         if (!SourceVersion.isName(moduleName)) {

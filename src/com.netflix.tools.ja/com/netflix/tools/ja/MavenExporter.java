@@ -43,7 +43,8 @@ final class MavenExporter {
         arguments.add("--verify-module-hashes");
         arguments.add("--no-compile-diagnostics");
         arguments.add("--generate-module-poms");
-        arguments.add(commandLine.workingDirectory().toString());
+        arguments.add(commandLine.workingDirectory()
+                .toString());
         return tools.run("jig", in, out, err, arguments.toArray(String[]::new));
     }
 }

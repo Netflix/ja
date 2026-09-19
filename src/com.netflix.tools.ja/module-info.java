@@ -11,13 +11,13 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-
 /**
- * @mainClass com.netflix.tools.ja.Ja
- * @enableNativeAccess com.netflix.tools.ja
- */
+    * @mainClass com.netflix.tools.ja.Ja
+    * @enableNativeAccess com.netflix.tools.ja
+    */
 module com.netflix.tools.ja {
-    exports com.netflix.tools.ja to com.netflix.tools.ja.test;
+    exports com.netflix.tools.ja to
+            com.netflix.tools.ja.test;
 
     requires com.netflix.tools.cli;
     requires com.netflix.tools.jig; // @0.16.4
@@ -26,7 +26,7 @@ module com.netflix.tools.ja {
     requires java.xml;
     requires jdk.compiler;
     requires jdk.zipfs;
-    requires static com.netflix.tools.jfmt; // @0.7.4
+    requires static com.netflix.tools.jfmt; // @0.8.2
     requires static com.netflix.tools.jist; // @0.5.3
     requires static com.netflix.tools.jdocserver; // @0.4.3
 
@@ -34,5 +34,6 @@ module com.netflix.tools.ja {
     uses javax.tools.JavaCompiler;
     uses javax.tools.Tool;
 
-    provides javax.tools.Tool with com.netflix.tools.ja.JaTool;
+    provides javax.tools.Tool with
+            com.netflix.tools.ja.JaTool;
 }

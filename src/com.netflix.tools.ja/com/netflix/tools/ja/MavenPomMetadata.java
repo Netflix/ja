@@ -34,8 +34,7 @@ import org.xml.sax.SAXException;
 
 /** Merges publication metadata into a generated Maven consumer POM. */
 final class MavenPomMetadata {
-    private static final List<String> ELEMENTS = List.of(
-            "name", "description", "url", "licenses", "developers", "scm");
+    private static final List<String> ELEMENTS = List.of("name", "description", "url", "licenses", "developers", "scm");
 
     private MavenPomMetadata() {}
 
@@ -64,8 +63,7 @@ final class MavenPomMetadata {
         }
     }
 
-    private static Document parse(Path path)
-            throws ParserConfigurationException, SAXException, IOException {
+    private static Document parse(Path path) throws ParserConfigurationException, SAXException, IOException {
         var factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -74,7 +72,9 @@ final class MavenPomMetadata {
     }
 
     private static Node directChild(Element parent, String localName) {
-        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+        for (Node child = parent.getFirstChild();
+             child != null;
+             child = child.getNextSibling()) {
             if (child instanceof Element element && localName.equals(element.getLocalName())) {
                 return element;
             }

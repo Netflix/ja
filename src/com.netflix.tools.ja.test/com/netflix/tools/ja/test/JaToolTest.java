@@ -83,8 +83,7 @@ class JaToolTest {
                         .map(completion -> completion.value())
                         .toList());
 
-        var invocation = described.commandLine()
-                .prepare(ToolInvocation.of("--verbose", "-C", "project", "compile", "--recompile"));
+        var invocation = described.commandLine().prepare(ToolInvocation.of("--verbose", "-C", "project", "compile", "--recompile"));
         assertEquals(Path.of("project"), invocation.workingDirectory());
         assertEquals(List.of("--verbose", "compile", "--recompile"), invocation.arguments());
 
@@ -103,7 +102,8 @@ class JaToolTest {
         Result result = run("-C", directory.toString(), "--version");
 
         assertEquals(0, result.exitCode(), result.error());
-        assertTrue(result.output().startsWith("ja "), result.output());
+        assertTrue(result.output().startsWith("ja "),
+                result.output());
         assertEquals("", result.error());
     }
 
@@ -111,8 +111,7 @@ class JaToolTest {
     void describesAndCompletesItsCommands() {
         var described = assertInstanceOf(JaTool.class, ja);
 
-        assertEquals(
-                List.of("compile"),
+        assertEquals(List.of("compile"),
                 Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolRuntime.of()).stream()
                         .map(completion -> completion.value())
                         .toList());
@@ -197,10 +196,9 @@ class JaToolTest {
                 .getLayer());
 
         for (String command : List.of("source", "doc")) {
-            assertTrue(
-                    Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
-                            .map(Completion::value)
-                            .anyMatch("java.lang.String"::equals),
+            assertTrue(Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
+                    .map(Completion::value)
+                    .anyMatch("java.lang.String"::equals),
                     command);
         }
     }
@@ -286,7 +284,8 @@ class JaToolTest {
     @Test
     void printsVersion() {
         Result result = run("--version");
-        String version = Ja.class.getModule()
+        String version = Ja.class
+                .getModule()
                 .getDescriptor()
                 .rawVersion()
                 .orElse("dev");

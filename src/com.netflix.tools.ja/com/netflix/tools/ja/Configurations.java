@@ -30,7 +30,10 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-/** Canonical module selection, graph traversal, and one-loader layer construction. */
+/**
+ * Canonical module selection, graph traversal, and one-loader layer
+ * construction.
+ */
 final class Configurations {
     static final class Resolution {
         private final Configuration parent;
@@ -38,7 +41,8 @@ final class Configurations {
         private final Set<String> pathModules;
         private final Set<String> beforeModules;
 
-        private Resolution(Configuration parent, Configuration configuration, Set<String> pathModules, Set<String> beforeModules) {
+        private Resolution(Configuration parent, Configuration configuration, Set<String> pathModules,
+                           Set<String> beforeModules) {
             this.parent = parent;
             this.configuration = configuration;
             this.pathModules = Set.copyOf(pathModules);
@@ -64,8 +68,7 @@ final class Configurations {
             return reachableModules(roots, _ -> true, _ -> true);
         }
 
-        List<ResolvedModule> reachableModules(Set<String> roots, Predicate<ResolvedModule> include,
-                Predicate<ResolvedModule> followRequires) {
+        List<ResolvedModule> reachableModules(Set<String> roots, Predicate<ResolvedModule> include, Predicate<ResolvedModule> followRequires) {
             var reachable = new LinkedHashMap<String, ResolvedModule>();
             var pending = new ArrayDeque<>(roots);
             while (!pending.isEmpty()) {
@@ -112,7 +115,10 @@ final class Configurations {
         return resolve(parent, arguments, Set.of());
     }
 
-    /** Resolves selected path modules before the parent and all remaining path modules after it. */
+    /**
+     * Resolves selected path modules before the parent and all remaining path
+     * modules after it.
+     */
     static Resolution resolve(Configuration parent, List<String> arguments, Set<String> beforeModules) {
         var roots = ToolArguments.addedModules(arguments);
         if (roots.isEmpty()) {
@@ -134,7 +140,10 @@ final class Configurations {
         return resolve(parent, finder, ModuleFinder.of(), roots);
     }
 
-    /** Resolves and service-binds every module on the path before the parent configuration. */
+    /**
+     * Resolves and service-binds every module on the path before the parent
+     * configuration.
+     */
     static Resolution resolveAndBindBeforeParent(Configuration parent, List<Path> modulePath, Set<String> roots) {
         var finder = ModuleFinder.of(modulePath.toArray(Path[]::new));
         var configuration = Configuration.resolveAndBind(finder, List.of(parent), ModuleFinder.of(), roots);
@@ -143,7 +152,8 @@ final class Configurations {
     }
 
     /** Resolves explicit before-parent and after-parent finders. */
-    static Resolution resolve(Configuration parent, ModuleFinder before, ModuleFinder after, Set<String> roots) {
+    static Resolution resolve(Configuration parent, ModuleFinder before, ModuleFinder after,
+            Set<String> roots) {
         var configuration = Configuration.resolve(before, List.of(parent), after, roots);
         var beforeModules = moduleNames(before);
         var pathModules = new LinkedHashSet<>(beforeModules);

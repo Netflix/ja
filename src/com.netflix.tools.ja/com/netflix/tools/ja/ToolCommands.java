@@ -34,8 +34,8 @@ final class ToolCommands {
     private ToolCommands() {}
 
     static Discovery discover(String moduleName, List<Path> modulePath) {
-        var resolution = Configurations.resolveAndBindBeforeParent(
-                ModuleLayer.boot().configuration(), modulePath, Set.of(moduleName));
+        var resolution = Configurations.resolveAndBindBeforeParent(ModuleLayer.boot().configuration(), modulePath,
+                Set.of(moduleName));
         var layer = resolution.defineLayer(ModuleLayer.boot()).layer();
 
         var commands = new TreeSet<String>();

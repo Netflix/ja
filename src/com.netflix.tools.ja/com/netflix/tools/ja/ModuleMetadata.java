@@ -28,8 +28,9 @@ final class ModuleMetadata {
     }
 
     private static Path moduleRoot(Path moduleSource) {
-        if (moduleSource.getFileName() != null
-                && moduleSource.getFileName().toString().equals("classes")
+        if (moduleSource.getFileName() != null && moduleSource.getFileName()
+                .toString()
+                .equals("classes")
                 && Files.isRegularFile(moduleSource.resolve("module-info.java"))) {
             return moduleSource.getParent();
         }

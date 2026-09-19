@@ -26,7 +26,6 @@ import com.netflix.tools.ja.ToolDefinition.Launch;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ToolDefinitionTest {
@@ -91,8 +90,10 @@ class ToolDefinitionTest {
 
     @Test
     void rejectsConflictingToolVersions() {
-        var failure = assertThrows(IllegalArgumentException.class, () -> definition("formatter",
-                """
+        var failure = assertThrows(IllegalArgumentException.class,
+                () ->
+                        definition("formatter",
+                                """
                         module=com.example.formatter@2.0.0
                         version=2.1.0
                         """));

@@ -17,6 +17,8 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleDescriptor.Provides;
+import java.lang.module.ModuleDescriptor.Requires;
 import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -24,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -46,7 +49,8 @@ final class ResolvedModules {
 
         var sourceModules = new LinkedHashSet<String>();
         for (var entry : ToolArguments.moduleSourcePath(arguments).entrySet()) {
-            var descriptor = ModuleInfo.descriptor(entry.getValue().resolve("module-info.java"));
+            var descriptor = ModuleInfo.descriptor(entry.getValue()
+                    .resolve("module-info.java"));
             applicationModules.put(descriptor.name(), descriptor);
             sourceModules.add(descriptor.name());
         }
@@ -67,7 +71,7 @@ final class ResolvedModules {
                 continue;
             }
             descriptor.requires().stream()
-                    .map(ModuleDescriptor.Requires::name)
+                    .map(Requires::name)
                     .forEach(pending::addLast);
         }
         resolved.keySet().retainAll(applicationModules.keySet());
@@ -96,7 +100,7 @@ final class ResolvedModules {
                 .collect(Collectors.toUnmodifiableSet());
         return names.stream()
                 .map(descriptors::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -109,7 +113,7 @@ final class ResolvedModules {
     Set<String> toolProviderModules() {
         return descriptors.values().stream()
                 .filter(descriptor -> descriptor.provides().stream()
-                        .map(ModuleDescriptor.Provides::service)
+                        .map(Provides::service)
                         .anyMatch(ToolRuntime.TOOL_SERVICE_NAMES::contains))
                 .map(ModuleDescriptor::name)
                 .collect(Collectors.toUnmodifiableSet());
@@ -126,7 +130,7 @@ final class ResolvedModules {
                 continue;
             }
             descriptor.requires().stream()
-                    .map(ModuleDescriptor.Requires::name)
+                    .map(Requires::name)
                     .forEach(pending::addLast);
         }
         return Set.copyOf(reachable);

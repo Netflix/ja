@@ -23,6 +23,7 @@ import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.lang.classfile.Annotation;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassFile.ClassHierarchyResolverOption;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute;
 import java.lang.classfile.attribute.RuntimeVisibleParameterAnnotationsAttribute;
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
@@ -226,7 +228,7 @@ class ToolRunnerTest {
                         .getModule()
                         .getName()
                         .equals(moduleName))
-                .map(ServiceLoader.Provider::get)
+                .map(Provider::get)
                 .findFirst()
                 .orElseThrow();
         var tools = ToolRuntime.of(provider);
@@ -269,12 +271,12 @@ class ToolRunnerTest {
         assertEquals(23, result);
         assertEquals(1, optionChecks.size());
         assertTrue(joinedPair(optionChecks.getFirst(), "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
-        assertTrue(joinedPair(launchedWith, "--module-path", modules.resolve(moduleName).toString()));
+        assertTrue(joinedPair(launchedWith, "--module-path",
+                modules.resolve(moduleName).toString()));
         assertTrue(joinedPair(launchedWith, "--add-modules", moduleName));
         assertTrue(joinedPair(launchedWith, "--add-exports", "jdk.compiler/com.sun.tools.javac.api=" + moduleName));
         assertEquals(
-                List.of("--module", "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher",
-                        "runtime-probe", "--add-modules", "com.example.application", "explicit"),
+                List.of("--module", "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher", "runtime-probe", "--add-modules", "com.example.application", "explicit"),
                 launchedWith.subList(launchedWith.size() - 6, launchedWith.size()));
     }
 
@@ -563,8 +565,7 @@ class ToolRunnerTest {
                     runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
                             System.out, new PrintStream(error)));
             assertEquals(
-                    "ja: warning: test caching is unavailable because the required access from java.base can only be applied in a separate JVM; running all tests"
-                            + System.lineSeparator(),
+                    "ja: warning: test caching is unavailable because the required access from java.base can only be applied in a separate JVM; running all tests" + System.lineSeparator(),
                     error.toString());
         } finally {
             System.clearProperty(property);
@@ -635,7 +636,8 @@ class ToolRunnerTest {
                     runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
                             new PrintStream(output), System.err));
             assertEquals("cached", System.getProperty(property));
-            assertTrue(output.toString().contains("Tests:      1 found, 1 cached"));
+            assertTrue(output.toString()
+                             .contains("Tests:      1 found, 1 cached"));
         } finally {
             System.clearProperty(property);
         }
@@ -674,10 +676,10 @@ class ToolRunnerTest {
         var peerType = ClassDesc.of("example.Peer");
         var voidMethod = MethodTypeDesc.of(ClassDesc.ofDescriptor("V"));
         var property = getClass().getName() + ".hierarchy";
-        var hierarchy = ClassHierarchyResolver.of(Set.of(), Map.of(peerType, ClassDesc.of("java.lang.Object")))
-                .orElse(ClassHierarchyResolver.defaultResolver());
-        var classFile = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(hierarchy));
-        var peer = classFile.build(peerType,
+        var hierarchy = ClassHierarchyResolver.of(Set.of(), Map.of(peerType, ClassDesc.of("java.lang.Object"))).orElse(ClassHierarchyResolver.defaultResolver());
+        var classFile = ClassFile.of(ClassHierarchyResolverOption.of(hierarchy));
+        var peer = classFile.build(
+                peerType,
                 builder -> builder.withMethodBody(
                         "<init>",
                         voidMethod,
@@ -713,8 +715,7 @@ class ToolRunnerTest {
                                         .ldc(property)
                                         .ldc("executed")
                                         .invokestatic(ClassDesc.of("java.lang.System"), "setProperty",
-                                                MethodTypeDesc.of(ClassDesc.of("java.lang.String"),
-                                                        ClassDesc.of("java.lang.String"), ClassDesc.of("java.lang.String")))
+                                                MethodTypeDesc.of(ClassDesc.of("java.lang.String"), ClassDesc.of("java.lang.String"), ClassDesc.of("java.lang.String")))
                                         .pop()
                                         .return_();
                                 });
@@ -726,10 +727,10 @@ class ToolRunnerTest {
         var runner = incrementalTestRunner(directory);
 
         try {
-            assertEquals(0,
-                    runner.run(incrementalTestCommand(moduleName), List.of(),
-                            incrementalTestArguments(modules, moduleName), InputStream.nullInputStream(),
-                            System.out, System.err));
+            assertEquals(
+                    0,
+                    runner.run(incrementalTestCommand(moduleName), List.of(), incrementalTestArguments(modules, moduleName),
+                            InputStream.nullInputStream(), System.out, System.err));
             assertEquals("executed", System.getProperty(property));
         } finally {
             System.clearProperty(property);

@@ -27,19 +27,13 @@ final class ToolResolver {
         this.moduleResolver = new ModuleResolver(tools);
     }
 
-    List<String> resolveLauncher(
-            ToolDefinition definition,
-            String version,
-            List<String> resolutionArguments,
-            List<String> suppliedArguments,
-            InputStream in,
-            PrintStream err) {
+    List<String> resolveLauncher(ToolDefinition definition, String version, List<String> resolutionArguments,
+            List<String> suppliedArguments, InputStream in, PrintStream err) {
         String module = requiredModule(definition);
         var arguments = new ArrayList<>(ResolutionArguments.rootsAsAddedModules(resolutionArguments));
         arguments.add("--add-requires");
         arguments.add(module + "@" + version);
-        return moduleResolver.resolve(arguments, ResolutionOptions.JAVA,
-                suppliedArguments, in, err);
+        return moduleResolver.resolve(arguments, ResolutionOptions.JAVA, suppliedArguments, in, err);
     }
 
     private static String requiredModule(ToolDefinition definition) {

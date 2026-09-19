@@ -67,7 +67,8 @@ public final class JUnitExecutionTrace {
 
     public record Runtime(Controller controller, ToolRuntime tools) {
         public int run(PrintStream out, PrintStream err, String... arguments) {
-            return tools.run("junit", InputStream.nullInputStream(), out, err, arguments(arguments));
+            return tools.run("junit", InputStream.nullInputStream(), out, err,
+                    arguments(arguments));
         }
 
         private static String[] arguments(String[] arguments) {

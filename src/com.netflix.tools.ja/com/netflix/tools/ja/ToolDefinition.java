@@ -18,8 +18,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleDescriptor.Version;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -36,16 +38,18 @@ import com.netflix.tools.launcher.ModuleOptions;
  * <p>The metadata supplies launch behavior, activation, defaults, and
  * packaged-content conventions that the JDK tool interfaces cannot express.
  */
-public record ToolDefinition(String name,
-                             Launch launch,
-                             Optional<String> activation,
-                             Optional<String> module,
-                             String provider,
-                             Optional<String> version,
-                             Set<String> options,
-                             java.util.List<String> defaults,
-                             Optional<String> classSuffix,
-                             Optional<String> packageSuffix) implements OptionChecker {
+public record ToolDefinition(
+        String name,
+        Launch launch,
+        Optional<String> activation,
+        Optional<String> module,
+        String provider,
+        Optional<String> version,
+        Set<String> options,
+        List<String> defaults,
+        Optional<String> classSuffix,
+        Optional<String> packageSuffix)
+        implements OptionChecker {
 
     public enum Launch {
         PROVIDER,
@@ -63,7 +67,7 @@ public record ToolDefinition(String name,
     private record ModuleReference(String name, Optional<String> version) {
         private ModuleReference {
             ModuleDescriptor.newModule(name).build();
-            version.ifPresent(ModuleDescriptor.Version::parse);
+            version.ifPresent(Version::parse);
         }
 
         private static ModuleReference parse(String value) {
@@ -74,29 +78,30 @@ public record ToolDefinition(String name,
             if (separator == 0 || separator == value.length() - 1) {
                 throw new IllegalArgumentException("module expects <module> or <module>@<version>");
             }
-            return new ModuleReference(value.substring(0, separator),
-                    Optional.of(value.substring(separator + 1)));
+            return new ModuleReference(value.substring(0, separator), Optional.of(value.substring(separator + 1)));
         }
     }
 
-    public ToolDefinition(String name,
-                          Launch launch,
-                          Optional<String> activation,
-                          Optional<String> module,
-                          String provider,
-                          Optional<String> version,
-                          Set<String> options,
-                          java.util.List<String> defaults) {
-        this(name,
-             launch,
-             activation,
-             module,
-             provider,
-             version,
-             options,
-             defaults,
-             Optional.empty(),
-             Optional.empty());
+    public ToolDefinition(
+            String name,
+            Launch launch,
+            Optional<String> activation,
+            Optional<String> module,
+            String provider,
+            Optional<String> version,
+            Set<String> options,
+            List<String> defaults) {
+        this(
+                name,
+                launch,
+                activation,
+                module,
+                provider,
+                version,
+                options,
+                defaults,
+                Optional.empty(),
+                Optional.empty());
     }
 
     public ToolDefinition {
@@ -113,15 +118,15 @@ public record ToolDefinition(String name,
             }
         }
         if (options.stream()
-                        .filter(option -> option.equals("module") || option.startsWith("module="))
-                        .count()
+                .filter(option -> option.equals("module") || option.startsWith("module="))
+                .count()
                 > 1) {
             throw new IllegalArgumentException("Conflicting module option forms");
         }
         if (options.contains("module=roots") && !options.contains("add-modules")) {
             throw new IllegalArgumentException("module=roots requires add-modules");
         }
-        defaults = java.util.List.copyOf(defaults);
+        defaults = List.copyOf(defaults);
         classSuffix = Objects.requireNonNull(classSuffix);
         classSuffix.ifPresent(suffix -> {
             if (!SourceVersion.isIdentifier(suffix) || SourceVersion.isKeyword(suffix)) {
@@ -151,19 +156,11 @@ public record ToolDefinition(String name,
         }
         var version = moduleVersion.or(() -> declaredVersion);
         var options = Set.copyOf(commaSeparatedValues(properties, "options"));
-        var defaults = optional(properties, "defaults").map(ArgumentFiles::parse).orElseGet(java.util.List::of);
+        var defaults = optional(properties, "defaults").map(ArgumentFiles::parse).orElseGet(List::of);
         var classSuffix = optional(properties, "class-suffix");
         var packageSuffix = optional(properties, "package-suffix");
-        return new ToolDefinition(name,
-                launch,
-                activation,
-                module,
-                provider,
-                version,
-                options,
-                defaults,
-                classSuffix,
-                packageSuffix);
+        return new ToolDefinition(name, launch, activation, module, provider, version,
+                options, defaults, classSuffix, packageSuffix);
     }
 
     @Override
@@ -175,7 +172,7 @@ public record ToolDefinition(String name,
         return new ResolutionOptions(ModuleOptions.resolutionOptions(options), false);
     }
 
-    public String resolveVersion(Optional<ModuleDescriptor.Version> selectedVersion) {
+    public String resolveVersion(Optional<Version> selectedVersion) {
         if (version.isPresent()) {
             return version.get();
         }
@@ -188,14 +185,12 @@ public record ToolDefinition(String name,
         return selectedVersion.orElseThrow().toString();
     }
 
-    private static java.util.List<String> commaSeparatedValues(Properties properties, String key) {
-        return optional(properties, key)
-                .map(value ->
-                        Arrays.stream(value.split(","))
-                                .map(String::strip)
-                                .filter(element -> !element.isEmpty())
-                                .toList())
-                .orElseGet(java.util.List::of);
+    private static List<String> commaSeparatedValues(Properties properties, String key) {
+        return optional(properties, key).map(value -> Arrays.stream(value.split(","))
+                .map(String::strip)
+                .filter(element -> !element.isEmpty())
+                .toList())
+                .orElseGet(List::of);
     }
 
     private static Optional<String> optional(Properties properties, String key) {

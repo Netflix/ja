@@ -122,8 +122,7 @@ final class AotWarmup {
         }
     }
 
-    private static boolean available(BuiltinCommand command, ToolRuntime tools,
-            ToolCatalog catalog) {
+    private static boolean available(BuiltinCommand command, ToolRuntime tools, ToolCatalog catalog) {
         return CommandAvailability.missingTools(command, tools, catalog).isEmpty();
     }
 

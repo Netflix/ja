@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
+import java.lang.ModuleLayer.Controller;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -41,6 +42,7 @@ import javax.tools.Tool;
 
 import com.netflix.module.ModuleRuntimeAccess;
 import com.netflix.module.ModuleRuntimeAccessOptions;
+import com.netflix.module.ModuleRuntimeAccessOptions.PackageAccess;
 import com.netflix.tools.cli.CommandLine.Completion;
 import com.netflix.tools.cli.CommandLine.CompletionRequest;
 import com.netflix.tools.launcher.CompletionBundle.Builder;
@@ -73,11 +75,12 @@ public final class ToolRuntime {
     private final JavaLauncher javaLauncher;
 
     private ToolRuntime(Map<String, ToolHandle> tools) {
-        this(tools, false, Set.of(), null, JavaProcess::launch);
+        this(tools, false, Set.of(), null,
+                JavaProcess::launch);
     }
 
-    private ToolRuntime(Map<String, ToolHandle> tools, boolean verbose,
-                        Set<String> verboseProviders, PrintStream verboseLog, JavaLauncher javaLauncher) {
+    private ToolRuntime(Map<String, ToolHandle> tools, boolean verbose, Set<String> verboseProviders,
+                        PrintStream verboseLog, JavaLauncher javaLauncher) {
         this.tools = Map.copyOf(tools);
         this.verbose = verbose;
         this.verboseProviders = Set.copyOf(verboseProviders);
@@ -162,6 +165,18 @@ public final class ToolRuntime {
         return new ToolRuntime(combined, verbose, verboseProviders, verboseLog, javaLauncher);
     }
 
+    ToolRuntime withOverrides(ToolRuntime overrides) {
+        var combined = new LinkedHashMap<>(tools);
+        combined.putAll(overrides.tools);
+        return new ToolRuntime(combined, verbose, verboseProviders, verboseLog, javaLauncher);
+    }
+
+    boolean sameImplementation(String name, ToolRuntime other) {
+        var selected = tools.get(name);
+        var candidate = other.tools.get(name);
+        return selected != null && candidate != null && selected.type() == candidate.type();
+    }
+
     ToolRuntime withJavaLauncher(JavaLauncher javaLauncher) {
         return new ToolRuntime(tools, verbose, verboseProviders, verboseLog, javaLauncher);
     }
@@ -240,11 +255,8 @@ public final class ToolRuntime {
 
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
-        int result = run(name,
-                InputStream.nullInputStream(),
-                new PrintStream(output, true, StandardCharsets.UTF_8),
-                new PrintStream(errors, true, StandardCharsets.UTF_8),
-                arguments.toArray(String[]::new));
+        int result = run(name, InputStream.nullInputStream(), new PrintStream(output, true, StandardCharsets.UTF_8),
+                new PrintStream(errors, true, StandardCharsets.UTF_8), arguments.toArray(String[]::new));
         if (result != 0) {
             return List.of();
         }
@@ -290,9 +302,7 @@ public final class ToolRuntime {
         var module = module(name);
         String resource = "META-INF/com.netflix.tools/tools/" + name + ".properties";
         try (var input = module.getResourceAsStream(resource)) {
-            return input == null
-                    ? Optional.empty()
-                    : WarmupPlans.read(input, module.getName() + "/" + resource);
+            return input == null ? Optional.empty() : WarmupPlans.read(input, module.getName() + "/" + resource);
         } catch (IOException e) {
             throw new UncheckedIOException("Cannot read warmup configuration " + resource, e);
         }
@@ -373,7 +383,8 @@ public final class ToolRuntime {
         }
         var access = declaredRuntimeAccess(name);
         if (access.isPresent() && !runtimeAccessIsEffective(access.orElseThrow())) {
-            return launch(name, access.orElseThrow(), in, out, err, arguments);
+            return launch(name, access.orElseThrow(), in, out, err,
+                    arguments);
         }
         return runLocal(name, in, out, err, arguments);
     }
@@ -383,7 +394,8 @@ public final class ToolRuntime {
         var handle = tool(name);
         var thread = Thread.currentThread();
         var previous = thread.getContextClassLoader();
-        thread.setContextClassLoader(handle.type().getClassLoader());
+        thread.setContextClassLoader(handle.type()
+                .getClassLoader());
         try {
             return handle.run(in, out, err, arguments);
         } finally {
@@ -398,40 +410,28 @@ public final class ToolRuntime {
         }
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
-        int result = launchOptionCheck(
-                access.orElseThrow(),
-                name,
-                option,
-                new PrintStream(output, true, StandardCharsets.UTF_8),
+        int result = launchOptionCheck(access.orElseThrow(), name, option, new PrintStream(output, true, StandardCharsets.UTF_8),
                 new PrintStream(errors, true, StandardCharsets.UTF_8));
         if (result != 0) {
             var diagnostics = errors.toString(StandardCharsets.UTF_8).strip();
-            throw new IllegalStateException(diagnostics.isEmpty()
-                    ? "Unable to inspect tool option for " + name
-                    : diagnostics);
+            throw new IllegalStateException(diagnostics.isEmpty() ? "Unable to inspect tool option for " + name : diagnostics);
         }
         try {
-            return Integer.parseInt(output.toString(StandardCharsets.UTF_8).strip());
+            return Integer.parseInt(output.toString(StandardCharsets.UTF_8)
+                    .strip());
         } catch (NumberFormatException e) {
             throw new IllegalStateException("Invalid option check response from " + name, e);
         }
     }
 
-    private int launch(String name,
-                       RuntimeAccess access,
-                       InputStream in,
-                       PrintStream out,
-                       PrintStream err,
-                       String... arguments) {
-        return launch(name, runtimeArguments(access), List.of(arguments), in, out, err);
+    private int launch(String name, RuntimeAccess access, InputStream in,
+                       PrintStream out, PrintStream err, String... arguments) {
+        return launch(name, runtimeArguments(access), List.of(arguments), in,
+                out, err);
     }
 
-    int launch(String name,
-               List<String> runtimeArguments,
-               List<String> toolArguments,
-               InputStream in,
-               PrintStream out,
-               PrintStream err) {
+    int launch(String name, List<String> runtimeArguments, List<String> toolArguments,
+               InputStream in, PrintStream out, PrintStream err) {
         var arguments = new ArrayList<>(runtimeArguments);
         moduleLocation(ToolLauncher.class.getModule()).ifPresent(path -> {
             arguments.addFirst(path.toString());
@@ -444,11 +444,8 @@ public final class ToolRuntime {
         return launchJava(arguments, in, out, err);
     }
 
-    private int launchOptionCheck(RuntimeAccess access,
-                                  String name,
-                                  String option,
-                                  PrintStream out,
-                                  PrintStream err) {
+    private int launchOptionCheck(RuntimeAccess access, String name, String option,
+            PrintStream out, PrintStream err) {
         var arguments = new ArrayList<String>();
         var serviceLocation = moduleLocation(ToolRuntime.class.getModule());
         serviceLocation.ifPresent(path -> {
@@ -456,12 +453,10 @@ public final class ToolRuntime {
             arguments.add(path.toString());
         });
         // Self-hosted tests patch freshly compiled classes over a bootstrap module.
-        classContent(ToolRuntime.class)
-                .filter(path -> serviceLocation.map(location -> !location.equals(path)).orElse(true))
-                .ifPresent(path -> {
-                    arguments.add("--patch-module");
-                    arguments.add(ToolRuntime.class.getModule().getName() + "=" + path);
-                });
+        classContent(ToolRuntime.class).filter(path -> serviceLocation.map(location -> !location.equals(path)).orElse(true)).ifPresent(path -> {
+            arguments.add("--patch-module");
+            arguments.add(ToolRuntime.class.getModule().getName() + "=" + path);
+        });
         arguments.addAll(runtimeArguments(access));
         arguments.add("--module");
         arguments.add(ToolRuntime.class.getModule().getName() + "/" + ToolRuntime.class.getName());
@@ -471,7 +466,8 @@ public final class ToolRuntime {
         return launchJava(arguments, InputStream.nullInputStream(), out, err);
     }
 
-    private int launchJava(List<String> arguments, InputStream in, PrintStream out, PrintStream err) {
+    private int launchJava(List<String> arguments, InputStream in, PrintStream out,
+                           PrintStream err) {
         try {
             return javaLauncher.run(arguments, in, out, err);
         } catch (IOException e) {
@@ -481,11 +477,7 @@ public final class ToolRuntime {
 
     private static ArrayList<String> runtimeArguments(RuntimeAccess access) {
         var arguments = new ArrayList<String>();
-        var modulePath = access.module()
-                .getLayer()
-                .configuration()
-                .modules()
-                .stream()
+        var modulePath = access.module().getLayer().configuration().modules().stream()
                 .flatMap(module -> module.reference().location().stream())
                 .filter(location -> "file".equalsIgnoreCase(location.getScheme()))
                 .map(Path::of)
@@ -498,17 +490,26 @@ public final class ToolRuntime {
             arguments.add(String.join(System.getProperty("path.separator"), modulePath));
         }
         arguments.add("--add-modules");
-        arguments.add(access.module().getName());
-        access.options().enableNativeAccess().forEach(module -> arguments.add("--enable-native-access=" + module));
-        access.options().enableFinalFieldMutation().forEach(module -> arguments.add("--enable-final-field-mutation=" + module));
-        access.options().addExports().forEach(value -> {
-            arguments.add("--add-exports");
-            arguments.add(value.toFlagValue());
-        });
-        access.options().addOpens().forEach(value -> {
-            arguments.add("--add-opens");
-            arguments.add(value.toFlagValue());
-        });
+        arguments.add(access.module()
+                            .getName());
+        access.options()
+              .enableNativeAccess()
+              .forEach(module -> arguments.add("--enable-native-access=" + module));
+        access.options()
+              .enableFinalFieldMutation()
+              .forEach(module -> arguments.add("--enable-final-field-mutation=" + module));
+        access.options()
+              .addExports()
+              .forEach(value -> {
+                  arguments.add("--add-exports");
+                  arguments.add(value.toFlagValue());
+              });
+        access.options()
+              .addOpens()
+              .forEach(value -> {
+                  arguments.add("--add-opens");
+                  arguments.add(value.toFlagValue());
+              });
         return arguments;
     }
 
@@ -533,11 +534,11 @@ public final class ToolRuntime {
             return Optional.empty();
         }
         return module.getLayer()
-                .configuration()
-                .findModule(module.getName())
-                .flatMap(resolved -> resolved.reference().location())
-                .filter(location -> "file".equalsIgnoreCase(location.getScheme()))
-                .map(Path::of);
+                     .configuration()
+                     .findModule(module.getName())
+                     .flatMap(resolved -> resolved.reference().location())
+                     .filter(location -> "file".equalsIgnoreCase(location.getScheme()))
+                     .map(Path::of);
     }
 
     private Optional<RuntimeAccess> declaredRuntimeAccess(String name) {
@@ -545,7 +546,10 @@ public final class ToolRuntime {
         if (!module.isNamed() || module.getLayer() == null) {
             return Optional.empty();
         }
-        var resolved = module.getLayer().configuration().findModule(module.getName()).orElse(null);
+        var resolved = module.getLayer()
+                             .configuration()
+                             .findModule(module.getName())
+                             .orElse(null);
         if (resolved == null) {
             return Optional.empty();
         }
@@ -560,7 +564,9 @@ public final class ToolRuntime {
 
     @SuppressWarnings("restricted")
     private static boolean runtimeAccessIsEffective(RuntimeAccess access) {
-        if (!access.options().enableFinalFieldMutation().isEmpty()) {
+        if (!access.options()
+                   .enableFinalFieldMutation()
+                   .isEmpty()) {
             return false;
         }
         var layer = access.module().getLayer();
@@ -584,9 +590,7 @@ public final class ToolRuntime {
     }
 
     @SuppressWarnings("restricted")
-    static boolean configureLayer(ModuleLayer.Controller controller,
-                                  ModuleLayer layer,
-                                  List<String> arguments) {
+    static boolean configureLayer(Controller controller, ModuleLayer layer, List<String> arguments) {
         var access = ModuleRuntimeAccess.parseArguments(arguments);
         if (!access.enableFinalFieldMutation().isEmpty()) {
             return false;
@@ -616,22 +620,16 @@ public final class ToolRuntime {
         return true;
     }
 
-    private static boolean hasAccess(ModuleLayer layer,
-                                     ModuleRuntimeAccessOptions.PackageAccess access,
-                                     boolean open) {
+    private static boolean hasAccess(ModuleLayer layer, PackageAccess access, boolean open) {
         var source = layer.findModule(access.sourceModule()).orElse(null);
         var target = layer.findModule(access.targetModule()).orElse(null);
         return source != null
                 && target != null
-                && (open
-                        ? source.isOpen(access.packageName(), target)
-                        : source.isExported(access.packageName(), target));
+                && (open ? source.isOpen(access.packageName(), target) : source.isExported(access.packageName(), target));
     }
 
-    private static boolean addAccess(ModuleLayer.Controller controller,
-                                     ModuleLayer layer,
-                                     ModuleRuntimeAccessOptions.PackageAccess access,
-                                     boolean open) {
+    private static boolean addAccess(Controller controller, ModuleLayer layer, PackageAccess access,
+            boolean open) {
         if (hasAccess(layer, access, open)) {
             return true;
         }
@@ -667,7 +665,8 @@ public final class ToolRuntime {
 
         Optional<OptionChecker> optionChecker();
 
-        int run(InputStream in, PrintStream out, PrintStream err, String... arguments);
+        int run(InputStream in, PrintStream out, PrintStream err,
+                String... arguments);
 
         boolean streamAware();
 
@@ -692,7 +691,8 @@ public final class ToolRuntime {
         }
 
         @Override
-        public int run(InputStream in, PrintStream out, PrintStream err, String... arguments) {
+        public int run(InputStream in, PrintStream out, PrintStream err,
+                       String... arguments) {
             return service.run(in, out, err, arguments);
         }
 
@@ -719,7 +719,8 @@ public final class ToolRuntime {
         }
 
         @Override
-        public int run(InputStream in, PrintStream out, PrintStream err, String... arguments) {
+        public int run(InputStream in, PrintStream out, PrintStream err,
+                       String... arguments) {
             return service.run(out, err, arguments);
         }
 

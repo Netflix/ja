@@ -97,14 +97,13 @@ final class TestRunner {
         Runtime incrementalRuntime = null;
         if (observedExecution) {
             var incrementalArguments = layerArguments(applicationArguments, runtimeArguments);
-            classes = ResolvedClassModels.resolve(
-                    parent.configuration(),
-                    new ModuleInputs(Set.copyOf(rootModules), applicationArguments),
-                    new ModuleInputs(JUnitExecutionTrace.runtimeModules(), incrementalArguments),
+            classes = ResolvedClassModels.resolve(parent.configuration(), new ModuleInputs(Set.copyOf(rootModules), applicationArguments), new ModuleInputs(JUnitExecutionTrace.runtimeModules(), incrementalArguments),
                     runtimeImage.hash());
             incrementalRuntime = JUnitExecutionTrace.runtimeIfSupported(classes, parent, incrementalArguments).orElse(null);
             observedExecution = incrementalRuntime != null;
-            if (!observedExecution && toolArguments.isEmpty() && !parsed.runAll()
+            if (!observedExecution
+                    && toolArguments.isEmpty()
+                    && !parsed.runAll()
                     && requiresJavaBaseRuntimeAccess(incrementalArguments)) {
                 err.println("ja: warning: test caching is unavailable because the required access from java.base can only be applied in a separate JVM; running all tests");
             }
@@ -248,7 +247,7 @@ final class TestRunner {
         return access.addExports().stream()
                 .anyMatch(export -> export.sourceModule().equals(JAVA_BASE))
                 || access.addOpens().stream()
-                        .anyMatch(open -> open.sourceModule().equals(JAVA_BASE));
+                .anyMatch(open -> open.sourceModule().equals(JAVA_BASE));
     }
 
     @SuppressWarnings("restricted")

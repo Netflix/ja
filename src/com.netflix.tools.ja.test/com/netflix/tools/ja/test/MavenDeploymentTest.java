@@ -46,8 +46,8 @@ class MavenDeploymentTest {
         ToolRuntime tools = tools(directory, deployment, true);
         var commandLine = JaInvocation.parse(
                 directory,
-                new String[] {"maven", "deploy-central", "--module-version", "1.0",
-                        "--name", "Example 1.0", "--manual"});
+                new String[] {"maven", "deploy-central", "--module-version", "1.0", "--name", "Example 1.0",
+                        "--manual"});
 
         int result = run(commandLine, tools);
 
@@ -66,10 +66,8 @@ class MavenDeploymentTest {
         sourceModule(directory, "com.example.application");
         sourceModule(directory, "com.example.library");
 
-        assertEquals(List.of("com.example.application", "com.example.library"),
-                roots(firstResolution(directory)));
-        assertEquals(List.of("com.example.application"),
-                roots(firstResolution(directory.resolve("src/com.example.application"))));
+        assertEquals(List.of("com.example.application", "com.example.library"), roots(firstResolution(directory)));
+        assertEquals(List.of("com.example.application"), roots(firstResolution(directory.resolve("src/com.example.application"))));
     }
 
     @Test
@@ -95,11 +93,9 @@ class MavenDeploymentTest {
     @Test
     void deploymentRequiresARepository(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        var commandLine = JaInvocation.parse(directory,
-                new String[] {"maven", "deploy", "--module-version", "1.0"});
+        var commandLine = JaInvocation.parse(directory, new String[] {"maven", "deploy", "--module-version", "1.0"});
 
-        var failure = assertThrows(IllegalArgumentException.class,
-                () -> run(commandLine, tools(directory, new ArrayList<>(), true)));
+        var failure = assertThrows(IllegalArgumentException.class, () -> run(commandLine, tools(directory, new ArrayList<>(), true)));
 
         assertEquals("maven deploy requires --repository", failure.getMessage());
     }
@@ -107,8 +103,7 @@ class MavenDeploymentTest {
     @Test
     void installsWithoutPublicationMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        Files.delete(directory.resolve(
-                "src/com.example.library/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
+        Files.delete(directory.resolve("src/com.example.library/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
         var deployment = new ArrayList<String>();
         ToolRuntime tools = tools(directory, deployment, false);
         var commandLine = JaInvocation.parse(directory, new String[] {"maven", "install", "--module-version", "1.0"});
@@ -163,17 +158,15 @@ class MavenDeploymentTest {
 
     private static List<String> firstResolution(Path workingDirectory) throws Exception {
         var invocation = new AtomicReference<List<String>>();
-        ToolRuntime tools = ToolRuntime.of(
-                tool("jig", arguments -> {
-                    invocation.set(List.copyOf(arguments));
-                    return 1;
-                }),
-                ToolProvider.findFirst("jar").orElseThrow(),
-                tool("javadoc", arguments -> 0));
-        var commandLine = JaInvocation.parse(workingDirectory,
-                new String[] {"maven", "install", "--module-version", "1.0"});
+        ToolRuntime tools = ToolRuntime.of(tool("jig", arguments -> {
+            invocation.set(List.copyOf(arguments));
+            return 1;
+        }),
+                ToolProvider.findFirst("jar").orElseThrow(), tool("javadoc", arguments -> 0));
+        var commandLine = JaInvocation.parse(workingDirectory, new String[] {"maven", "install", "--module-version", "1.0"});
         assertThrows(ToolExecutionException.class, () -> run(commandLine, tools));
-        assertFalse(invocation.get().contains("--validate-runtime-access"));
+        assertFalse(invocation.get()
+                              .contains("--validate-runtime-access"));
         return invocation.get();
     }
 

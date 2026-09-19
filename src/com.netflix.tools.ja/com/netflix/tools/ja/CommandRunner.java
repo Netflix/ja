@@ -17,13 +17,32 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.ModuleLayer.Controller;
 import java.lang.module.ModuleDescriptor;
-import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import com.netflix.tools.ja.BuiltinCommand.Execution.LaunchJava;
+import com.netflix.tools.ja.BuiltinCommand.Execution.Materialize;
+import com.netflix.tools.ja.BuiltinCommand.Execution.ToolBacked;
+import com.netflix.tools.ja.Command.Builtin;
+import com.netflix.tools.ja.Command.Doc;
+import com.netflix.tools.ja.Command.Init;
+import com.netflix.tools.ja.Command.Install;
+import com.netflix.tools.ja.Command.Require;
+import com.netflix.tools.ja.Command.Run;
+import com.netflix.tools.ja.Command.Source;
+import com.netflix.tools.ja.Command.Tool;
+import com.netflix.tools.ja.Command.Tools;
+import com.netflix.tools.ja.DocRequest.Browse;
+import com.netflix.tools.ja.DocRequest.Terminal;
+import com.netflix.tools.ja.ToolRunner.PreparedInvocation;
+import com.netflix.tools.ja.ToolRunner.ResolutionRequest;
 
 /**
  * Coordinates module resolution, source-tool discovery, and execution of one
@@ -80,16 +99,12 @@ public final class CommandRunner {
 
     public CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalog catalog,
                          TemporaryDirectoryProvider temporaryDirectoryProvider, JavaLauncher javaLauncher, Installer installer) {
-        this(layer, tools, () -> catalog, temporaryDirectoryProvider, javaLauncher, installer);
+        this(layer, tools, () -> catalog, temporaryDirectoryProvider, javaLauncher,
+                installer);
     }
 
-    private CommandRunner(
-            ModuleLayer layer,
-            ToolRuntime tools,
-            ToolCatalogProvider catalogProvider,
-            TemporaryDirectoryProvider temporaryDirectoryProvider,
-            JavaLauncher javaLauncher,
-            Installer installer) {
+    private CommandRunner(ModuleLayer layer, ToolRuntime tools, ToolCatalogProvider catalogProvider,
+                          TemporaryDirectoryProvider temporaryDirectoryProvider, JavaLauncher javaLauncher, Installer installer) {
         this.layer = layer;
         this.tools = tools;
         this.moduleResolver = new ModuleResolver(tools);
@@ -107,7 +122,7 @@ public final class CommandRunner {
             return new CommandRunner(layer, tools.withVerbose(catalog.definitions(), err), () -> catalog, temporaryDirectoryProvider, verbose(javaLauncher, err), installer)
                     .run(commandLine, in, out, err);
         }
-        if (commandLine.command() instanceof Command.Init(var request)) {
+        if (commandLine.command() instanceof Init(var request)) {
             ModuleInitializer.initialize(commandLine.workingDirectory(), request);
             return 0;
         }
@@ -134,11 +149,11 @@ public final class CommandRunner {
         }
         var selectedToolRunner = scopedTools == null ? new ToolRunner(layer, tools, catalog, javaLauncher) : new ToolRunner(scopedTools.controller(), selectedTools, tools, selectedCatalog, javaLauncher);
         CommandAvailability.require(commandLine, selectedTools, selectedCatalog);
-        if (commandLine.command() instanceof Command.Tools) {
+        if (commandLine.command() instanceof Tools) {
             selectedCatalog.definitions().forEach(definition -> out.println(definition.name()));
             return 0;
         }
-        if (commandLine.command() instanceof Command.Require(var request)) {
+        if (commandLine.command() instanceof Require(var request)) {
             return new ModuleRequirements(moduleResolver, tools).apply(
                     commandLine.moduleSourcePath().orElseThrow(),
                     commandLine.rootModules(),
@@ -149,18 +164,14 @@ public final class CommandRunner {
                     err);
         }
 
-        if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.ASSEMBLE))) {
-            var moduleSourcePath = commandLine.moduleSourcePath()
-                    .orElseThrow(() -> new IllegalArgumentException("assemble requires a module source path"));
-            return new AssembleCommand(tools, selectedCatalog.definitions(),
-                    selectedToolRunner.providerResolutionOptions("javadoc", ResolutionOptions.EMPTY))
+        if (commandLine.command().equals(new Builtin(BuiltinCommand.ASSEMBLE))) {
+            var moduleSourcePath = commandLine.moduleSourcePath().orElseThrow(() -> new IllegalArgumentException("assemble requires a module source path"));
+            return new AssembleCommand(tools, selectedCatalog.definitions(), selectedToolRunner.providerResolutionOptions("javadoc", ResolutionOptions.EMPTY))
                     .run(commandLine, moduleSourcePath, in, out, err);
         }
-        if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.MAVEN))) {
-            var moduleSourcePath = commandLine.moduleSourcePath()
-                    .orElseThrow(() -> new IllegalArgumentException("maven requires a module source path"));
-            return new MavenCommand(tools, selectedCatalog.definitions(),
-                    selectedToolRunner.providerResolutionOptions("javadoc", ResolutionOptions.EMPTY))
+        if (commandLine.command().equals(new Builtin(BuiltinCommand.MAVEN))) {
+            var moduleSourcePath = commandLine.moduleSourcePath().orElseThrow(() -> new IllegalArgumentException("maven requires a module source path"));
+            return new MavenCommand(tools, selectedCatalog.definitions(), selectedToolRunner.providerResolutionOptions("javadoc", ResolutionOptions.EMPTY))
                     .run(commandLine, moduleSourcePath, in, out, err);
         }
 
@@ -175,12 +186,8 @@ public final class CommandRunner {
                 resolutionArguments.addAll(applicationTarget.orElseThrow()
                         .resolutionArguments());
             }
-            var initialToolResolution = selectedToolRunner.supports(commandLine)
-                    ? Optional.of(selectedToolRunner.initialResolution(commandLine))
-                    : Optional.<ToolRunner.ResolutionRequest>empty();
-            if (commandLine.command() instanceof Command.Tool
-                    && (commandLine.moduleSourcePath().isEmpty()
-                            || !initialToolResolution.orElseThrow().resolvesModules())) {
+            var initialToolResolution = selectedToolRunner.supports(commandLine) ? Optional.of(selectedToolRunner.initialResolution(commandLine)) : Optional.<ResolutionRequest>empty();
+            if (commandLine.command() instanceof Tool && (commandLine.moduleSourcePath().isEmpty() || !initialToolResolution.orElseThrow().resolvesModules())) {
                 var invocation = selectedToolRunner.prepare(commandLine, Set.of());
                 return selectedToolRunner.run(
                         commandLine,
@@ -197,8 +204,8 @@ public final class CommandRunner {
             }
             List<String> configurationArguments = List.of();
             Set<ModuleDescriptor> resolvedDescriptors = Set.of();
-            Optional<ToolRunner.PreparedInvocation> toolInvocation = Optional.empty();
-            if (initialToolResolution.filter(ToolRunner.ResolutionRequest::resolveActivation).isPresent()) {
+            Optional<PreparedInvocation> toolInvocation = Optional.empty();
+            if (initialToolResolution.filter(ResolutionRequest::resolveActivation).isPresent()) {
                 ResolvedModules resolvedModules;
                 if (scopedTools != null && scopedTools.resolutionArguments().equals(resolutionArguments)) {
                     configurationArguments = scopedTools.configurationArguments();
@@ -209,10 +216,10 @@ public final class CommandRunner {
                 }
                 var prepared = selectedToolRunner.prepare(commandLine, resolvedModules.names());
                 if (selectsActivatedRoots(commandLine)) {
-                    var activation = prepared.definition().activation().orElse(null);
-                    var selectedRoots = activation == null
-                            ? commandLine.rootModules()
-                            : resolvedModules.rootsRequiredFor(commandLine.rootModules(), activation);
+                    var activation = prepared.definition()
+                            .activation()
+                            .orElse(null);
+                    var selectedRoots = activation == null ? commandLine.rootModules() : resolvedModules.rootsRequiredFor(commandLine.rootModules(), activation);
                     if (!selectedRoots.isEmpty()) {
                         commandLine = commandLine.withRootModules(selectedRoots);
                         resolutionArguments = new ArrayList<>(ResolutionArguments.withRoots(resolutionArguments, selectedRoots));
@@ -223,26 +230,21 @@ public final class CommandRunner {
             } else if (initialToolResolution.isPresent()) {
                 toolInvocation = Optional.of(selectedToolRunner.prepare(commandLine, Set.of()));
             }
-            var requestedOptions = toolInvocation.isPresent()
-                    ? toolInvocation.orElseThrow().resolutionOptions()
-                    : workflowResolutionOptions(commandLine, selectedToolRunner);
+            var requestedOptions = toolInvocation.isPresent() ? toolInvocation.orElseThrow().resolutionOptions() : workflowResolutionOptions(commandLine, selectedToolRunner);
             List<String> launchArguments = requestedOptions.active() ? moduleResolver.resolve(resolutionArguments, requestedOptions,
                     commandLine.toolArguments(), in, err)
                     : List.of();
-            if (commandLine.command() instanceof Command.Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
+            if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
                 var explicitLaunchArguments = new ArrayList<>(launchArguments);
                 explicitLaunchArguments.add("--module");
                 explicitLaunchArguments.add(target.orElseThrow());
                 launchArguments = List.copyOf(explicitLaunchArguments);
             }
-            var filtersSourceModules = commandLine.moduleSourcePath().isPresent()
-                    && commandLine.command() instanceof Command.Install;
+            var filtersSourceModules = commandLine.moduleSourcePath().isPresent() && commandLine.command() instanceof Install;
             List<String> filteringCompileArguments = filtersSourceModules ? moduleResolver.resolve(resolutionArguments, ResolutionOptions.JAVAC, in, err) : List.of();
             var resolved = !resolvedDescriptors.isEmpty()
                     ? new ResolvedToolArguments(launchArguments, resolvedDescriptors, Map.of())
-                    : configurationArguments.isEmpty()
-                            ? new ResolvedToolArguments(launchArguments, Set.of(), Map.of())
-                            : ResolvedToolArguments.resolve(launchArguments, configurationArguments, layer);
+                    : configurationArguments.isEmpty() ? new ResolvedToolArguments(launchArguments, Set.of(), Map.of()) : ResolvedToolArguments.resolve(launchArguments, configurationArguments, layer);
             if (applicationTarget.flatMap(ApplicationTarget::version).isPresent()) {
                 resolved = resolved.withModuleVersion(
                         applicationTarget.orElseThrow().moduleName(),
@@ -252,38 +254,44 @@ public final class CommandRunner {
             }
 
             if (toolInvocation.isPresent()) {
-                return selectedToolRunner.run(commandLine,
-                        toolInvocation.orElseThrow(),
-                        resolutionArguments,
-                        resolved,
-                        in,
-                        out,
-                        err);
+                return selectedToolRunner.run(commandLine, toolInvocation.orElseThrow(), resolutionArguments, resolved, in,
+                        out, err);
             }
-            if (materializes(commandLine))
+            if (materializes(commandLine)) {
                 return 0;
+            }
             if (launchesJava(commandLine)) {
                 var arguments = new ArrayList<>(resolved.arguments());
-                if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.LIST))) {
+                if (commandLine.command().equals(new Builtin(BuiltinCommand.LIST))) {
                     arguments.add("--list-modules");
                 }
                 arguments.addAll(commandLine.toolArguments());
                 return javaLauncher.run(arguments, in, out, err);
             }
-            return runWorkflow(commandLine, resolved, resolutionArguments, filteringCompileArguments, applicationTarget, selectedCatalog,
-                    selectedToolRunner, in, out, err);
+            return runWorkflow(
+                    commandLine,
+                    resolved,
+                    resolutionArguments,
+                    filteringCompileArguments,
+                    applicationTarget,
+                    selectedCatalog,
+                    selectedToolRunner,
+                    in,
+                    out,
+                    err);
         } finally {
-            if (temporaryDirectory.isPresent())
+            if (temporaryDirectory.isPresent()) {
                 temporaryDirectory.get().close();
+            }
         }
     }
 
     private static ResolutionOptions workflowResolutionOptions(JaInvocation commandLine, ToolRunner toolRunner) {
-        if (commandLine.command() instanceof Command.Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
+        if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
             return ResolutionOptions.RUNTIME_WITH_ACCESS;
         }
-        if (commandLine.command() instanceof Command.Doc || commandLine.command() instanceof Command.Source) {
-            var provider = commandLine.command() instanceof Command.Doc(DocRequest.Browse _) ? "jdocserver" : "jist";
+        if (commandLine.command() instanceof Doc || commandLine.command() instanceof Source) {
+            var provider = commandLine.command() instanceof Doc(Browse _) ? "jdocserver" : "jist";
             return toolRunner.providerResolutionOptions(provider,
                     BuiltinCommand.from(commandLine.command())
                             .orElseThrow()
@@ -295,8 +303,7 @@ public final class CommandRunner {
     }
 
     private static boolean selectsActivatedRoots(JaInvocation commandLine) {
-        return commandLine.command().equals(new Command.Builtin(BuiltinCommand.TEST))
-                || commandLine.command().equals(new Command.Builtin(BuiltinCommand.BENCH));
+        return commandLine.command().equals(new Builtin(BuiltinCommand.TEST)) || commandLine.command().equals(new Builtin(BuiltinCommand.BENCH));
     }
 
     private static boolean hasExplicitMainClass(String target) {
@@ -304,13 +311,14 @@ public final class CommandRunner {
     }
 
     private static boolean materializes(JaInvocation commandLine) {
-        return commandLine.command() instanceof Command.Builtin(var builtin) && builtin.execution() instanceof BuiltinCommand.Execution.Materialize;
+        return commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof Materialize;
     }
 
     private static boolean launchesJava(JaInvocation commandLine) {
-        if (commandLine.command() instanceof Command.Run)
+        if (commandLine.command() instanceof Run) {
             return true;
-        return commandLine.command() instanceof Command.Builtin(var builtin) && builtin.execution() instanceof BuiltinCommand.Execution.LaunchJava;
+        }
+        return commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof LaunchJava;
     }
 
     private int runWorkflow(
@@ -325,32 +333,28 @@ public final class CommandRunner {
             PrintStream out,
             PrintStream err)
             throws IOException {
-        if (commandLine.command() instanceof Command.Doc(var request)) {
+        if (commandLine.command() instanceof Doc(var request)) {
             String provider;
             var arguments = new ArrayList<String>();
             switch (request) {
-                case DocRequest.Terminal(var symbol) -> {
+                case Terminal(var symbol) -> {
                     provider = "jist";
                     arguments.addAll(List.of("--source", "doc", "--break", "--no-line-number", symbol));
                 }
-                case DocRequest.Browse(var type) -> {
+                case Browse(var type) -> {
                     provider = "jdocserver";
-                    arguments.add(type.map(value -> "--browse=" + value).orElse("--browse"));
+                    arguments.add(type.map(value -> "--browse=" + value)
+                                      .orElse("--browse"));
                 }
             }
-            return toolRunner.run(toolInvocation(commandLine, provider, arguments), resolutionArguments, resolved,
-                    in, out, err);
+            return toolRunner.run(toolInvocation(commandLine, provider, arguments), resolutionArguments,
+                    resolved, in, out, err);
         }
-        if (commandLine.command() instanceof Command.Source(var symbol)) {
-            return toolRunner.run(
-                    toolInvocation(commandLine, "jist", List.of("--source", "symbol", symbol)),
-                    resolutionArguments,
-                    resolved,
-                    in,
-                    out,
-                    err);
+        if (commandLine.command() instanceof Source(var symbol)) {
+            return toolRunner.run(toolInvocation(commandLine, "jist", List.of("--source", "symbol", symbol)), resolutionArguments,
+                    resolved, in, out, err);
         }
-        if (commandLine.command().equals(new Command.Builtin(BuiltinCommand.GENERATE))) {
+        if (commandLine.command().equals(new Builtin(BuiltinCommand.GENERATE))) {
             return new SourceGenerator(tools).generate(
                     resolutionArguments,
                     resolved.arguments(),
@@ -361,10 +365,9 @@ public final class CommandRunner {
                     out,
                     err);
         }
-        if (commandLine.command() instanceof Command.Install(var request)) {
-            return new InstallCommand(tools, selectedCatalog.definitions(), installer)
-                    .run(commandLine, request, resolved, filteringCompileArguments, applicationTarget, in,
-                            out, err);
+        if (commandLine.command() instanceof Install(var request)) {
+            return new InstallCommand(tools, selectedCatalog.definitions(), installer).run(commandLine, request, resolved, filteringCompileArguments, applicationTarget, in,
+                    out, err);
         }
         throw new IllegalArgumentException("Command " + commandLine.command() + " is not implemented");
     }
@@ -373,7 +376,7 @@ public final class CommandRunner {
         return new JaInvocation(
                 invocation.workingDirectory(),
                 invocation.verbose(),
-                new Command.Tool(tool),
+                new Tool(tool),
                 invocation.moduleSourcePath(),
                 invocation.rootModules(),
                 invocation.resolutionArguments(),
@@ -388,9 +391,7 @@ public final class CommandRunner {
     }
 
     private static Optional<String> applicationTarget(JaInvocation commandLine) {
-        return commandLine.command() instanceof Command.Install(var request)
-                ? request.target()
-                : Optional.empty();
+        return commandLine.command() instanceof Install(var request) ? request.target() : Optional.empty();
     }
 
     private Optional<ScopedTools> toolsOnModulePath(JaInvocation commandLine, ToolCatalog catalog, InputStream in,
@@ -404,39 +405,47 @@ public final class CommandRunner {
         var modulePathArguments = moduleResolver.resolve(resolutionArguments, ResolutionOptions.MODULE_PATHS, in, err);
         var resolvedModules = ResolvedModules.read(modulePathArguments, layer.configuration());
         var providerModules = resolvedModules.toolProviderModules();
-        if (providerModules.isEmpty())
+        if (providerModules.isEmpty()) {
             return Optional.empty();
+        }
 
         var sourceModules = resolvedModules.sourceModules();
         List<String> arguments;
         if (sourceModules.stream().anyMatch(providerModules::contains)) {
             var providerArguments = new ArrayList<>(ResolutionArguments.withAddedModules(modulePathArguments,
-                    providerModules.stream().sorted().toList()));
+                    providerModules.stream()
+                            .sorted()
+                            .toList()));
             if (hasSourceModules(commandLine)) {
                 providerArguments.add("--verify-module-hashes");
             }
             arguments = moduleResolver.resolve(providerArguments, ResolutionOptions.CONFIGURATION, in, err);
         } else {
-            arguments = ResolutionArguments.withAddedModules(modulePathArguments, providerModules.stream().sorted().toList());
+            arguments = ResolutionArguments.withAddedModules(modulePathArguments,
+                    providerModules.stream()
+                            .sorted()
+                            .toList());
         }
-        var resolution = Configurations.resolve(layer.configuration(), arguments);
+        var preferredModules = new LinkedHashSet<>(sourceModules);
+        preferredModules.addAll(providerModules);
+        var resolution = Configurations.resolve(layer.configuration(), arguments, preferredModules);
         var moduleNames = resolution.definedModules();
-        if (moduleNames.isEmpty())
+        if (moduleNames.isEmpty()) {
             return Optional.empty();
+        }
 
         var controller = resolution.defineLayer(layer);
         var scopedLayer = controller.layer();
         var moduleCatalog = ToolCatalog.load(scopedLayer, moduleNames);
-        requireNoDuplicateTools(catalog, moduleCatalog);
         var scopedServices = ToolRuntime.load(scopedLayer, moduleNames);
-        var selectedServices = tools.withAdditional(scopedServices);
+        var selectedServices = tools.withOverrides(scopedServices);
         moduleCatalog = moduleCatalog.withDiscovered(scopedServices);
         requireNoDuplicateTools(catalog, moduleCatalog, scopedServices);
 
         var definitions = new ArrayList<>(catalog.definitions());
         var existing = definitions.stream()
                 .map(ToolDefinition::name)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
         moduleCatalog.definitions().stream()
                 .filter(definition -> scopedServices.contains(definition.provider()))
                 .filter(definition -> !tools.contains(definition.provider()))
@@ -445,12 +454,8 @@ public final class CommandRunner {
                         .isPresent())
                 .filter(definition -> !existing.contains(definition.name()))
                 .forEach(definitions::add);
-        return Optional.of(new ScopedTools(controller, selectedServices, new ToolCatalog(definitions), baseResolutionArguments,
-                arguments, resolvedModules));
-    }
-
-    private static void requireNoDuplicateTools(ToolCatalog catalog, ToolCatalog scopedCatalog) {
-        requireNoDuplicateTools(catalog, scopedCatalog, null);
+        return Optional.of(new ScopedTools(controller, selectedServices, new ToolCatalog(definitions), baseResolutionArguments, arguments,
+                resolvedModules));
     }
 
     private static void requireNoDuplicateTools(ToolCatalog catalog, ToolCatalog scopedCatalog, ToolRuntime scopedServices) {
@@ -464,12 +469,8 @@ public final class CommandRunner {
                 });
     }
 
-    private static boolean providesDeclaredTool(ToolDefinition definition,
-            ToolDefinition scopedDefinition,
-            ToolRuntime scopedServices) {
-        var providerModule = scopedServices.moduleName(scopedDefinition.provider());
-        return definition.provider().equals(scopedDefinition.provider())
-                && (definition.activation().equals(providerModule) || definition.module().equals(providerModule));
+    private static boolean providesDeclaredTool(ToolDefinition definition, ToolDefinition scopedDefinition, ToolRuntime scopedServices) {
+        return definition.provider().equals(scopedDefinition.provider()) && scopedServices.moduleName(scopedDefinition.provider()).isPresent();
     }
 
     private static JavaLauncher verbose(JavaLauncher launcher, PrintStream log) {
@@ -483,16 +484,16 @@ public final class CommandRunner {
         return tools.names().stream()
                 .map(tools::moduleName)
                 .flatMap(Optional::stream)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static boolean usesToolCatalog(JaInvocation commandLine) {
-        if (commandLine.command() instanceof Command.Tool || commandLine.command() instanceof Command.Tools) {
+        if (commandLine.command() instanceof Tool || commandLine.command() instanceof Tools) {
             return true;
         }
         var builtin = BuiltinCommand.from(commandLine.command()).orElse(null);
         return builtin != null
-                && (builtin.execution() instanceof BuiltinCommand.Execution.ToolBacked
+                && (builtin.execution() instanceof ToolBacked
                         || builtin == BuiltinCommand.DOC
                         || builtin == BuiltinCommand.SOURCE
                         || builtin == BuiltinCommand.INSTALL
@@ -500,32 +501,43 @@ public final class CommandRunner {
                         || builtin == BuiltinCommand.MAVEN);
     }
 
-    private boolean loadsScopedTools(JaInvocation commandLine, ToolCatalog catalog) {
-        if (commandLine.moduleSourcePath().isEmpty())
+    private boolean loadsScopedTools(JaInvocation commandLine, ToolCatalog catalog) throws IOException {
+        if (commandLine.moduleSourcePath().isEmpty()) {
             return false;
-        if (commandLine.command() instanceof Command.Tools)
+        }
+        if (commandLine.command() instanceof Tools) {
             return true;
-        if (commandLine.command() instanceof Command.Tool(var name)) {
-            return !isBundled(catalog.find(name));
         }
-        if (!(commandLine.command() instanceof Command.Builtin(var builtin))) {
-            return false;
+        Optional<ToolDefinition> definition = switch (commandLine.command()) {
+            case Tool(var name) -> catalog.find(name);
+            case Builtin(var builtin) -> builtin.execution() instanceof ToolBacked(var tool) ? catalog.find(tool) : Optional.empty();
+            default -> Optional.empty();
+        };
+        if (definition.isEmpty() || !tools.contains(definition.orElseThrow()
+                .provider())) {
+            return commandLine.command() instanceof Tool || commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof ToolBacked;
         }
-        if (!(builtin.execution() instanceof BuiltinCommand.Execution.ToolBacked(var tool))) {
-            return false;
-        }
-        return !isBundled(catalog.find(tool));
+        var selected = definition.orElseThrow();
+        var module = selected.module().or(() -> tools.moduleName(selected.provider()));
+        return module.isPresent() && sourceSelects(commandLine.moduleSourcePath().orElseThrow(),
+                module.orElseThrow());
     }
 
-    private boolean isBundled(Optional<ToolDefinition> definition) {
-        return definition.filter(this::isBundled).isPresent();
+    private static boolean sourceSelects(ModuleSourcePath sourcePath, String moduleName) throws IOException {
+        if (sourcePath.modules().containsKey(moduleName)) {
+            return true;
+        }
+        for (var path : sourcePath.modules().values()) {
+            var descriptor = ModuleInfo.descriptor(path.resolve("module-info.java"));
+            if (descriptor.requires().stream()
+                    .anyMatch(require -> require.name().equals(moduleName))) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private boolean isBundled(ToolDefinition definition) {
-        return tools.contains(definition.provider());
-    }
-
-    private record ScopedTools(ModuleLayer.Controller controller, ToolRuntime services, ToolCatalog catalog,
+    private record ScopedTools(Controller controller, ToolRuntime services, ToolCatalog catalog,
             List<String> resolutionArguments, List<String> configurationArguments, ResolvedModules resolvedModules) {
         ScopedTools {
             resolutionArguments = List.copyOf(resolutionArguments);
@@ -534,23 +546,24 @@ public final class CommandRunner {
     }
 
     private static boolean hasSourceModules(JaInvocation commandLine) {
-        if (commandLine.moduleSourcePath().isPresent())
+        if (commandLine.moduleSourcePath().isPresent()) {
             return true;
+        }
         return commandLine.resolutionArguments().stream()
                 .anyMatch(argument -> argument.equals("--module-source-path") || argument.startsWith("--module-source-path="));
     }
 
     private static boolean usesTemporaryOutput(JaInvocation commandLine) {
         return switch (commandLine.command()) {
-            case Command.Builtin(var builtin) -> builtin == BuiltinCommand.GENERATE;
-            case Command.Tool _ -> false;
-            case Command.Tools _ -> false;
-            case Command.Init _ -> false;
-            case Command.Require _ -> false;
-            case Command.Install _ -> false;
-            case Command.Run _ -> false;
-            case Command.Doc _ -> false;
-            case Command.Source _ -> false;
+            case Builtin(var builtin) -> builtin == BuiltinCommand.GENERATE;
+            case Tool _ -> false;
+            case Tools _ -> false;
+            case Init _ -> false;
+            case Require _ -> false;
+            case Install _ -> false;
+            case Run _ -> false;
+            case Doc _ -> false;
+            case Source _ -> false;
         };
     }
 }

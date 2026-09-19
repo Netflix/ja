@@ -11,7 +11,6 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-
 /** Java tool metadata, completion, and launching support. */
 module com.netflix.tools.launcher {
     exports com.netflix.tools.launcher;

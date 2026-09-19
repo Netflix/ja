@@ -15,6 +15,7 @@
 package com.netflix.tools.ja;
 
 import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleDescriptor.Version;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +27,7 @@ import java.util.stream.Collectors;
  * Carries resolved tool arguments together with the standard descriptors of
  * the selected modules.
  */
-public record ResolvedToolArguments(List<String> arguments,
-        Set<ModuleDescriptor> moduleDescriptors,
-        Map<String, ModuleDescriptor.Version> moduleVersionOverrides) {
+public record ResolvedToolArguments(List<String> arguments, Set<ModuleDescriptor> moduleDescriptors, Map<String, Version> moduleVersionOverrides) {
 
     public ResolvedToolArguments {
         arguments = List.copyOf(arguments);
@@ -36,12 +35,11 @@ public record ResolvedToolArguments(List<String> arguments,
         moduleVersionOverrides = Map.copyOf(moduleVersionOverrides);
     }
 
-    public static ResolvedToolArguments resolve(List<String> arguments,
-            List<String> configurationArguments,
-            ModuleLayer parent) {
+    public static ResolvedToolArguments resolve(List<String> arguments, List<String> configurationArguments, ModuleLayer parent) {
         var roots = ToolArguments.addedModules(configurationArguments);
-        if (roots.isEmpty())
+        if (roots.isEmpty()) {
             return new ResolvedToolArguments(arguments, Set.of(), Map.of());
+        }
 
         var resolution = Configurations.resolve(parent.configuration(), configurationArguments);
         var descriptors = resolution.reachablePathModules(roots).stream()
@@ -56,10 +54,11 @@ public record ResolvedToolArguments(List<String> arguments,
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    public Optional<ModuleDescriptor.Version> moduleVersion(String moduleName) {
+    public Optional<Version> moduleVersion(String moduleName) {
         var override = moduleVersionOverrides.get(moduleName);
-        if (override != null)
+        if (override != null) {
             return Optional.of(override);
+        }
         return moduleDescriptors.stream()
                 .filter(descriptor -> descriptor.name().equals(moduleName))
                 .findFirst()
@@ -68,7 +67,7 @@ public record ResolvedToolArguments(List<String> arguments,
 
     public ResolvedToolArguments withModuleVersion(String moduleName, String version) {
         var overrides = new LinkedHashMap<>(moduleVersionOverrides);
-        overrides.put(moduleName, ModuleDescriptor.Version.parse(version));
+        overrides.put(moduleName, Version.parse(version));
         return new ResolvedToolArguments(arguments, moduleDescriptors, overrides);
     }
 }

@@ -70,6 +70,7 @@ class ResolvedToolArgumentsTest {
                 .findFirst()
                 .orElseThrow();
         assertTrue(duplicate.requires().stream()
-                .anyMatch(require -> require.name().equals("java.logging")), duplicate.toString());
+                .anyMatch(require -> require.name().equals("java.logging")),
+                duplicate.toString());
     }
 }

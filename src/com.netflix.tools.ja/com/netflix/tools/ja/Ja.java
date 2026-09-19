@@ -147,7 +147,10 @@ public final class Ja {
         if (command.isEmpty()) {
             return Optional.empty();
         }
-        boolean commandGroup = !command.orElseThrow().commandLine().commands().isEmpty();
+        boolean commandGroup = !command.orElseThrow()
+                .commandLine()
+                .commands()
+                .isEmpty();
         if (arguments.length == commandIndex + 1 && commandGroup) {
             return command;
         }

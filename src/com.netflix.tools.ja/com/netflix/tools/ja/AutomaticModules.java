@@ -97,7 +97,8 @@ final class AutomaticModules {
 
     private static boolean hasExplicitName(ModuleReference reference) {
         var location = reference.location();
-        if (location.isEmpty() || !"file".equalsIgnoreCase(location.orElseThrow().getScheme())) {
+        if (location.isEmpty() || !"file".equalsIgnoreCase(location.orElseThrow()
+                .getScheme())) {
             return false;
         }
         Path archive = Path.of(location.orElseThrow());
@@ -106,8 +107,7 @@ final class AutomaticModules {
         }
         try (var jar = new JarFile(archive.toFile())) {
             var manifest = jar.getManifest();
-            return manifest != null
-                    && manifest.getMainAttributes().getValue("Automatic-Module-Name") != null;
+            return manifest != null && manifest.getMainAttributes().getValue("Automatic-Module-Name") != null;
         } catch (IOException e) {
             throw new UncheckedIOException("Could not inspect automatic module " + archive, e);
         }

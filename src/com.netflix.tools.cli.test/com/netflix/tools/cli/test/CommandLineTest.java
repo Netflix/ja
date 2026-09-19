@@ -134,16 +134,15 @@ class CommandLineTest {
 
     @Test
     void preparesWorkingDirectoriesAmongTopLevelOptions(@TempDir Path directory) {
-        var invocation = new ToolInvocation(directory,
-                List.of("--check", "-C", "source", "run", "-C", "content"));
+        var invocation = new ToolInvocation(directory, List.of("--check", "-C", "source", "run", "-C", "content"));
 
         assertEquals(
-                new ToolInvocation(directory.resolve("source"),
-                        List.of("--check", "run", "-C", "content")),
+                new ToolInvocation(directory.resolve("source"), List.of("--check", "run", "-C", "content")),
                 CommandLine.builder()
                         .option(CHECK)
                         .workingDirectory()
-                        .command("run", "Run the tool", CommandLine.builder().build())
+                        .command("run", "Run the tool",
+                                CommandLine.builder().build())
                         .build()
                         .prepare(invocation));
     }
@@ -152,11 +151,13 @@ class CommandLineTest {
     void doesNotInterpretAnOptionValueAsAWorkingDirectory(@TempDir Path directory) {
         var invocation = new ToolInvocation(directory, List.of("--output", "-C", "run"));
 
-        assertEquals(invocation,
+        assertEquals(
+                invocation,
                 CommandLine.builder()
                         .option(OUTPUT)
                         .workingDirectory()
-                        .command("run", "Run the tool", CommandLine.builder().build())
+                        .command("run", "Run the tool",
+                                CommandLine.builder().build())
                         .build()
                         .prepare(invocation));
     }
@@ -190,8 +191,7 @@ class CommandLineTest {
         var prepared = CommandLine.builder()
                 .javaToolOptions()
                 .build()
-                .prepare("probe", new ToolInvocation(source, List.of("explicit")),
-                        new PrintWriter(new StringWriter()));
+                .prepare("probe", new ToolInvocation(source, List.of("explicit")), new PrintWriter(new StringWriter()));
 
         assertEquals(List.of("test", "explicit"), prepared.arguments());
     }
@@ -205,20 +205,19 @@ class CommandLineTest {
         var prepared = CommandLine.builder()
                 .javaToolOptions()
                 .build()
-                .prepare("probe", new ToolInvocation(directory, List.of()),
-                        new PrintWriter(new StringWriter()));
+                .prepare("probe", new ToolInvocation(directory, List.of()), new PrintWriter(new StringWriter()));
 
         assertEquals(List.of("main"), prepared.arguments());
     }
 
     @Test
     void ambientToolOptionsRejectInvalidToolNames(@TempDir Path directory) {
-        var failure = assertThrows(ConfigurationException.class,
+        var failure = assertThrows(
+                ConfigurationException.class,
                 () -> CommandLine.builder()
                         .javaToolOptions()
                         .build()
-                        .prepare("../probe", new ToolInvocation(directory, List.of()),
-                                new PrintWriter(new StringWriter())));
+                        .prepare("../probe", new ToolInvocation(directory, List.of()), new PrintWriter(new StringWriter())));
 
         assertEquals("Invalid tool name: ../probe", failure.getMessage());
     }
@@ -228,36 +227,42 @@ class CommandLineTest {
         ambiguousOptions(directory);
         var diagnostics = new StringWriter();
 
-        var failure = assertThrows(ConfigurationException.class,
+        var failure = assertThrows(
+                ConfigurationException.class,
                 () -> CommandLine.builder()
                         .workingDirectory()
                         .javaToolOptions()
                         .build()
-                        .prepare("probe", new ToolInvocation(directory, List.of()),
-                                new PrintWriter(diagnostics, true)));
+                        .prepare("probe", new ToolInvocation(directory, List.of()), new PrintWriter(diagnostics, true)));
 
-        assertTrue(failure.getMessage().contains("select one with -C:"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("-C app/src/main"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("-C app/src/test"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("select one with -C:"),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("-C app/src/main"),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("-C app/src/test"),
+                failure.getMessage());
     }
 
     @Test
-    void ambiguousAmbientToolOptionsSuggestChangingDirectoryWithoutWorkingDirectoryOption(@TempDir Path directory)
-            throws Exception {
+    void ambiguousAmbientToolOptionsSuggestChangingDirectoryWithoutWorkingDirectoryOption(@TempDir Path directory) throws Exception {
         ambiguousOptions(directory);
         var diagnostics = new StringWriter();
 
-        var failure = assertThrows(ConfigurationException.class,
+        var failure = assertThrows(
+                ConfigurationException.class,
                 () -> CommandLine.builder()
                         .javaToolOptions()
                         .build()
-                        .prepare("probe", new ToolInvocation(directory, List.of()),
-                                new PrintWriter(diagnostics, true)));
+                        .prepare("probe", new ToolInvocation(directory, List.of()), new PrintWriter(diagnostics, true)));
 
-        assertTrue(failure.getMessage().contains("run from within one of:"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("  app/src/main"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("  app/src/test"), failure.getMessage());
-        assertFalse(failure.getMessage().contains("-C"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("run from within one of:"),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("  app/src/main"),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("  app/src/test"),
+                failure.getMessage());
+        assertFalse(failure.getMessage().contains("-C"),
+                failure.getMessage());
     }
 
     private static void ambiguousOptions(Path directory) throws Exception {
@@ -326,8 +331,7 @@ class CommandLineTest {
         var configuration = ModuleLayer.boot()
                 .configuration()
                 .resolve(finder, ModuleFinder.of(), Set.of("versioned.probe"));
-        var layer = ModuleLayer.boot()
-                .defineModulesWithOneLoader(configuration, ClassLoader.getSystemClassLoader());
+        var layer = ModuleLayer.boot().defineModulesWithOneLoader(configuration, ClassLoader.getSystemClassLoader());
         var commandLine = CommandLine.builder()
                 .version(layer.findModule("versioned.probe").orElseThrow())
                 .build();
@@ -345,9 +349,9 @@ class CommandLineTest {
         assertFalse(commandLine.runVersion("probe", new PrintWriter(output), "--version", "extra")
                                .isPresent());
         assertFalse(CommandLine.builder()
-                               .build()
-                               .runVersion("probe", new PrintWriter(output), "--version")
-                               .isPresent());
+                .build()
+                .runVersion("probe", new PrintWriter(output), "--version")
+                .isPresent());
     }
 
     @Test

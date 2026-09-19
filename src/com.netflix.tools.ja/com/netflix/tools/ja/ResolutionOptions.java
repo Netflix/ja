@@ -17,9 +17,10 @@ package com.netflix.tools.ja;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** Standard Java options requested from jig, together with resolution behavior. */
-public record ResolutionOptions(Set<String> options, boolean validateRuntimeAccess,
-        boolean emitCompileDiagnostics) {
+/**
+ * Standard Java options requested from jig, together with resolution behavior.
+ */
+public record ResolutionOptions(Set<String> options, boolean validateRuntimeAccess, boolean emitCompileDiagnostics) {
     public static final ResolutionOptions EMPTY = new ResolutionOptions(Set.of(), false, false);
 
     static final Set<String> JAVAC_OPTIONS = Set.of(
@@ -82,8 +83,7 @@ public record ResolutionOptions(Set<String> options, boolean validateRuntimeAcce
     }
 
     private static ResolutionOptions java(Set<String> runtimeOptions) {
-        return new ResolutionOptions(union(runtimeOptions, ACCESS_OPTIONS, Set.of("module=main", "enable-preview")),
-                true);
+        return new ResolutionOptions(union(runtimeOptions, ACCESS_OPTIONS, Set.of("module=main", "enable-preview")), true);
     }
 
     private static ResolutionOptions source(String moduleOption) {

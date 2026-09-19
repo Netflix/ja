@@ -44,8 +44,9 @@ public final class SelectorCompletion {
             var invocation = JaInvocation.parse(workingDirectory, new String[] {command.commandName(), REQUEST});
             int result = new CommandRunner(Ja.class
                     .getModule()
-                    .getLayer()).run(invocation, InputStream.nullInputStream(), new PrintStream(output, true, StandardCharsets.UTF_8),
-                    new PrintStream(errors, true, StandardCharsets.UTF_8));
+                    .getLayer())
+                    .run(invocation, InputStream.nullInputStream(), new PrintStream(output, true, StandardCharsets.UTF_8),
+                            new PrintStream(errors, true, StandardCharsets.UTF_8));
             if (result != 0) {
                 return List.of();
             }

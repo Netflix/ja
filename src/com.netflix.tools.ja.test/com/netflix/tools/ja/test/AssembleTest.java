@@ -83,7 +83,8 @@ class AssembleTest {
     void includesModuleDeploymentMetadata(@TempDir Path directory) throws Exception {
         String moduleName = "com.example.library";
         Path module = sourceModule(directory, moduleName);
-        String metadata = """
+        String metadata =
+                """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
                   <name>Example library</name>
@@ -99,12 +100,16 @@ class AssembleTest {
         assertEquals(0, result.exitCode(), result.error());
         Path output = artifacts(directory);
         assertEquals(metadata, Files.readString(output.resolve(moduleName + ".pom")));
-        try (var binary = new ZipFile(output.resolve(moduleName + ".jar").toFile());
-             var sources = new ZipFile(output.resolve(moduleName + "-sources.jar").toFile())) {
-            assertEquals(metadata, new String(binary.getInputStream(binary.getEntry(
-                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
-            assertEquals(metadata, new String(sources.getInputStream(sources.getEntry(
-                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
+        try (var binary = new ZipFile(output.resolve(moduleName + ".jar")
+                     .toFile());
+             var sources = new ZipFile(output.resolve(moduleName + "-sources.jar")
+                     .toFile())) {
+            assertEquals(metadata, new String(binary.getInputStream(binary.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom"))
+                    .readAllBytes(),
+                            StandardCharsets.UTF_8));
+            assertEquals(metadata, new String(sources.getInputStream(sources.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom"))
+                    .readAllBytes(),
+                            StandardCharsets.UTF_8));
             assertNull(binary.getEntry("module-info.pom"));
             assertNull(sources.getEntry("module-info.pom"));
         }
@@ -399,8 +404,7 @@ class AssembleTest {
                     }
                     int consumerPom = arguments.indexOf("--generate-consumer-pom");
                     if (consumerPom >= 0) {
-                        Path pomOutput = Files.createDirectories(Path.of(arguments.get(consumerPom + 1))
-                                .resolve("com.example.app"));
+                        Path pomOutput = Files.createDirectories(Path.of(arguments.get(consumerPom + 1)).resolve("com.example.app"));
                         Files.writeString(pomOutput.resolve("com.example.app-1.0.pom"),
                                 """
                                 <project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -464,7 +468,7 @@ class AssembleTest {
                                .getValue("Automatic-Module-Name"));
                 assertEquals("com.example.Provider\n", new String(archive.getInputStream(archive.getEntry("META-INF/services/java.util.spi.ToolProvider"))
                         .readAllBytes(),
-                        StandardCharsets.UTF_8));
+                                StandardCharsets.UTF_8));
             }
             assertFalse(Files.exists(jmod));
             String pom = Files.readString(artifact.resolveSibling("com.example.app.pom"));
@@ -485,7 +489,8 @@ class AssembleTest {
     void assemblesAJmodSourceLayout(@TempDir Path directory) throws Exception {
         Path module = directory.resolve("src/com.example.tool");
         Path classes = moduleAt(module.resolve("classes"), "com.example.tool");
-        String metadata = """
+        String metadata =
+                """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
                   <name>Example tool</name>
@@ -511,8 +516,10 @@ class AssembleTest {
         assertTrue(jmodEntries(artifact).contains("classes/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
         assertFalse(jmodEntries(artifact).contains("classes/module-info.pom"));
         assertEquals(metadata, Files.readString(moduleVersion.resolve("com.example.tool.pom")));
-        try (var binary = new ZipFile(moduleVersion.resolve("com.example.tool.jar").toFile());
-             var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar").toFile())) {
+        try (var binary = new ZipFile(moduleVersion.resolve("com.example.tool.jar")
+                     .toFile());
+             var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar")
+                     .toFile())) {
             assertTrue(binary.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom") != null);
             assertNull(binary.getEntry("module-info.pom"));
             assertTrue(sources.getEntry("module-info.java") != null);
