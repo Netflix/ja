@@ -23,7 +23,9 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -96,6 +98,38 @@ class ResolvedClassModelsTest {
                 classes.classes("example.module").stream()
                         .map(Entry::resource)
                         .toList());
+    }
+
+    @Test
+    void sourceModulesTakePrecedenceOverLinkedParentModules(@TempDir Path directory) throws Exception {
+        var requirements = Map.of(
+                "com.netflix.tools.cli", List.<String>of(),
+                "com.netflix.tools.cli.test", List.of("com.netflix.tools.cli"),
+                "com.netflix.tools.ja", List.of("com.netflix.tools.cli"),
+                "com.netflix.tools.ja.test", List.of("com.netflix.tools.ja", "com.netflix.tools.cli"),
+                "com.netflix.tools.jmh", List.of("com.netflix.tools.cli"),
+                "com.netflix.tools.launcher", List.of("com.netflix.tools.cli"),
+                "com.netflix.tools.launcher.test", List.of("com.netflix.tools.launcher"));
+        var modules = Files.createDirectories(directory.resolve("modules"));
+        var sourceClasses = new LinkedHashMap<String, String>();
+        int index = 0;
+        for (var entry : requirements.entrySet()) {
+            var module = Files.createDirectories(modules.resolve(entry.getKey()));
+            TestModules.writeModuleInfo(module, entry.getKey(), entry.getValue().toArray(String[]::new));
+            var className = "source.Module" + index++;
+            writeClass(module, className);
+            sourceClasses.put(entry.getKey(), className.replace('.', '/') + ".class");
+        }
+
+        var classes = resolve(ResolvedClassModelsTest.class.getModule().getLayer().configuration(),
+                List.copyOf(requirements.keySet()), List.of("--module-path", modules.toString()));
+
+        for (var entry : sourceClasses.entrySet()) {
+            assertEquals(List.of(entry.getValue()),
+                    classes.classes(entry.getKey()).stream()
+                            .map(Entry::resource)
+                            .toList());
+        }
     }
 
     @Test

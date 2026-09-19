@@ -419,14 +419,12 @@ public final class CommandRunner {
         } else {
             arguments = ResolutionArguments.withAddedModules(modulePathArguments, providerModules.stream().sorted().toList());
         }
-        var configuration = Configurations.resolve(layer.configuration(), arguments);
-        var moduleNames = configuration.modules().stream()
-                .map(java.lang.module.ResolvedModule::name)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        var resolution = Configurations.resolve(layer.configuration(), arguments);
+        var moduleNames = resolution.definedModules();
         if (moduleNames.isEmpty())
             return Optional.empty();
 
-        var controller = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(layer), ClassLoader.getSystemClassLoader());
+        var controller = resolution.defineLayer(layer);
         var scopedLayer = controller.layer();
         var moduleCatalog = ToolCatalog.load(scopedLayer, moduleNames);
         requireNoDuplicateTools(catalog, moduleCatalog);

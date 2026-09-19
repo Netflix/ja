@@ -14,11 +14,7 @@
 
 package com.netflix.tools.ja;
 
-import java.lang.ModuleLayer.Controller;
-import java.lang.module.Configuration;
-import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -38,12 +34,9 @@ final class ToolCommands {
     private ToolCommands() {}
 
     static Discovery discover(String moduleName, List<Path> modulePath) {
-        var paths = new ArrayList<>(modulePath);
-        ModuleFinder finder = ModuleFinder.of(paths.toArray(Path[]::new));
-        Configuration configuration = Configuration.resolveAndBind(finder, List.of(ModuleLayer.boot().configuration()),
-                ModuleFinder.of(), Set.of(moduleName));
-        Controller controller = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(ModuleLayer.boot()), ClassLoader.getSystemClassLoader());
-        ModuleLayer layer = controller.layer();
+        var resolution = Configurations.resolveAndBindBeforeParent(
+                ModuleLayer.boot().configuration(), modulePath, Set.of(moduleName));
+        var layer = resolution.defineLayer(ModuleLayer.boot()).layer();
 
         var commands = new TreeSet<String>();
         var warmupCommands = new TreeSet<String>();

@@ -48,7 +48,7 @@ class ResolvedToolArgumentsTest {
     @Test
     void usesParentModulesInsteadOfModulePathReplacements(@TempDir Path directory) throws Exception {
         Path parentModules = Files.createDirectories(directory.resolve("parent"));
-        TestModules.writeJar(parentModules.resolve("com.example.duplicate.jar"), "com.example.duplicate");
+        TestModules.writeJar(parentModules.resolve("com.example.duplicate.jar"), "com.example.duplicate", "java.logging");
         TestModules.writeJarWithTransitive(parentModules.resolve("com.example.bridge.jar"), "com.example.bridge", "com.example.duplicate");
         Configuration parentConfiguration = Configuration.resolve(
                 ModuleFinder.of(parentModules),
@@ -65,5 +65,11 @@ class ResolvedToolArgumentsTest {
 
         assertTrue(resolved.modules()
                            .containsAll(Set.of("com.example.app", "com.example.duplicate")));
+        var duplicate = resolved.moduleDescriptors().stream()
+                .filter(descriptor -> descriptor.name().equals("com.example.duplicate"))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(duplicate.requires().stream()
+                .anyMatch(require -> require.name().equals("java.logging")), duplicate.toString());
     }
 }

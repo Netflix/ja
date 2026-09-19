@@ -28,6 +28,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
 import java.lang.module.ModuleReference;
+import java.lang.module.ResolvedModule;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -64,8 +65,6 @@ public final class ResolvedClassModels {
         }
     }
 
-    private record Resolution(Configuration configuration, Set<String> pathModules) {}
-
     private record LayerFoundation(ModuleLayer layer, boolean complete) {}
 
     private record LoadedClass(String moduleName, String resource, ClassModel model, byte[] hash) {}
@@ -78,7 +77,7 @@ public final class ResolvedClassModels {
         }
     }
 
-    private final Configuration configuration;
+    private final Configurations.Resolution resolution;
     private final Map<String, ModuleReference> modules;
     private final Map<String, List<Path>> patches;
     private final Set<String> roots;
@@ -112,22 +111,19 @@ public final class ResolvedClassModels {
         var application = resolveInputs(parent, applicationInputs, withDependents(applicationBeforeModules, applicationPathModules));
         var effectiveRuntimeInputs = withJUnitDependencies(application.configuration(), applicationInputs, runtimeInputs);
         var runtime = resolveInputs(application.configuration(), effectiveRuntimeInputs, runtimeModulePathClosure(effectiveRuntimeInputs));
-        var runtimeModules = Configurations.reachableModules(runtime.configuration(), effectiveRuntimeInputs.roots()).stream()
+        var runtimeModules = runtime.reachableModules(effectiveRuntimeInputs.roots()).stream()
                 .map(module -> module.name())
                 .collect(Collectors.toUnmodifiableSet());
         var modules = new LinkedHashMap<String, ModuleReference>();
-        Configurations.reachableModules(application.configuration(), applicationInputs.roots()).stream()
-                .filter(module -> application.pathModules().contains(module.name()))
-                .sorted(Comparator.comparing(module -> module.name()))
+        application.reachablePathModules(applicationInputs.roots()).stream()
                 .forEach(module -> modules.put(module.name(), module.reference()));
-        Configurations.reachableModules(runtime.configuration(), effectiveRuntimeInputs.roots()).stream()
-                .filter(module -> application.pathModules().contains(module.name()) || runtime.pathModules().contains(module.name()))
-                .sorted(Comparator.comparing(module -> module.name()))
+        runtime.reachableModules(effectiveRuntimeInputs.roots()).stream()
+                .filter(module -> application.isPathModule(module.name()) || runtime.isPathModule(module.name()))
                 .forEach(module -> modules.putIfAbsent(module.name(), module.reference()));
         var layerArguments = new ArrayList<>(applicationInputs.arguments());
         layerArguments.addAll(runtimeInputs.arguments());
-        return new ResolvedClassModels(runtime.configuration(), modules, ToolArguments.patchModules(applicationInputs.arguments()),
-                applicationInputs.roots(), runtimeModules, runtimeAccessModules(runtime.configuration(), layerArguments), runtimeImageHash);
+        return new ResolvedClassModels(runtime, modules, ToolArguments.patchModules(applicationInputs.arguments()),
+                applicationInputs.roots(), runtimeModules, runtimeAccessModules(runtime, layerArguments), runtimeImageHash);
     }
 
     private static ModuleInputs withJUnitDependencies(Configuration application, ModuleInputs applicationInputs, ModuleInputs runtimeInputs) {
@@ -176,23 +172,18 @@ public final class ResolvedClassModels {
         return Set.copyOf(modules);
     }
 
-    private static Resolution resolveInputs(Configuration parent, ModuleInputs inputs, Set<String> beforeModules) {
+    private static Configurations.Resolution resolveInputs(Configuration parent, ModuleInputs inputs, Set<String> beforeModules) {
         var arguments = new ArrayList<>(inputs.arguments());
         for (var root : inputs.roots()) {
             arguments.add("--add-modules");
             arguments.add(root);
         }
-        var configuration = Configurations.resolve(parent, arguments, beforeModules);
-        var paths = ToolArguments.applicationModulePath(arguments);
-        var pathModules = ModuleFinder.of(paths.toArray(Path[]::new)).findAll().stream()
-                .map(reference -> reference.descriptor().name())
-                .collect(Collectors.toCollection(TreeSet::new));
-        return new Resolution(configuration, Set.copyOf(pathModules));
+        return Configurations.resolve(parent, arguments, beforeModules);
     }
 
-    private ResolvedClassModels(Configuration configuration, Map<String, ModuleReference> modules, Map<String, List<Path>> patches,
+    private ResolvedClassModels(Configurations.Resolution resolution, Map<String, ModuleReference> modules, Map<String, List<Path>> patches,
             Set<String> roots, Set<String> runtimeModules, Map<String, ModuleReference> runtimeAccessModules, String runtimeImageHash) {
-        this.configuration = configuration;
+        this.resolution = resolution;
         this.modules = Map.copyOf(modules);
         this.patches = Map.copyOf(patches);
         this.roots = Set.copyOf(roots);
@@ -329,12 +320,12 @@ public final class ResolvedClassModels {
         if (foundation.complete()) {
             layerRoots.addAll(modules.keySet());
         }
-        var configuration = Configuration.resolve(
+        var resolution = Configurations.resolve(
+                foundation.layer().configuration(),
                 instrumentedModules(executionRoots, supportModules, foundation.complete()),
-                List.of(foundation.layer().configuration()),
                 finder(modules),
                 layerRoots);
-        return ModuleLayer.defineModulesWithOneLoader(configuration, List.of(foundation.layer()), ClassLoader.getSystemClassLoader());
+        return resolution.defineLayer(foundation.layer());
     }
 
     private LayerFoundation layerFoundation(ModuleLayer applicationLayer) {
@@ -604,81 +595,61 @@ public final class ResolvedClassModels {
 
     private Map<String, ModuleReference> executionModules(Set<String> roots) {
         var references = new LinkedHashMap<String, ModuleReference>();
-        var visited = new LinkedHashSet<String>();
-        var remaining = new ArrayDeque<>(roots);
-        while (!remaining.isEmpty()) {
-            var name = remaining.removeFirst();
-            if (!visited.add(name)) {
-                continue;
-            }
-            var module = configuration.findModule(name).orElseThrow(() -> new IllegalArgumentException("Module is not in the resolved configuration: " + name));
-            if (module.reference()
-                      .location()
-                      .map(location -> location.getScheme().equals("jrt"))
-                      .orElse(false)) {
-                continue;
-            }
-            references.put(name, module.reference());
-            module.reads().stream()
-                    .map(read -> read.name())
-                    .forEach(remaining::addLast);
-        }
+        resolution.reachableModules(roots).stream()
+                .filter(module -> module.reference()
+                        .location()
+                        .map(location -> !location.getScheme().equals("jrt"))
+                        .orElse(true))
+                .forEach(module -> references.put(module.name(), module.reference()));
         return references;
     }
 
     @SuppressWarnings("restricted")
-    private static Map<String, ModuleReference> runtimeAccessModules(Configuration configuration, List<String> arguments) {
+    private static Map<String, ModuleReference> runtimeAccessModules(Configurations.Resolution resolution, List<String> arguments) {
         var access = ModuleRuntimeAccess.parseArguments(arguments);
         var names = new LinkedHashSet<String>();
         for (var name : access.enableNativeAccess()) {
-            addRuntimeAccessModule(configuration, names, name);
+            addRuntimeAccessModule(resolution, names, name);
         }
         for (var export : access.addExports()) {
-            addRuntimeAccessModules(configuration, names, export.sourceModule(), export.targetModule());
+            addRuntimeAccessModules(resolution, names, export.sourceModule(), export.targetModule());
         }
         for (var open : access.addOpens()) {
-            addRuntimeAccessModules(configuration, names, open.sourceModule(), open.targetModule());
+            addRuntimeAccessModules(resolution, names, open.sourceModule(), open.targetModule());
         }
-        var references = new LinkedHashMap<String, ModuleReference>();
-        var pending = new ArrayDeque<>(names);
-        while (!pending.isEmpty()) {
-            var name = pending.removeFirst();
-            if (references.containsKey(name)) {
-                continue;
-            }
-            var module = configuration.findModule(name).orElse(null);
-            if (module == null || !canDefineForRuntimeAccess(configuration, name)) {
-                continue;
-            }
-            var reference = module.reference();
-            references.put(name, reference);
-            if (reference.location().map(location -> location.getScheme().equals("jrt")).orElse(false)) {
-                module.reads().stream()
-                        .map(read -> read.name())
-                        .forEach(pending::addLast);
-            }
-        }
-        return Map.copyOf(references);
+        return resolution.reachableModules(names,
+                        ResolvedClassModels::canDefineForRuntimeAccess,
+                        module -> module.reference()
+                                .location()
+                                .map(location -> location.getScheme().equals("jrt"))
+                                .orElse(false))
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(ResolvedModule::name, ResolvedModule::reference));
     }
 
-    private static void addRuntimeAccessModules(Configuration configuration, Set<String> names, String source, String target) {
-        if (canDefineForRuntimeAccess(configuration, source) && canDefineForRuntimeAccess(configuration, target)) {
+    private static void addRuntimeAccessModules(Configurations.Resolution resolution, Set<String> names, String source, String target) {
+        if (canDefineForRuntimeAccess(resolution, source) && canDefineForRuntimeAccess(resolution, target)) {
             names.add(source);
             names.add(target);
         }
     }
 
-    private static void addRuntimeAccessModule(Configuration configuration, Set<String> names, String name) {
-        if (canDefineForRuntimeAccess(configuration, name)) {
+    private static void addRuntimeAccessModule(Configurations.Resolution resolution, Set<String> names, String name) {
+        if (canDefineForRuntimeAccess(resolution, name)) {
             names.add(name);
         }
     }
 
-    private static boolean canDefineForRuntimeAccess(Configuration configuration, String name) {
-        return configuration.findModule(name)
-                .map(module -> module.reference())
-                .flatMap(ModuleReference::location)
-                .map(location -> !location.getScheme().equals("jrt") || !name.startsWith("java."))
+    private static boolean canDefineForRuntimeAccess(Configurations.Resolution resolution, String name) {
+        return resolution.findModule(name)
+                .filter(ResolvedClassModels::canDefineForRuntimeAccess)
+                .isPresent();
+    }
+
+    private static boolean canDefineForRuntimeAccess(ResolvedModule module) {
+        return module.reference()
+                .location()
+                .map(location -> !location.getScheme().equals("jrt") || !module.name().startsWith("java."))
                 .orElse(false);
     }
 

@@ -17,8 +17,6 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.lang.module.Configuration;
-import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -517,14 +515,9 @@ public final class ToolRunner {
                                  in,
                                  err);
         if (!executionTools.contains(definition.provider())) {
-            var paths = ToolArguments.modulePath(runtimeArguments);
-            var finder = ModuleFinder.of(paths.toArray(java.nio.file.Path[]::new));
-            var configuration =
-                    Configuration.resolve(finder,
-                                          List.of(executionLayer.configuration()),
-                                          ModuleFinder.of(),
-                                          Set.of(module));
-            executionController = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(executionLayer), ClassLoader.getSystemClassLoader());
+            var resolution = Configurations.resolveBeforeParent(
+                    executionLayer.configuration(), ToolArguments.modulePath(runtimeArguments), Set.of(module));
+            executionController = resolution.defineLayer(executionLayer);
             executionLayer = executionController.layer();
             executionTools = tools.withAdditional(ToolRuntime.load(executionLayer, Set.of(module)));
         }

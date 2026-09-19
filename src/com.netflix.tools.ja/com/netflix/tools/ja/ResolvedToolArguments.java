@@ -15,9 +15,6 @@
 package com.netflix.tools.ja;
 
 import java.lang.module.ModuleDescriptor;
-import java.lang.module.ModuleFinder;
-import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,22 +43,10 @@ public record ResolvedToolArguments(List<String> arguments,
         if (roots.isEmpty())
             return new ResolvedToolArguments(arguments, Set.of(), Map.of());
 
-        var paths = ToolArguments.applicationModulePath(configurationArguments);
-        var pathFinder = ModuleFinder.of(paths.toArray(Path[]::new));
-        var pathModules =
-                pathFinder.findAll().stream()
-                        .map(reference -> reference.descriptor().name())
-                        .collect(Collectors.toUnmodifiableSet());
-        var configuration = Configurations.resolve(parent.configuration(), configurationArguments);
-        var descriptors =
-                Configurations.reachableModules(configuration, roots).stream()
-                        .filter(module -> pathModules.contains(module.name()))
-                        .sorted(Comparator.comparing(module -> module.name()))
-                        .map(module ->
-                                pathFinder.find(module.name())
-                                        .orElse(module.reference())
-                                        .descriptor())
-                        .collect(Collectors.toUnmodifiableSet());
+        var resolution = Configurations.resolve(parent.configuration(), configurationArguments);
+        var descriptors = resolution.reachablePathModules(roots).stream()
+                .map(module -> module.reference().descriptor())
+                .collect(Collectors.toUnmodifiableSet());
         return new ResolvedToolArguments(arguments, descriptors, Map.of());
     }
 
