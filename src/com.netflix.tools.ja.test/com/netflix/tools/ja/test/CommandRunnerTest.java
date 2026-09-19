@@ -413,11 +413,11 @@ class CommandRunnerTest {
 
     @Test
     void sourceToolOverridesBundledToolWithTheSameName() throws Exception {
-        Path toolModule = Files.createDirectories(temporaryDirectory.resolve("src/com.example.tool"));
+        Path toolModule = Files.createDirectories(temporaryDirectory.resolve("src/com.example.source.override.tool"));
         Files.writeString(toolModule.resolve("module-info.java"),
                 """
-                /** @addExports jdk.compiler/com.sun.tools.javac.api=com.example.tool */
-                module com.example.tool {
+                /** @addExports jdk.compiler/com.sun.tools.javac.api=com.example.source.override.tool */
+                module com.example.source.override.tool {
                     provides java.util.spi.ToolProvider with com.example.Probe;
                 }
                 """);
@@ -440,11 +440,11 @@ class CommandRunnerTest {
                 """);
         Path metadata = Files.createDirectories(toolModule.resolve("META-INF/com.netflix.tools/tools"));
         Files.writeString(metadata.resolve("probe.properties"), "provider=probe\n");
-        Path application = Files.createDirectories(temporaryDirectory.resolve("src/com.netflix.tools.ja.test"));
+        Path application = Files.createDirectories(temporaryDirectory.resolve("src/com.example.source.override.application"));
         Files.writeString(application.resolve("module-info.java"),
                 """
-                module com.netflix.tools.ja.test {
-                    requires static com.example.tool;
+                module com.example.source.override.application {
+                    requires static com.example.source.override.tool;
                 }
                 """);
         Files.createFile(application.resolve("module-info.hash"));
@@ -455,7 +455,7 @@ class CommandRunnerTest {
                             output.println("bundled");
                             return 0;
                         }));
-        var definition = ToolDefinition.read("probe", new ByteArrayInputStream("module=com.example.tool\nprovider=probe\n".getBytes(StandardCharsets.UTF_8)));
+        var definition = ToolDefinition.read("probe", new ByteArrayInputStream("module=com.example.source.override.tool\nprovider=probe\n".getBytes(StandardCharsets.UTF_8)));
         var output = new ByteArrayOutputStream();
         var error = new ByteArrayOutputStream();
 
@@ -1902,7 +1902,6 @@ class CommandRunnerTest {
                                         "com.example.app",
                                         "--add-modules",
                                         "com.example.library",
-                                        "--verify-module-hashes",
                                         "--add-requires",
                                         "org.junit.platform.console@1",
                                         "--resolve-options",

@@ -20,7 +20,6 @@ import java.io.PrintStream;
 import java.lang.ModuleLayer.Controller;
 import java.lang.module.ModuleDescriptor;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -427,8 +426,7 @@ public final class CommandRunner {
                             .sorted()
                             .toList());
         }
-        var preferredModules = new LinkedHashSet<>(sourceModules);
-        preferredModules.addAll(providerModules);
+        var preferredModules = preferredProviderModules(commandLine, catalog, providerModules);
         var resolution = Configurations.resolve(layer.configuration(), arguments, preferredModules);
         var moduleNames = resolution.definedModules();
         if (moduleNames.isEmpty()) {
@@ -457,6 +455,26 @@ public final class CommandRunner {
                 .forEach(definitions::add);
         return Optional.of(new ScopedTools(controller, selectedServices, new ToolCatalog(definitions), baseResolutionArguments, arguments,
                 resolvedModules));
+    }
+
+    private Set<String> preferredProviderModules(JaInvocation commandLine, ToolCatalog catalog, Set<String> providerModules) {
+        if (commandLine.command() instanceof Tools) {
+            return providerModules;
+        }
+        Optional<ToolDefinition> definition = switch (commandLine.command()) {
+            case Tool(var name) -> catalog.find(name);
+            case Builtin(var builtin) -> builtin.execution() instanceof ToolBacked(var tool) ? catalog.find(tool) : Optional.empty();
+            default -> Optional.empty();
+        };
+        if (definition.filter(selected -> selected.launch() == Launch.PROVIDER).isEmpty()) {
+            return Set.of();
+        }
+        var selected = definition.orElseThrow();
+        return selected.module()
+                       .or(() -> tools.moduleName(selected.provider()))
+                       .filter(providerModules::contains)
+                       .map(Set::of)
+                       .orElseGet(Set::of);
     }
 
     private static void requireNoDuplicateTools(ToolCatalog catalog, ToolCatalog scopedCatalog, ToolRuntime scopedServices) {
@@ -514,16 +532,11 @@ public final class CommandRunner {
             case Builtin(var builtin) -> builtin.execution() instanceof ToolBacked(var tool) ? catalog.find(tool) : Optional.empty();
             default -> Optional.empty();
         };
-        if (definition.isEmpty()) {
+        if (definition.isEmpty() || !tools.contains(definition.orElseThrow()
+                .provider())) {
             return commandLine.command() instanceof Tool || commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof ToolBacked;
         }
         var selected = definition.orElseThrow();
-        if (selected.launch() == Launch.JAVA) {
-            return false;
-        }
-        if (!tools.contains(selected.provider())) {
-            return commandLine.command() instanceof Tool || commandLine.command() instanceof Builtin(var builtin) && builtin.execution() instanceof ToolBacked;
-        }
         var module = selected.module().or(() -> tools.moduleName(selected.provider()));
         return module.isPresent() && sourceSelects(commandLine.moduleSourcePath().orElseThrow(),
                 module.orElseThrow());

@@ -48,25 +48,26 @@ class ResolvedToolArgumentsTest {
     @Test
     void usesParentModulesInsteadOfModulePathReplacements(@TempDir Path directory) throws Exception {
         Path parentModules = Files.createDirectories(directory.resolve("parent"));
-        TestModules.writeJar(parentModules.resolve("com.example.duplicate.jar"), "com.example.duplicate", "java.logging");
-        TestModules.writeJarWithTransitive(parentModules.resolve("com.example.bridge.jar"), "com.example.bridge", "com.example.duplicate");
+        TestModules.writeJar(parentModules.resolve("com.example.parent.precedence.duplicate.jar"), "com.example.parent.precedence.duplicate", "java.logging");
+        TestModules.writeJarWithTransitive(parentModules.resolve("com.example.parent.precedence.bridge.jar"), "com.example.parent.precedence.bridge", "com.example.parent.precedence.duplicate");
         Configuration parentConfiguration = Configuration.resolve(
                 ModuleFinder.of(parentModules),
                 List.of(ModuleLayer.boot().configuration()),
                 ModuleFinder.of(),
-                Set.of("com.example.bridge", "com.example.duplicate"));
+                Set.of("com.example.parent.precedence.bridge", "com.example.parent.precedence.duplicate"));
         ModuleLayer parent = ModuleLayer.defineModulesWithOneLoader(parentConfiguration, List.of(ModuleLayer.boot()), ClassLoader.getSystemClassLoader()).layer();
 
         Path childModules = Files.createDirectories(directory.resolve("child"));
-        TestModules.writeJar(childModules.resolve("com.example.duplicate.jar"), "com.example.duplicate");
-        TestModules.writeJar(childModules.resolve("com.example.app.jar"), "com.example.app", "com.example.bridge", "com.example.duplicate");
+        TestModules.writeJar(childModules.resolve("com.example.parent.precedence.duplicate.jar"), "com.example.parent.precedence.duplicate");
+        TestModules.writeJar(childModules.resolve("com.example.parent.precedence.app.jar"), "com.example.parent.precedence.app",
+                "com.example.parent.precedence.bridge", "com.example.parent.precedence.duplicate");
 
-        var resolved = ResolvedToolArguments.resolve(List.of(), List.of("--module-path", childModules.toString(), "--add-modules", "com.example.app"), parent);
+        var resolved = ResolvedToolArguments.resolve(List.of(), List.of("--module-path", childModules.toString(), "--add-modules", "com.example.parent.precedence.app"), parent);
 
         assertTrue(resolved.modules()
-                           .containsAll(Set.of("com.example.app", "com.example.duplicate")));
+                           .containsAll(Set.of("com.example.parent.precedence.app", "com.example.parent.precedence.duplicate")));
         var duplicate = resolved.moduleDescriptors().stream()
-                .filter(descriptor -> descriptor.name().equals("com.example.duplicate"))
+                .filter(descriptor -> descriptor.name().equals("com.example.parent.precedence.duplicate"))
                 .findFirst()
                 .orElseThrow();
         assertTrue(duplicate.requires().stream()
