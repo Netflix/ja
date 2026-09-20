@@ -94,6 +94,15 @@ When moving to source control move to a module source path layout, `src/com.exam
 
 While `com.example.hello` is fine for this example, for a module you intend to publish, choose a globally meaningful reverse-domain name following [Sonatype's namespace conventions](https://central.sonatype.org/register/namespace/), using a domain you own or a namespace you can verify, such as `io.github.owner.application`.
 
+## Bundled Tools
+
+Several bundled tools underpin the command implementation:
+
+- [jig](https://github.com/Netflix/jig) performs module version resolution, compilation and assembly, outputting standard module system arguments for use with other tools. It is also the bridge to and from Maven repositories providing a standalone module proxy and publishing commands
+- [jfmt](https://github.com/Netflix/jfmt) formats source using the Code Conventions for the Java Programming Language, adapted for the modern Java language. Avoids the very common whitespace, indentation, import ordering and qualified class references introduced in agent written code
+- [jist](https://github.com/Netflix/jist) provides source aware symbol search, providing a grep style interface for understanding class files and their associated sources. Gives coding agents access to symbols and sources without indexing, LSPs or MCPs while interoperating with other build tools via an argument file contract
+- [jdocserver](https://github.com/Netflix/jdocserver) serves locally browsable API documentation
+
 ## Documentation
 
 The [wiki](https://github.com/Netflix/ja/wiki) covers:
