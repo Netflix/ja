@@ -7,6 +7,7 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 
 `ja` uses the Java module descriptor as the source of truth throughout development. Start with one module in the current directory, add dependencies without changing the tools, and move the module beneath `src` when it enters source control or develops additional module boundaries.
 
+- Install Java applications from Maven repositories as ordinary commands with dedicated runtimes
 - Declare dependencies directly in `module-info.java`
 - Build, test, and distribute modules and applications from the same module declarations
 - Preserve module boundaries and integrity from development through distribution
@@ -36,6 +37,21 @@ irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
 The installer prints the steps needed to activate `ja`. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, shell setup and completions, custom locations, and version pinning.
+
+Take `ja` for a spin by installing an application:
+
+```console
+$ ja install com.github.ricksbrown.cowsay@1.1.0
+$ cowsay 'Holy cow, Java modules!'
+ _________________________
+< Holy cow, Java modules! >
+ -------------------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+```
 
 ## Quick start
 
