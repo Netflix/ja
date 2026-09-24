@@ -50,12 +50,65 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AssembleTest {
     private static final String COMPLETE_RUNTIME_ACCESS_OPTIONS = "add-exports,add-modules,add-opens,enable-final-field-mutation,enable-native-access,enable-preview," + "module-path,upgrade-module-path";
+
+    @Test
+    void assembledBinaryJarsHaveManifests(@TempDir Path directory) throws Exception {
+        String moduleName = "com.example.application";
+        sourceModule(directory, moduleName);
+
+        Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path artifact = artifacts(directory).resolve(moduleName + ".jar");
+        try (var archive = new JarFile(artifact.toFile())) {
+            assertNotNull(archive.getManifest(), artifact.toString());
+        }
+    }
+
+    @Test
+    void preservesSourceManifestAndSynthesizesMainClass(@TempDir Path directory) throws Exception {
+        String moduleName = "com.example.application";
+        Path module = sourceModule(directory, moduleName);
+        Files.writeString(module.resolve("module-info.java"),
+                """
+                /** @mainClass com.example.Main */
+                module com.example.application {}
+                """);
+        Path packageDirectory = Files.createDirectories(module.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Main.java"),
+                """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] arguments) {}
+                }
+                """);
+        var sourceManifest = new Manifest();
+        sourceManifest.getMainAttributes().put(Name.MANIFEST_VERSION, "1.0");
+        sourceManifest.getMainAttributes().putValue("Implementation-Title", "Example application");
+        Path manifestPath = module.resolve("META-INF/MANIFEST.MF");
+        Files.createDirectories(manifestPath.getParent());
+        try (var output = Files.newOutputStream(manifestPath)) {
+            sourceManifest.write(output);
+        }
+
+        Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path artifact = artifacts(directory).resolve(moduleName + ".jar");
+        try (var archive = new JarFile(artifact.toFile())) {
+            Manifest manifest = archive.getManifest();
+            assertNotNull(manifest);
+            assertEquals("Example application", manifest.getMainAttributes().getValue("Implementation-Title"));
+            assertEquals("com.example.Main", manifest.getMainAttributes().getValue(Name.MAIN_CLASS));
+        }
+    }
 
     @Test
     void packagedRuntimeAccessRequirementsMustBeAuthorized(@TempDir Path directory) throws Exception {

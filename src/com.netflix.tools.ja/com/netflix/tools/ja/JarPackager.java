@@ -57,9 +57,13 @@ final class JarPackager {
             Files.delete(staged);
             var arguments = new ArrayList<String>();
             arguments.add("--create");
-            arguments.add("--no-manifest");
             arguments.add("--file");
             arguments.add(staged.toString());
+            Path manifest = moduleContent.resolve("META-INF/MANIFEST.MF");
+            if (Files.isRegularFile(manifest)) {
+                arguments.add("--manifest");
+                arguments.add(manifest.toString());
+            }
             arguments.addAll(moduleArguments);
             arguments.add("-C");
             arguments.add(moduleContent.toString());
