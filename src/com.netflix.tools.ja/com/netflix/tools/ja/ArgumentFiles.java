@@ -37,7 +37,7 @@ public final class ArgumentFiles {
                 current.append(character);
                 escaped = false;
                 started = true;
-            } else if (character == '\\') {
+            } else if (character == '\\' && quoted) {
                 escaped = true;
                 started = true;
             } else if (character == '"') {

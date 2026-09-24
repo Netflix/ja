@@ -31,6 +31,13 @@ class ArgumentFilesTest {
     }
 
     @Test
+    void preservesBackslashesInUnquotedWindowsPaths() {
+        assertEquals(
+                List.of("--module-path", "C:\\Users\\example\\modules"),
+                ArgumentFiles.parse("--module-path\nC:\\Users\\example\\modules\n"));
+    }
+
+    @Test
     void parsesEscapedQuotesAndBackslashes() {
         assertEquals(List.of("a\\b\"c"), ArgumentFiles.parse("\"a\\\\b\\\"c\"\n"));
     }
