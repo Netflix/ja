@@ -609,6 +609,16 @@ static void append_file(const char *source, const char *destination) {
     unlink(source);
 }
 
+static int launch_jvm(
+        int argc, char **argv, int jargc, const char **jargs, const char *tool) {
+    return JLI_Launch(argc, argv,
+            jargc, jargs,
+            0, NULL,
+            "1.0", "0.0",
+            tool, tool,
+            JNI_TRUE, JNI_FALSE, JNI_FALSE, 0);
+}
+
 static int launcher_main(int argc, char **argv);
 
 static int launcher_identity_hash(
@@ -679,6 +689,15 @@ static int run_aot_process(
 }
 
 static int launcher_main(int argc, char **argv) {
+    static int prepared_jargc;
+    static const char **prepared_jargs;
+    static const char *prepared_tool;
+    /* macOS libjli re-enters main on another thread. Launcher options have
+     * already been removed from argv; reuse the prepared JVM launch rather
+     * than parsing tool arguments or repeating AOT setup after Cocoa starts. */
+    if (prepared_jargc)
+        return launch_jvm(argc, argv, prepared_jargc, prepared_jargs, prepared_tool);
+
     const char *tool = tool_name(argv[0]);
     if (!tool) {
         fprintf(stderr, "launcher: cannot determine tool name\n");
@@ -1040,9 +1059,12 @@ static int launcher_main(int argc, char **argv) {
         "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher",
         tool
     };
-    int base_argc = (int)(sizeof(base_args) / sizeof(base_args[0]));
-    int max_extra = 15; /* managed image, AOT, VM logging, launcher properties */
-    const char *jargs[base_argc + max_extra + MAX_RUNTIME_OPTIONS];
+    enum {
+        base_argc = sizeof(base_args) / sizeof(base_args[0]),
+        max_extra = 15 /* managed image, AOT, VM logging, launcher properties */
+    };
+    /* The argument array must survive libjli's main-thread handoff. */
+    static const char *jargs[base_argc + max_extra + MAX_RUNTIME_OPTIONS];
     int jargc = 0;
 
     for (int i = 0; i < runtime_option_count; i++)
@@ -1073,12 +1095,10 @@ static int launcher_main(int argc, char **argv) {
         if (!freopen(temporary_error, "a", stderr)) return 1;
     }
 
-    return JLI_Launch(argc, argv,
-            jargc, jargs,
-            0, NULL,
-            "1.0", "0.0",
-            tool, tool,
-            JNI_TRUE, JNI_FALSE, JNI_FALSE, 0);
+    prepared_jargc = jargc;
+    prepared_jargs = jargs;
+    prepared_tool = tool;
+    return launch_jvm(argc, argv, prepared_jargc, prepared_jargs, prepared_tool);
 }
 
 int main(int argc, char **argv) {
