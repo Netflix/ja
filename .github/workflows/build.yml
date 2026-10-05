@@ -110,6 +110,35 @@ jobs:
           ./.github/scripts/test-install.ps1
           -JaVersion "${{ needs.bootstrap.outputs.ja-version }}"
 
+  launcher-tests:
+    name: Launcher tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Zulu JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version-file: .java-version
+
+      - name: Set up bootstrap ja
+        uses: Netflix/ja/.github/actions/setup-ja@v0.21.1
+
+      - name: Build native launchers with Zig
+        run: src/launcher/build.sh
+
+      - name: Test launcher module
+        run: ja -C src/com.netflix.tools.launcher.test test --all
+
+      - name: Test macOS launcher with real libjli
+        if: runner.os == 'macOS'
+        run: .github/scripts/test-macos-launcher.sh
+
   build:
     name: Build
     runs-on: ubuntu-latest
