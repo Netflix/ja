@@ -244,7 +244,9 @@ class JaToolTest {
                 directory.toString(), "compile");
 
         assertEquals(2, result.exitCode());
-        assertEquals("ja: Unknown ja option: --module-source-path\n", result.error());
+        assertTrue(result.error().startsWith("ja: Unknown ja option: --module-source-path\n"), result.error());
+        assertTrue(result.error().contains("java.lang.IllegalArgumentException: Unknown ja option: --module-source-path\n"),
+                result.error());
     }
 
     @Test
