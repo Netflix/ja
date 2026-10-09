@@ -30,7 +30,7 @@ import javax.tools.Tool;
 
 import com.netflix.tools.ja.InstalledCommandModule;
 import com.netflix.tools.ja.InstalledCommandModule.Generated;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,7 +57,7 @@ class InstalledCommandModuleTest {
                 }
                 """);
         Path targetClasses = Files.createDirectories(temporaryDirectory.resolve("target-classes"));
-        ToolServices tools = ToolServices.load(ModuleLayer.boot());
+        ToolRuntime tools = ToolRuntime.load(ModuleLayer.boot());
         assertEquals(
                 0,
                 tools.run(

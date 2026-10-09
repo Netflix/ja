@@ -33,10 +33,10 @@ import java.util.Map.Entry;
  * the owning modules.
  */
 final class SourceGenerator {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final ModuleResolver moduleResolver;
 
-    SourceGenerator(ToolServices tools) {
+    SourceGenerator(ToolRuntime tools) {
         this.tools = tools;
         this.moduleResolver = new ModuleResolver(tools);
     }

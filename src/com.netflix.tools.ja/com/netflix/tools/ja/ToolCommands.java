@@ -14,20 +14,10 @@
 
 package com.netflix.tools.ja;
 
-import java.lang.ModuleLayer.Controller;
-import java.lang.module.Configuration;
-import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.ServiceLoader;
-import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.spi.ToolProvider;
-import javax.tools.Tool;
-
-import com.netflix.tools.launcher.WarmupPlans;
 
 /**
  * Discovers native command names and warmup support provided by a resolved
@@ -44,43 +34,21 @@ final class ToolCommands {
     private ToolCommands() {}
 
     static Discovery discover(String moduleName, List<Path> modulePath) {
-        var paths = new ArrayList<>(modulePath);
-        ModuleFinder finder = ModuleFinder.of(paths.toArray(Path[]::new));
-        Configuration configuration = Configuration.resolveAndBind(finder, List.of(ModuleLayer.boot().configuration()),
-                ModuleFinder.of(), Set.of(moduleName));
-        Controller controller = ModuleLayer.defineModulesWithOneLoader(configuration, List.of(ModuleLayer.boot()), ClassLoader.getSystemClassLoader());
-        ModuleLayer layer = controller.layer();
+        var resolution = Configurations.resolveAndBindBeforeParent(ModuleLayer.boot().configuration(), modulePath,
+                Set.of(moduleName));
+        var layer = resolution.defineLayer(ModuleLayer.boot()).layer();
 
         var commands = new TreeSet<String>();
         var warmupCommands = new TreeSet<String>();
-        ServiceLoader.load(layer, Tool.class).stream()
-                .filter(provider -> providedBy(provider, moduleName))
-                .map(Provider::get)
-                .forEach(tool -> {
-                    String name = requireCommandName(tool.name());
-                    commands.add(name);
-                    if (WarmupPlans.find(tool).isPresent()) {
-                        warmupCommands.add(name);
-                    }
-                });
-        ServiceLoader.load(layer, ToolProvider.class).stream()
-                .filter(provider -> providedBy(provider, moduleName))
-                .map(Provider::get)
-                .forEach(provider -> {
-                    String name = requireCommandName(provider.name());
-                    commands.add(name);
-                    if (WarmupPlans.find(provider).isPresent()) {
-                        warmupCommands.add(name);
-                    }
-                });
+        var tools = ToolRuntime.load(layer, Set.of(moduleName));
+        for (String discovered : tools.names()) {
+            String name = requireCommandName(discovered);
+            commands.add(name);
+            if (tools.warmup(name).isPresent()) {
+                warmupCommands.add(name);
+            }
+        }
         return new Discovery(commands, warmupCommands);
-    }
-
-    private static boolean providedBy(Provider<?> provider, String moduleName) {
-        return provider.type()
-                       .getModule()
-                       .getName()
-                       .equals(moduleName);
     }
 
     private static String requireCommandName(String name) {

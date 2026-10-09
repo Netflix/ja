@@ -11,7 +11,7 @@
 # the License.
 
 param(
-    [string] $JigVersion = "0.16.2",
+    [string] $JigVersion = "0.16.3",
     [string] $JaVersion,
     [ValidateSet("Jdk", "Standalone")]
     [string] $Installation = "Jdk",
@@ -142,7 +142,7 @@ try {
         $JaVersion = & $Java @JigArguments `
             --list-module-versions com.netflix.tools.ja | Select-Object -Last 1
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($JaVersion)) {
-            throw "Unable to determine the latest Ja version"
+            throw "Unable to determine the latest ja version"
         }
     }
 
@@ -246,7 +246,7 @@ try {
         --target-platform CURRENT `
         --resolve-options module-path,upgrade-module-path)
     if ($LASTEXITCODE -ne 0) {
-        throw "Unable to resolve Ja"
+        throw "Unable to resolve ja"
     }
     $ModulePath = $null
     $UpgradeModulePath = $null
@@ -258,6 +258,12 @@ try {
             "--module-path" { $ModulePath = $ResolvedArguments[$Index + 1] }
             "--upgrade-module-path" { $UpgradeModulePath = $ResolvedArguments[$Index + 1] }
             default { throw "Unexpected Jig argument: $($ResolvedArguments[$Index])" }
+        }
+    }
+    $ResolvedModulePathEntries = @()
+    foreach ($PathList in @($UpgradeModulePath, $ModulePath)) {
+        if (-not [string]::IsNullOrWhiteSpace($PathList)) {
+            $ResolvedModulePathEntries += $PathList -split [Regex]::Escape([IO.Path]::PathSeparator)
         }
     }
     $ModulePathEntries = @()
@@ -289,7 +295,7 @@ try {
     $LinkArguments += @("--output", $Output)
     & $Jlink @LinkArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Unable to link the Ja JDK"
+        throw "Unable to link the ja-enabled JDK"
     }
     Copy-Item -LiteralPath $Sources -Destination (Join-Path $Output "lib\src.zip")
 
@@ -297,8 +303,15 @@ try {
         $OutputJmods = Join-Path $Output "jmods"
         New-Item -ItemType Directory -Path $OutputJmods | Out-Null
         Copy-Item -Path (Join-Path $JdkModulePath "*.jmod") -Destination $OutputJmods
-        Get-ChildItem -Path $JigHome -Recurse -File -Filter "*.jmod" |
-            Copy-Item -Destination $OutputJmods
+        foreach ($ResolvedModule in $ResolvedModulePathEntries) {
+            if ([IO.Path]::GetExtension($ResolvedModule) -ne ".jmod" -or
+                    -not (Test-Path -LiteralPath $ResolvedModule -PathType Leaf)) {
+                continue
+            }
+            $ModuleName = ([IO.Path]::GetFileNameWithoutExtension($ResolvedModule) -split "-", 2)[0]
+            Copy-Item -LiteralPath $ResolvedModule `
+                -Destination (Join-Path $OutputJmods "$ModuleName.jmod") -Force
+        }
     }
     $OutputModules = Join-Path $Output "lib\ja\modules"
     New-Item -ItemType Directory -Force -Path $OutputModules | Out-Null
@@ -319,9 +332,9 @@ try {
         }
     }
 
-    Write-Output "Ja $JaVersion installed in $Output"
+    Write-Output "ja $JaVersion installed in $Output"
     Write-Output ""
-    Write-Output "To use Ja in this PowerShell session:"
+    Write-Output "To use ja in this PowerShell session:"
     Write-Output ""
     $PathEntries = @((Join-Path $Output "bin"))
     if (-not $JaBinOnPath) {

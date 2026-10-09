@@ -37,7 +37,7 @@ import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.cli.CommandLine.ToolOption;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.JaTool;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,9 +83,9 @@ class JaToolTest {
                         .map(completion -> completion.value())
                         .toList());
 
-        var invocation = described.commandLine().prepare(ToolInvocation.of("-C", "project", "compile", "--recompile"));
+        var invocation = described.commandLine().prepare(ToolInvocation.of("--verbose", "-C", "project", "compile", "--recompile"));
         assertEquals(Path.of("project"), invocation.workingDirectory());
-        assertEquals(List.of("compile", "--recompile"), invocation.arguments());
+        assertEquals(List.of("--verbose", "compile", "--recompile"), invocation.arguments());
 
         var parsed = described.commandLine().parse("--verbose", "compile", "--recompile");
         var command = parsed.command().orElseThrow();
@@ -98,12 +98,21 @@ class JaToolTest {
     }
 
     @Test
+    void reportsVersionFromASelectedWorkingDirectory(@TempDir Path directory) {
+        Result result = run("-C", directory.toString(), "--version");
+
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output().startsWith("ja "),
+                result.output());
+        assertEquals("", result.error());
+    }
+
+    @Test
     void describesAndCompletesItsCommands() {
         var described = assertInstanceOf(JaTool.class, ja);
 
-        assertEquals(
-                List.of("compile"),
-                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolServices.of()).stream()
+        assertEquals(List.of("compile"),
+                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolRuntime.of()).stream()
                         .map(completion -> completion.value())
                         .toList());
         assertEquals(
@@ -161,7 +170,7 @@ class JaToolTest {
     @Test
     void delegatesSourceAndDocumentationValueCompletionToJist() {
         var jist = new CompletingJist();
-        var tools = ToolServices.of(jist);
+        var tools = ToolRuntime.of(jist);
 
         assertEquals(List.of("candidate"),
                 Ja.complete(new CompletionRequest(ToolInvocation.of("source"), "Str"), tools).stream()
@@ -182,15 +191,14 @@ class JaToolTest {
 
     @Test
     void completesSourceAndDocumentationSymbolsWithJist() {
-        var tools = ToolServices.load(Ja.class
+        var tools = ToolRuntime.load(Ja.class
                 .getModule()
                 .getLayer());
 
         for (String command : List.of("source", "doc")) {
-            assertTrue(
-                    Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
-                            .map(Completion::value)
-                            .anyMatch("java.lang.String"::equals),
+            assertTrue(Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
+                    .map(Completion::value)
+                    .anyMatch("java.lang.String"::equals),
                     command);
         }
     }
@@ -232,8 +240,8 @@ class JaToolTest {
 
     @Test
     void appliesTheWorkingDirectoryConventionProgrammatically(@TempDir Path directory) {
-        Result result = run("-C", directory.toString(), "--module-source-path", directory.toString(),
-                "compile");
+        Result result = run("--verbose", "-C", directory.toString(), "--module-source-path",
+                directory.toString(), "compile");
 
         assertEquals(2, result.exitCode());
         assertEquals("ja: Unknown ja option: --module-source-path\n", result.error());
@@ -276,7 +284,8 @@ class JaToolTest {
     @Test
     void printsVersion() {
         Result result = run("--version");
-        String version = Ja.class.getModule()
+        String version = Ja.class
+                .getModule()
                 .getDescriptor()
                 .rawVersion()
                 .orElse("dev");

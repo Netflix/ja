@@ -18,6 +18,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassFile.ClassHierarchyResolverOption;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeBuilder;
@@ -78,7 +79,7 @@ public final class ExecutionTraceInstrumentation {
     }
 
     static byte[] instrument(ClassModel model, ClassHierarchyResolver hierarchy) {
-        return ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(hierarchy)).transformClass(model, (builder, element) -> {
+        return ClassFile.of(ClassHierarchyResolverOption.of(hierarchy)).transformClass(model, (builder, element) -> {
             if (element instanceof MethodModel method && method.code().isPresent()) {
                 builder.transformMethod(method, MethodTransform.transformingCode(probe(method)));
             } else {
@@ -230,14 +231,18 @@ public final class ExecutionTraceInstrumentation {
         private Optional<byte[]> instrumentedClass(String name) throws IOException {
             var patch = patches.get(name);
             if (patch != null) {
-                return Optional.of(instrument(ClassFile.of().parse(patch.content()), hierarchy));
+                return Optional.of(instrument(ClassFile.of()
+                        .parse(patch.content()),
+                        hierarchy));
             }
             var input = delegate.open(name);
             if (input.isEmpty()) {
                 return Optional.empty();
             }
             try (var stream = input.orElseThrow()) {
-                return Optional.of(instrument(ClassFile.of().parse(stream.readAllBytes()), hierarchy));
+                return Optional.of(instrument(ClassFile.of()
+                        .parse(stream.readAllBytes()),
+                        hierarchy));
             }
         }
 

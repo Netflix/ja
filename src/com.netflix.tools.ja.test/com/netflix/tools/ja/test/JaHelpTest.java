@@ -26,7 +26,7 @@ import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,7 +37,7 @@ class JaHelpTest {
     @Test
     void groupsCommandsByUserIntent() {
         var bytes = new ByteArrayOutputStream();
-        var tools = ToolServices.of(
+        var tools = ToolRuntime.of(
                 tool("javac"),
                 tool("jist"),
                 tool("jdocserver"),
@@ -99,7 +99,7 @@ class JaHelpTest {
         var bytes = new ByteArrayOutputStream();
         var catalog = ToolCatalog.load(ModuleLayer.boot(), Set.of("com.netflix.tools.ja"));
         try (var output = new PrintStream(bytes)) {
-            Ja.help(output, ToolServices.of(), catalog);
+            Ja.help(output, ToolRuntime.of(), catalog);
         }
 
         assertFalse(bytes.toString().contains("bench is unavailable"),
@@ -110,7 +110,7 @@ class JaHelpTest {
     void separatesUnavailableCommandsAndExplainsMissingTools() {
         var bytes = new ByteArrayOutputStream();
         try (var output = new PrintStream(bytes)) {
-            Ja.help(output, ToolServices.of(), new ToolCatalog(List.of()));
+            Ja.help(output, ToolRuntime.of(), new ToolCatalog(List.of()));
         }
 
         String help = bytes.toString();

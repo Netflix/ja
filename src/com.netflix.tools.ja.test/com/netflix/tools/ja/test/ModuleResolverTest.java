@@ -25,7 +25,7 @@ import java.util.spi.ToolProvider;
 import com.netflix.tools.ja.ModuleResolver;
 import com.netflix.tools.ja.ResolutionOptions;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,7 +35,7 @@ class ModuleResolverTest {
     @Test
     void requestsStandardJavaOptions() {
         var runWith = new ArrayList<String>();
-        var resolver = new ModuleResolver(ToolServices.of(tool((out, arguments) -> {
+        var resolver = new ModuleResolver(ToolRuntime.of(tool((out, arguments) -> {
             runWith.addAll(arguments);
             out.print("--module-path\nmodules\n--add-modules\ncom.example.app\n");
             return 0;
@@ -54,7 +54,7 @@ class ModuleResolverTest {
     @Test
     void canEmitCompilationDiagnostics() {
         var runWith = new ArrayList<String>();
-        var resolver = new ModuleResolver(ToolServices.of(tool((_, arguments) -> {
+        var resolver = new ModuleResolver(ToolRuntime.of(tool((_, arguments) -> {
             runWith.addAll(arguments);
             return 0;
         })));
@@ -67,7 +67,7 @@ class ModuleResolverTest {
 
     @Test
     void propagatesResolverFailure() {
-        var resolver = new ModuleResolver(ToolServices.of(tool((out, arguments) -> 7)));
+        var resolver = new ModuleResolver(ToolRuntime.of(tool((out, arguments) -> 7)));
 
         assertThrows(
                 ToolExecutionException.class,

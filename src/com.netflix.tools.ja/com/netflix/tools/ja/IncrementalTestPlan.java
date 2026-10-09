@@ -39,8 +39,7 @@ final class IncrementalTestPlan {
             }
             var current = execution.orElseThrow();
             executions.put(test.selector(), current);
-            if (!current.observedClassHash().equals(previous.observedClassHash())
-                    && results.hasSuccessfulResult(current)) {
+            if (!current.observedClassHash().equals(previous.observedClassHash()) && results.hasSuccessfulResult(current)) {
                 results.updateTrace(current);
             }
         }

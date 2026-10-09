@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.spi.ToolProvider;
 
 import com.netflix.tools.ja.ApplicationTarget;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ApplicationTargetTest {
     @Test
     void parsesCanonicalModuleRequirement() {
-        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo@1.2.3", ToolServices.of(), new ByteArrayInputStream(new byte[0]),
+        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo@1.2.3", ToolRuntime.of(), new ByteArrayInputStream(new byte[0]),
                 new PrintStream(new ByteArrayOutputStream()));
 
         assertEquals("com.example.foo", target.moduleName());
@@ -59,7 +59,7 @@ class ApplicationTargetTest {
             }
         };
 
-        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo", ToolServices.of(jig), new ByteArrayInputStream(new byte[0]),
+        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo", ToolRuntime.of(jig), new ByteArrayInputStream(new byte[0]),
                 new PrintStream(new ByteArrayOutputStream()));
 
         assertEquals(List.of("--list-module-versions", "com.example.foo"), request.get());
@@ -83,7 +83,7 @@ class ApplicationTargetTest {
             }
         };
 
-        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo", ToolServices.of(jig), new ByteArrayInputStream(new byte[0]),
+        ApplicationTarget target = ApplicationTarget.resolve("com.example.foo", ToolRuntime.of(jig), new ByteArrayInputStream(new byte[0]),
                 new PrintStream(new ByteArrayOutputStream()));
 
         assertEquals(Optional.of("1.38"), target.version());
@@ -108,7 +108,7 @@ class ApplicationTargetTest {
         var errors = new ByteArrayOutputStream();
 
         ApplicationTarget target = ApplicationTarget.resolve("pkg:maven/com.example/example-foo@1.2.3?repository_url=https%3A%2F%2Frepo.example",
-                ToolServices.of(jig), new ByteArrayInputStream(new byte[0]), new PrintStream(errors, true, StandardCharsets.UTF_8));
+                ToolRuntime.of(jig), new ByteArrayInputStream(new byte[0]), new PrintStream(errors, true, StandardCharsets.UTF_8));
 
         assertEquals(
                 List.of("--lookup-module", "pkg:maven/com.example/example-foo@1.2.3?repository_url=https%3A%2F%2Frepo.example"),
@@ -140,7 +140,7 @@ class ApplicationTargetTest {
         };
         String packageUrl = "pkg:maven/com.example/example-foo?repository_url=https%3A%2F%2Frepo.example";
 
-        ApplicationTarget target = ApplicationTarget.resolve(packageUrl, ToolServices.of(jig), new ByteArrayInputStream(new byte[0]),
+        ApplicationTarget target = ApplicationTarget.resolve(packageUrl, ToolRuntime.of(jig), new ByteArrayInputStream(new byte[0]),
                 new PrintStream(new ByteArrayOutputStream()));
 
         assertEquals(List.of(List.of("--lookup-module", packageUrl), List.of("--list-module-versions", "com.example.foo")),

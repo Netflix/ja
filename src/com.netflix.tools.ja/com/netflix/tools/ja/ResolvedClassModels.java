@@ -28,12 +28,12 @@ import java.lang.constant.ClassDesc;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
 import java.lang.module.ModuleReference;
+import java.lang.module.ResolvedModule;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -50,8 +50,10 @@ import java.util.zip.ZipFile;
 
 import com.netflix.module.ModuleHash;
 import com.netflix.module.ModuleRuntimeAccess;
+import com.netflix.tools.ja.Configurations.Resolution;
 import com.netflix.tools.ja.ExecutionTrace.Event;
 import com.netflix.tools.ja.TestDiscovery.TestMethod;
+import com.netflix.tools.ja.TestResultStore.Trace;
 
 /** Application class files and module state from a resolved configuration. */
 public final class ResolvedClassModels {
@@ -64,11 +66,10 @@ public final class ResolvedClassModels {
         }
     }
 
-    private record Resolution(Configuration configuration, Set<String> pathModules) {}
-
     private record LayerFoundation(ModuleLayer layer, boolean complete) {}
 
-    private record LoadedClass(String moduleName, String resource, ClassModel model, byte[] hash) {}
+    private record LoadedClass(String moduleName, String resource, ClassModel model,
+            byte[] hash) {}
 
     private record ResolvedMethod(MethodModel model, LoadedClass owner) {}
 
@@ -78,7 +79,7 @@ public final class ResolvedClassModels {
         }
     }
 
-    private final Configuration configuration;
+    private final Resolution resolution;
     private final Map<String, ModuleReference> modules;
     private final Map<String, List<Path>> patches;
     private final Set<String> roots;
@@ -112,22 +113,19 @@ public final class ResolvedClassModels {
         var application = resolveInputs(parent, applicationInputs, withDependents(applicationBeforeModules, applicationPathModules));
         var effectiveRuntimeInputs = withJUnitDependencies(application.configuration(), applicationInputs, runtimeInputs);
         var runtime = resolveInputs(application.configuration(), effectiveRuntimeInputs, runtimeModulePathClosure(effectiveRuntimeInputs));
-        var runtimeModules = Configurations.reachableModules(runtime.configuration(), effectiveRuntimeInputs.roots()).stream()
+        var runtimeModules = runtime.reachableModules(effectiveRuntimeInputs.roots()).stream()
                 .map(module -> module.name())
                 .collect(Collectors.toUnmodifiableSet());
         var modules = new LinkedHashMap<String, ModuleReference>();
-        Configurations.reachableModules(application.configuration(), applicationInputs.roots()).stream()
-                .filter(module -> application.pathModules().contains(module.name()))
-                .sorted(Comparator.comparing(module -> module.name()))
+        application.reachablePathModules(applicationInputs.roots()).stream()
                 .forEach(module -> modules.put(module.name(), module.reference()));
-        Configurations.reachableModules(runtime.configuration(), effectiveRuntimeInputs.roots()).stream()
-                .filter(module -> application.pathModules().contains(module.name()) || runtime.pathModules().contains(module.name()))
-                .sorted(Comparator.comparing(module -> module.name()))
+        runtime.reachableModules(effectiveRuntimeInputs.roots()).stream()
+                .filter(module -> application.isPathModule(module.name()) || runtime.isPathModule(module.name()))
                 .forEach(module -> modules.putIfAbsent(module.name(), module.reference()));
         var layerArguments = new ArrayList<>(applicationInputs.arguments());
         layerArguments.addAll(runtimeInputs.arguments());
-        return new ResolvedClassModels(runtime.configuration(), modules, ToolArguments.patchModules(applicationInputs.arguments()),
-                applicationInputs.roots(), runtimeModules, runtimeAccessModules(runtime.configuration(), layerArguments), runtimeImageHash);
+        return new ResolvedClassModels(runtime, modules, ToolArguments.patchModules(applicationInputs.arguments()), applicationInputs.roots(),
+                runtimeModules, runtimeAccessModules(runtime, layerArguments), runtimeImageHash);
     }
 
     private static ModuleInputs withJUnitDependencies(Configuration application, ModuleInputs applicationInputs, ModuleInputs runtimeInputs) {
@@ -182,17 +180,18 @@ public final class ResolvedClassModels {
             arguments.add("--add-modules");
             arguments.add(root);
         }
-        var configuration = Configurations.resolve(parent, arguments, beforeModules);
-        var paths = ToolArguments.applicationModulePath(arguments);
-        var pathModules = ModuleFinder.of(paths.toArray(Path[]::new)).findAll().stream()
-                .map(reference -> reference.descriptor().name())
-                .collect(Collectors.toCollection(TreeSet::new));
-        return new Resolution(configuration, Set.copyOf(pathModules));
+        return Configurations.resolve(parent, arguments, beforeModules);
     }
 
-    private ResolvedClassModels(Configuration configuration, Map<String, ModuleReference> modules, Map<String, List<Path>> patches,
-            Set<String> roots, Set<String> runtimeModules, Map<String, ModuleReference> runtimeAccessModules, String runtimeImageHash) {
-        this.configuration = configuration;
+    private ResolvedClassModels(
+            Resolution resolution,
+            Map<String, ModuleReference> modules,
+            Map<String, List<Path>> patches,
+            Set<String> roots,
+            Set<String> runtimeModules,
+            Map<String, ModuleReference> runtimeAccessModules,
+            String runtimeImageHash) {
+        this.resolution = resolution;
         this.modules = Map.copyOf(modules);
         this.patches = Map.copyOf(patches);
         this.roots = Set.copyOf(roots);
@@ -200,11 +199,12 @@ public final class ResolvedClassModels {
         this.runtimeAccessModules = Map.copyOf(runtimeAccessModules);
         this.runtimeImageHash = runtimeImageHash;
         var directories = new LinkedHashMap<String, Path>();
-        modules.forEach((name, reference) -> reference.location()
-                .filter(location -> location.getScheme().equals("file"))
-                .map(Path::of)
-                .filter(Files::isDirectory)
-                .ifPresent(path -> directories.put(name, path)));
+        modules.forEach(
+                (name, reference) -> reference.location()
+                        .filter(location -> location.getScheme().equals("file"))
+                        .map(Path::of)
+                        .filter(Files::isDirectory)
+                        .ifPresent(path -> directories.put(name, path)));
         this.moduleDirectories = Map.copyOf(directories);
     }
 
@@ -236,13 +236,11 @@ public final class ResolvedClassModels {
         }
         try (var reader = module(moduleName).open();
              var listed = reader.list()) {
-            listed.filter(ResolvedClassModels::isClass)
-                    .forEach(resources::add);
+            listed.filter(ResolvedClassModels::isClass).forEach(resources::add);
         }
         var result = new ArrayList<Entry>();
         for (var resource : resources) {
-            classModel(moduleName, resource)
-                    .ifPresent(loaded -> result.add(new Entry(moduleName, resource, loaded.model())));
+            classModel(moduleName, resource).ifPresent(loaded -> result.add(new Entry(moduleName, resource, loaded.model())));
         }
         var content = List.copyOf(result);
         classes.put(moduleName, content);
@@ -263,13 +261,14 @@ public final class ResolvedClassModels {
         return observedExecution(test, events, null);
     }
 
-    Optional<TestExecution> observedExecution(TestMethod test, TestResultStore.Trace previous) throws IOException {
+    Optional<TestExecution> observedExecution(TestMethod test, Trace previous) throws IOException {
         return observedExecution(test, previous.events(), previous);
     }
 
-    private Optional<TestExecution> observedExecution(TestMethod test, Set<Event> events,
-            TestResultStore.Trace previous) throws IOException {
-        var testClass = loadedClasses.get(test.model().parent().orElseThrow());
+    private Optional<TestExecution> observedExecution(TestMethod test, Set<Event> events, Trace previous) throws IOException {
+        var testClass = loadedClasses.get(test.model()
+                .parent()
+                .orElseThrow());
         if (testClass == null) {
             throw new IllegalStateException("Test class was not loaded from the resolved modules: " + test.className());
         }
@@ -288,7 +287,8 @@ public final class ResolvedClassModels {
             executedMethods.add(resolved.model());
             addObservedClass(observedClasses, resolved.owner());
             if (event.receiverModule() != null && event.receiverClass() != null) {
-                var receiver = instrumentedClass(event.receiverModule(), event.receiverClass().replace('.', '/'));
+                var receiver = instrumentedClass(event.receiverModule(),
+                        event.receiverClass().replace('.', '/'));
                 if (receiver.isEmpty()) {
                     return Optional.empty();
                 }
@@ -301,8 +301,8 @@ public final class ResolvedClassModels {
         var currentCodeHash = previous != null && observedClassHash.equals(previous.observedClassHash())
                 ? previous.codeHash()
                 : codeHash.hash(executedMethods, receiverClasses, instrumentedClassHierarchy());
-        return Optional.of(new TestExecution(test.selector(), currentCodeHash, observedClassHash,
-                moduleStates(), runtimeImageHash, events));
+        return Optional.of(new TestExecution(test.selector(), currentCodeHash, observedClassHash, moduleStates(),
+                runtimeImageHash, events));
     }
 
     private static void addObservedClass(Map<String, LoadedClass> classes, LoadedClass loaded) {
@@ -313,7 +313,8 @@ public final class ResolvedClassModels {
         var digest = new Sha256().add(classes.size());
         classes.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> digest.add(entry.getKey()).add(entry.getValue().hash()));
+                .forEach(entry -> digest.add(entry.getKey()).add(entry.getValue()
+                        .hash()));
         return digest.hex();
     }
 
@@ -329,12 +330,9 @@ public final class ResolvedClassModels {
         if (foundation.complete()) {
             layerRoots.addAll(modules.keySet());
         }
-        var configuration = Configuration.resolve(
-                instrumentedModules(executionRoots, supportModules, foundation.complete()),
-                List.of(foundation.layer().configuration()),
-                finder(modules),
-                layerRoots);
-        return ModuleLayer.defineModulesWithOneLoader(configuration, List.of(foundation.layer()), ClassLoader.getSystemClassLoader());
+        var resolution = Configurations.resolve(foundation.layer().configuration(), instrumentedModules(executionRoots, supportModules, foundation.complete()),
+                finder(modules), layerRoots);
+        return resolution.defineLayer(foundation.layer());
     }
 
     private LayerFoundation layerFoundation(ModuleLayer applicationLayer) {
@@ -482,7 +480,9 @@ public final class ResolvedClassModels {
         int separator = internalClassName.lastIndexOf('/');
         var packageName = separator < 0 ? "" : internalClassName.substring(0, separator).replace('/', '.');
         var owners = instrumentedModules().stream()
-                .filter(name -> module(name).descriptor().packages().contains(packageName))
+                .filter(name -> module(name).descriptor()
+                        .packages()
+                        .contains(packageName))
                 .sorted()
                 .toList();
         if (!owners.isEmpty()) {
@@ -514,7 +514,10 @@ public final class ResolvedClassModels {
         } else {
             try (var stream = input.orElseThrow()) {
                 var content = stream.readAllBytes();
-                var loaded = new LoadedClass(moduleName, resource, ClassFile.of().parse(content),
+                var loaded = new LoadedClass(
+                        moduleName,
+                        resource,
+                        ClassFile.of().parse(content),
                         Sha256.hashBytes(content));
                 loadedClasses.put(loaded.model(), loaded);
                 result = Optional.of(loaded);
@@ -604,82 +607,64 @@ public final class ResolvedClassModels {
 
     private Map<String, ModuleReference> executionModules(Set<String> roots) {
         var references = new LinkedHashMap<String, ModuleReference>();
-        var visited = new LinkedHashSet<String>();
-        var remaining = new ArrayDeque<>(roots);
-        while (!remaining.isEmpty()) {
-            var name = remaining.removeFirst();
-            if (!visited.add(name)) {
-                continue;
-            }
-            var module = configuration.findModule(name).orElseThrow(() -> new IllegalArgumentException("Module is not in the resolved configuration: " + name));
-            if (module.reference()
-                      .location()
-                      .map(location -> location.getScheme().equals("jrt"))
-                      .orElse(false)) {
-                continue;
-            }
-            references.put(name, module.reference());
-            module.reads().stream()
-                    .map(read -> read.name())
-                    .forEach(remaining::addLast);
-        }
+        resolution.reachableModules(roots).stream()
+                .filter(module -> module.reference()
+                                        .location()
+                                        .map(location -> !location.getScheme().equals("jrt"))
+                                        .orElse(true))
+                .forEach(module -> references.put(module.name(), module.reference()));
         return references;
     }
 
     @SuppressWarnings("restricted")
-    private static Map<String, ModuleReference> runtimeAccessModules(Configuration configuration, List<String> arguments) {
+    private static Map<String, ModuleReference> runtimeAccessModules(Resolution resolution, List<String> arguments) {
         var access = ModuleRuntimeAccess.parseArguments(arguments);
         var names = new LinkedHashSet<String>();
         for (var name : access.enableNativeAccess()) {
-            addRuntimeAccessModule(configuration, names, name);
+            addRuntimeAccessModule(resolution, names, name);
         }
         for (var export : access.addExports()) {
-            addRuntimeAccessModules(configuration, names, export.sourceModule(), export.targetModule());
+            addRuntimeAccessModules(resolution, names, export.sourceModule(), export.targetModule());
         }
         for (var open : access.addOpens()) {
-            addRuntimeAccessModules(configuration, names, open.sourceModule(), open.targetModule());
+            addRuntimeAccessModules(resolution, names, open.sourceModule(), open.targetModule());
         }
-        var references = new LinkedHashMap<String, ModuleReference>();
-        var pending = new ArrayDeque<>(names);
-        while (!pending.isEmpty()) {
-            var name = pending.removeFirst();
-            if (references.containsKey(name)) {
-                continue;
-            }
-            var module = configuration.findModule(name).orElse(null);
-            if (module == null || !canDefineForRuntimeAccess(configuration, name)) {
-                continue;
-            }
-            var reference = module.reference();
-            references.put(name, reference);
-            if (reference.location().map(location -> location.getScheme().equals("jrt")).orElse(false)) {
-                module.reads().stream()
-                        .map(read -> read.name())
-                        .forEach(pending::addLast);
-            }
-        }
-        return Map.copyOf(references);
+        return resolution.reachableModules(
+                        names,
+                        ResolvedClassModels::canDefineForRuntimeAccess,
+                        module -> module.reference()
+                                        .location()
+                                        .map(location -> location.getScheme().equals("jrt"))
+                                        .orElse(false))
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(ResolvedModule::name, ResolvedModule::reference));
     }
 
-    private static void addRuntimeAccessModules(Configuration configuration, Set<String> names, String source, String target) {
-        if (canDefineForRuntimeAccess(configuration, source) && canDefineForRuntimeAccess(configuration, target)) {
+    private static void addRuntimeAccessModules(Resolution resolution, Set<String> names, String source,
+            String target) {
+        if (canDefineForRuntimeAccess(resolution, source) && canDefineForRuntimeAccess(resolution, target)) {
             names.add(source);
             names.add(target);
         }
     }
 
-    private static void addRuntimeAccessModule(Configuration configuration, Set<String> names, String name) {
-        if (canDefineForRuntimeAccess(configuration, name)) {
+    private static void addRuntimeAccessModule(Resolution resolution, Set<String> names, String name) {
+        if (canDefineForRuntimeAccess(resolution, name)) {
             names.add(name);
         }
     }
 
-    private static boolean canDefineForRuntimeAccess(Configuration configuration, String name) {
-        return configuration.findModule(name)
-                .map(module -> module.reference())
-                .flatMap(ModuleReference::location)
-                .map(location -> !location.getScheme().equals("jrt") || !name.startsWith("java."))
-                .orElse(false);
+    private static boolean canDefineForRuntimeAccess(Resolution resolution, String name) {
+        return resolution.findModule(name)
+                         .filter(ResolvedClassModels::canDefineForRuntimeAccess)
+                         .isPresent();
+    }
+
+    private static boolean canDefineForRuntimeAccess(ResolvedModule module) {
+        return module.reference()
+                     .location()
+                     .map(location -> !location.getScheme().equals("jrt") || !module.name().startsWith("java."))
+                     .orElse(false);
     }
 
     private static ModuleFinder finder(Map<String, ModuleReference> references) {
@@ -701,20 +686,21 @@ public final class ResolvedClassModels {
         if (Files.isDirectory(path)) {
             try (var files = Files.walk(path)) {
                 files.filter(Files::isRegularFile)
-                        .map(file -> path.relativize(file)
-                                .toString()
-                                .replace(file.getFileSystem().getSeparator(), "/"))
-                        .filter(ResolvedClassModels::isClass)
-                        .forEach(resources::add);
+                     .map(
+                             file -> path.relativize(file)
+                                         .toString()
+                                         .replace(file.getFileSystem().getSeparator(), "/"))
+                     .filter(ResolvedClassModels::isClass)
+                     .forEach(resources::add);
             }
             return;
         }
         try (var jar = new JarFile(path.toFile(), true, ZipFile.OPEN_READ, Runtime.version())) {
             jar.versionedStream()
-                    .filter(entry -> !entry.isDirectory())
-                    .map(JarEntry::getName)
-                    .filter(ResolvedClassModels::isClass)
-                    .forEach(resources::add);
+               .filter(entry -> !entry.isDirectory())
+               .map(JarEntry::getName)
+               .filter(ResolvedClassModels::isClass)
+               .forEach(resources::add);
         }
     }
 
@@ -726,9 +712,9 @@ public final class ResolvedClassModels {
         var jar = new JarFile(path.toFile(), true, ZipFile.OPEN_READ, Runtime.version());
         try {
             var entry = jar.versionedStream()
-                    .filter(candidate -> !candidate.isDirectory())
-                    .filter(candidate -> candidate.getName().equals(resource))
-                    .findFirst();
+                           .filter(candidate -> !candidate.isDirectory())
+                           .filter(candidate -> candidate.getName().equals(resource))
+                           .findFirst();
             if (entry.isEmpty()) {
                 jar.close();
                 return Optional.empty();

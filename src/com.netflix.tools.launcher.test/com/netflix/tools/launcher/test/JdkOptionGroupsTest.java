@@ -39,7 +39,8 @@ class JdkOptionGroupsTest {
         assertEquals(1, supported(runtime, "--patch-module"));
         assertEquals(1, supported(runtime, "--add-opens"));
         assertEquals(1, supported(compilation, "--module-source-path"));
-        assertEquals(0, JdkCompilationOptions.enablePreview().argumentCount());
+        assertEquals(0, JdkCompilationOptions.enablePreview()
+                .argumentCount());
     }
 
     private static int supported(List<ToolOption> options, String name) {

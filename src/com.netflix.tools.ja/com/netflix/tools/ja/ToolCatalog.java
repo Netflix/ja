@@ -85,7 +85,7 @@ public final class ToolCatalog {
                 .toList();
     }
 
-    public ToolCatalog withDiscovered(ToolServices tools) {
+    public ToolCatalog withDiscovered(ToolRuntime tools) {
         var combined = new ArrayList<>(definitions());
         for (String name : tools.names()) {
             if (definitions.containsKey(name)) {

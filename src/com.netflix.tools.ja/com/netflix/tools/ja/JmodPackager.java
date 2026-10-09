@@ -53,9 +53,9 @@ final class JmodPackager {
         }
     }
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    JmodPackager(ToolServices tools) {
+    JmodPackager(ToolRuntime tools) {
         this.tools = tools;
     }
 

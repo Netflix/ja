@@ -15,6 +15,7 @@
 package com.netflix.tools.ja;
 
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassFile.ClassHierarchyResolverOption;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
@@ -33,11 +34,8 @@ final class ObservedCodeHash {
     private final Map<MethodModel, Component> methodHashes = new IdentityHashMap<>();
     private final Map<ClassModel, Component> classHashes = new IdentityHashMap<>();
 
-    String hash(
-            Collection<MethodModel> methods,
-            Collection<ClassModel> classes,
-            ClassHierarchyResolver hierarchy) {
-        var classFile = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(hierarchy));
+    String hash(Collection<MethodModel> methods, Collection<ClassModel> classes, ClassHierarchyResolver hierarchy) {
+        var classFile = ClassFile.of(ClassHierarchyResolverOption.of(hierarchy));
         var digest = new Sha256();
         methods.stream()
                 .distinct()
@@ -55,9 +53,9 @@ final class ObservedCodeHash {
     private static Component methodHash(ClassFile classFile, MethodModel method) {
         var content = classFile.build(
                 method.parent()
-                        .orElseThrow()
-                        .thisClass()
-                        .asSymbol(),
+                      .orElseThrow()
+                      .thisClass()
+                      .asSymbol(),
                 builder -> builder.transformMethod(method, MethodTransform.ACCEPT_ALL));
         return new Component(methodName(method), Sha256.hashBytes(content));
     }
@@ -65,8 +63,7 @@ final class ObservedCodeHash {
     private static Component classHash(ClassFile classFile, ClassModel model) {
         var content = classFile.build(
                 model.thisClass().asSymbol(),
-                builder -> builder.transform(model,
-                        ClassTransform.transformingMethods(MethodTransform.dropping(CodeModel.class::isInstance))));
+                builder -> builder.transform(model, ClassTransform.transformingMethods(MethodTransform.dropping(CodeModel.class::isInstance))));
         return new Component(className(model), Sha256.hashBytes(content));
     }
 

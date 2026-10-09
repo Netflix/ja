@@ -38,9 +38,9 @@ import com.netflix.tools.ja.ToolCommands.Discovery;
 final class ApplicationPackager {
     private static final String LAUNCHER_MODULE = "com.netflix.tools.launcher";
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    ApplicationPackager(ToolServices tools) {
+    ApplicationPackager(ToolRuntime tools) {
         this.tools = tools;
     }
 

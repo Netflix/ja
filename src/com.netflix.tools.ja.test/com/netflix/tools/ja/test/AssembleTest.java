@@ -45,7 +45,7 @@ import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -53,12 +53,65 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AssembleTest {
     private static final String COMPLETE_RUNTIME_ACCESS_OPTIONS = "add-exports,add-modules,add-opens,enable-final-field-mutation,enable-native-access,enable-preview," + "module-path,upgrade-module-path";
+
+    @Test
+    void assembledBinaryJarsHaveManifests(@TempDir Path directory) throws Exception {
+        String moduleName = "com.example.application";
+        sourceModule(directory, moduleName);
+
+        Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path artifact = artifacts(directory).resolve(moduleName + ".jar");
+        try (var archive = new JarFile(artifact.toFile())) {
+            assertNotNull(archive.getManifest(), artifact.toString());
+        }
+    }
+
+    @Test
+    void preservesSourceManifestAndSynthesizesMainClass(@TempDir Path directory) throws Exception {
+        String moduleName = "com.example.application";
+        Path module = sourceModule(directory, moduleName);
+        Files.writeString(module.resolve("module-info.java"),
+                """
+                /** @mainClass com.example.Main */
+                module com.example.application {}
+                """);
+        Path packageDirectory = Files.createDirectories(module.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Main.java"),
+                """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] arguments) {}
+                }
+                """);
+        var sourceManifest = new Manifest();
+        sourceManifest.getMainAttributes().put(Name.MANIFEST_VERSION, "1.0");
+        sourceManifest.getMainAttributes().putValue("Implementation-Title", "Example application");
+        Path manifestPath = module.resolve("META-INF/MANIFEST.MF");
+        Files.createDirectories(manifestPath.getParent());
+        try (var output = Files.newOutputStream(manifestPath)) {
+            sourceManifest.write(output);
+        }
+
+        Result result = run(directory, "assemble", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path artifact = artifacts(directory).resolve(moduleName + ".jar");
+        try (var archive = new JarFile(artifact.toFile())) {
+            Manifest manifest = archive.getManifest();
+            assertNotNull(manifest);
+            assertEquals("Example application", manifest.getMainAttributes().getValue("Implementation-Title"));
+            assertEquals("com.example.Main", manifest.getMainAttributes().getValue(Name.MAIN_CLASS));
+        }
+    }
 
     @Test
     void packagedRuntimeAccessRequirementsMustBeAuthorized(@TempDir Path directory) throws Exception {
@@ -86,7 +139,8 @@ class AssembleTest {
     void includesModuleDeploymentMetadata(@TempDir Path directory) throws Exception {
         String moduleName = "com.example.library";
         Path module = sourceModule(directory, moduleName);
-        String metadata = """
+        String metadata =
+                """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
                   <name>Example library</name>
@@ -102,12 +156,16 @@ class AssembleTest {
         assertEquals(0, result.exitCode(), result.error());
         Path output = artifacts(directory);
         assertEquals(metadata, Files.readString(output.resolve(moduleName + ".pom")));
-        try (var binary = new ZipFile(output.resolve(moduleName + ".jar").toFile());
-             var sources = new ZipFile(output.resolve(moduleName + "-sources.jar").toFile())) {
-            assertEquals(metadata, new String(binary.getInputStream(binary.getEntry(
-                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
-            assertEquals(metadata, new String(sources.getInputStream(sources.getEntry(
-                    "META-INF/com.netflix.tools.ja/maven/deploy.pom")).readAllBytes(), StandardCharsets.UTF_8));
+        try (var binary = new ZipFile(output.resolve(moduleName + ".jar")
+                     .toFile());
+             var sources = new ZipFile(output.resolve(moduleName + "-sources.jar")
+                     .toFile())) {
+            assertEquals(metadata, new String(binary.getInputStream(binary.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom"))
+                    .readAllBytes(),
+                            StandardCharsets.UTF_8));
+            assertEquals(metadata, new String(sources.getInputStream(sources.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom"))
+                    .readAllBytes(),
+                            StandardCharsets.UTF_8));
             assertNull(binary.getEntry("module-info.pom"));
             assertNull(sources.getEntry("module-info.pom"));
         }
@@ -229,7 +287,7 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
+        ToolRuntime tools = ToolRuntime.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", (output, arguments) -> 0));
         ToolDefinition testing = new ToolDefinition(
                 "testing",
@@ -299,7 +357,8 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(jig,
+        ToolRuntime tools = ToolRuntime.of(
+                jig,
                 ToolProvider.findFirst("javac").orElseThrow(),
                 ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", (output, arguments) -> 0));
@@ -367,7 +426,7 @@ class AssembleTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void assemblyExportsAnAutomaticModuleForAnyAutomaticDependency(boolean explicitName, @TempDir Path directory) throws Exception {
+    void assemblyDowngradesOnlyForFilenameDerivedAutomaticDependencies(boolean explicitName, @TempDir Path directory) throws Exception {
         Path source = sourceModule(directory, "com.example.app");
         Files.writeString(source.resolve("module-info.java"),
                 """
@@ -375,11 +434,22 @@ class AssembleTest {
                     requires org.example.library;
                 }
                 """);
+        Path deploymentMetadata = source.resolve("META-INF/com.netflix.tools.ja/maven/deploy.pom");
+        Files.createDirectories(deploymentMetadata.getParent());
+        Files.writeString(deploymentMetadata,
+                """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <name>Example application</name>
+                </project>
+                """);
         Path automatic = explicitName ? writeAutomaticJar(directory.resolve("legacy-library-1.2.3.jar"), "org.example.library") : TestModules.writeAutomaticJar(directory.resolve("org.example.library-1.2.3.jar"));
         ToolProvider jig = tool(
                 "jig",
                 (output, arguments) -> {
-                    assertTrue(arguments.contains("--no-compile-diagnostics"));
+                    if (!arguments.contains("--generate-consumer-pom")) {
+                        assertTrue(arguments.contains("--no-compile-diagnostics"));
+                    }
                     Path module = Files.createDirectories(directory.resolve("compiled"));
                     if (explicitName) {
                         TestModules.writeModuleInfo(module, "com.example.app", "org.example.library");
@@ -391,6 +461,28 @@ class AssembleTest {
                     if (!explicitName) {
                         Files.writeString(packageDirectory.resolve("Provider.class"), "provider");
                     }
+                    int consumerPom = arguments.indexOf("--generate-consumer-pom");
+                    if (consumerPom >= 0) {
+                        Path pomOutput = Files.createDirectories(Path.of(arguments.get(consumerPom + 1)).resolve("com.example.app"));
+                        Files.writeString(pomOutput.resolve("com.example.app-1.0.pom"),
+                                """
+                                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                                  <modelVersion>4.0.0</modelVersion>
+                                  <groupId>com.example</groupId>
+                                  <artifactId>com.example.app</artifactId>
+                                  <version>1.0</version>
+                                  <packaging>jar</packaging>
+                                  <dependencies>
+                                    <dependency>
+                                      <groupId>org.example</groupId>
+                                      <artifactId>org.example.library</artifactId>
+                                      <version>1.2.3</version>
+                                    </dependency>
+                                  </dependencies>
+                                </project>
+                                """);
+                        return 0;
+                    }
                     int write = arguments.indexOf("--write-argfile");
                     if (write >= 0) {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -399,7 +491,7 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(
+        ToolRuntime tools = ToolRuntime.of(
                 jig,
                 ToolProvider.findFirst("jar").orElseThrow(),
                 ToolProvider.findFirst("jmod").orElseThrow(),
@@ -418,36 +510,46 @@ class AssembleTest {
                 .find("com.example.app")
                 .orElseThrow()
                 .descriptor();
-        assertTrue(descriptor.isAutomatic());
-        try (var archive = new JarFile(artifact.toFile())) {
-            assertNull(archive.getEntry("module-info.class"));
-            assertEquals("com.example.app",
-                    archive.getManifest()
-                           .getMainAttributes()
-                           .getValue("Automatic-Module-Name"));
-            if (!explicitName) {
+        Path jmod = artifact.resolveSibling("com.example.app.jmod");
+        if (explicitName) {
+            assertFalse(descriptor.isAutomatic());
+            assertTrue(descriptor.requires().stream()
+                    .anyMatch(requirement -> requirement.name().equals("org.example.library")));
+            assertTrue(Files.isRegularFile(jmod));
+            assertEquals("", errors.toString());
+        } else {
+            assertTrue(descriptor.isAutomatic());
+            try (var archive = new JarFile(artifact.toFile())) {
+                assertNull(archive.getEntry("module-info.class"));
+                assertEquals("com.example.app",
+                        archive.getManifest()
+                               .getMainAttributes()
+                               .getValue("Automatic-Module-Name"));
                 assertEquals("com.example.Provider\n", new String(archive.getInputStream(archive.getEntry("META-INF/services/java.util.spi.ToolProvider"))
                         .readAllBytes(),
-                        StandardCharsets.UTF_8));
+                                StandardCharsets.UTF_8));
             }
+            assertFalse(Files.exists(jmod));
+            String pom = Files.readString(artifact.resolveSibling("com.example.app.pom"));
+            assertTrue(pom.contains("<name>Example application</name>"), pom);
+            assertTrue(pom.contains("<artifactId>org.example.library</artifactId>"), pom);
+            assertEquals(
+                    """
+                    warning: com.example.app requires automatic modules with filename-derived names:
+                      org.example.library
+                    com.example.app will be exported as an automatic module.
+                    The com.example.app jmod artifact will be omitted.
+                    """,
+                    errors.toString().replace(System.lineSeparator(), "\n"));
         }
-        Path jmod = artifact.resolveSibling("com.example.app.jmod");
-        assertFalse(Files.exists(jmod));
-        assertEquals(
-                """
-                warning: com.example.app requires automatic modules:
-                  org.example.library
-                com.example.app will be exported as an automatic module.
-                The com.example.app jmod artifact will be omitted.
-                """,
-                errors.toString().replace(System.lineSeparator(), "\n"));
     }
 
     @Test
     void assemblesAJmodSourceLayout(@TempDir Path directory) throws Exception {
         Path module = directory.resolve("src/com.example.tool");
         Path classes = moduleAt(module.resolve("classes"), "com.example.tool");
-        String metadata = """
+        String metadata =
+                """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
                   <name>Example tool</name>
@@ -473,8 +575,10 @@ class AssembleTest {
         assertTrue(jmodEntries(artifact).contains("classes/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
         assertFalse(jmodEntries(artifact).contains("classes/module-info.pom"));
         assertEquals(metadata, Files.readString(moduleVersion.resolve("com.example.tool.pom")));
-        try (var binary = new ZipFile(moduleVersion.resolve("com.example.tool.jar").toFile());
-             var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar").toFile())) {
+        try (var binary = new ZipFile(moduleVersion.resolve("com.example.tool.jar")
+                     .toFile());
+             var sources = new ZipFile(moduleVersion.resolve("com.example.tool-sources.jar")
+                     .toFile())) {
             assertTrue(binary.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom") != null);
             assertNull(binary.getEntry("module-info.pom"));
             assertTrue(sources.getEntry("module-info.java") != null);

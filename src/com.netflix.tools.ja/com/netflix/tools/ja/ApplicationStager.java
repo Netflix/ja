@@ -40,11 +40,11 @@ import com.netflix.tools.ja.ToolCommands.Discovery;
 
 /** Stages the application content shared by linked and standalone installations. */
 final class ApplicationStager {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final CommandModuleFactory commandModules;
     private final NativeLauncher nativeLauncher;
 
-    ApplicationStager(ToolServices tools, CommandModuleFactory commandModules,
+    ApplicationStager(ToolRuntime tools, CommandModuleFactory commandModules,
                       NativeLauncher nativeLauncher) {
         this.tools = tools;
         this.commandModules = commandModules == null ? this::generateDefaultCommandModule : commandModules;

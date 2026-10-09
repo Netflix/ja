@@ -47,8 +47,7 @@ public enum BuiltinCommand {
             standardOptions("module-path", "upgrade-module-path").withCompileDiagnostics()),
     RUN("run", HelpGroup.DEVELOP, "Run a module", new LaunchJava(),
             javaLauncher()),
-    TEST("test", HelpGroup.DEVELOP, "Run tests", new ToolBacked("junit"),
-            ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS),
+    TEST("test", HelpGroup.DEVELOP, "Run tests", new ToolBacked("junit"), ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS),
     BENCH("bench", HelpGroup.DEVELOP, "Run benchmarks", new ToolBacked("jmh"),
             runtimeTool()),
 

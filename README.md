@@ -7,6 +7,7 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 
 `ja` uses the Java module descriptor as the source of truth throughout development. Start with one module in the current directory, add dependencies without changing the tools, and move the module beneath `src` when it enters source control or develops additional module boundaries.
 
+- Install Java applications from Maven repositories as ordinary commands with dedicated runtimes
 - Declare dependencies directly in `module-info.java`
 - Build, test, and distribute modules and applications from the same module declarations
 - Preserve module boundaries and integrity from development through distribution
@@ -21,7 +22,7 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 > [!NOTE]
 > Netflix engineers should use the internally bundled toolchain rather than installing `ja` or its tools separately.
 
-Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/).
+Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer creates a `ja`-enabled copy without modifying the source JDK.
 
 The installer supports two first-class installation styles.
 
@@ -59,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
 
 The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK.
 
-Neither installation modifies shell configuration. The installer prints the activation and completion commands to add to your shell profile. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for custom locations, exact versions, and environment-manager guidance.
+Neither installation modifies shell configuration. The installer prints the activation and completion commands to add to your shell profile. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, custom locations, version pinning, shell setup, and environment-manager guidance.
 
 Take `ja` for a spin by installing an application:
 
@@ -78,30 +79,37 @@ $ cowsay 'Holy cow, Java modules!'
 
 ## Quick start
 
-Initialize the current directory as a module and declare its main class:
+Initialize the current directory as a module, declare its main class, and add a dependency by Java module name:
 
 ```sh
 ja init --main-class com.example.hello.Main com.example.hello
+ja require org.apache.commons.text@1.13.1
 ```
 
-This creates `module-info.java` in the current directory without moving existing source:
+These commands create `module-info.java` in the current directory without moving existing source. `ja` records the dependency version alongside the standard `requires` directive:
 
 ```java
 /**
  * @mainClass com.example.hello.Main
  */
 module com.example.hello {
+    requires org.apache.commons.text; // @1.13.1
 }
 ```
 
-Create `com/example/hello/Main.java`:
+Create `com/example/hello/Main.java` and use the dependency normally:
 
 ```java
 package com.example.hello;
 
+import java.util.Map;
+
+import org.apache.commons.text.StringSubstitutor;
+
 public final class Main {
     public static void main(String[] arguments) {
-        System.out.println("Hello");
+        var values = Map.of("name", "modules");
+        System.out.println(StringSubstitutor.replace("Hello, ${name}!", values));
     }
 }
 ```
@@ -112,20 +120,34 @@ Run your shiny new modular application:
 ja run
 ```
 
+```text
+Hello, modules!
+```
+
 The working directory determines which modules are in scope. `ja` supplies each command or tool with the standard Java arguments it accepts for those modules:
 
 ```sh
-ja tool javap com.example.hello.Main
+ja tool jdeps
 ```
 
 When moving to source control move to a module source path layout, `src/com.example.hello`. With that layout, `ja init` creates new modules alongside it under `src`.
 
 While `com.example.hello` is fine for this example, for a module you intend to publish, choose a globally meaningful reverse-domain name following [Sonatype's namespace conventions](https://central.sonatype.org/register/namespace/), using a domain you own or a namespace you can verify, such as `io.github.owner.application`.
 
+## Bundled Tools
+
+Several bundled tools underpin the command implementation:
+
+- [jig](https://github.com/Netflix/jig) performs module version resolution, compilation and assembly, outputting standard module system arguments for use with other tools. It is also the bridge to and from Maven repositories providing a standalone module proxy and publishing commands
+- [jfmt](https://github.com/Netflix/jfmt) formats source using the Code Conventions for the Java Programming Language, adapted for the modern Java language. Avoids the very common whitespace, indentation, import ordering and qualified class references introduced in agent written code
+- [jist](https://github.com/Netflix/jist) provides source aware symbol search, providing a grep style interface for understanding class files and their associated sources. Gives coding agents access to symbols and sources without indexing, LSPs or MCPs while interoperating with other build tools via an argument file contract
+- [jdocserver](https://github.com/Netflix/jdocserver) serves locally browsable API documentation
+
 ## Documentation
 
 The [wiki](https://github.com/Netflix/ja/wiki) covers:
 
+- [Installation](https://github.com/Netflix/ja/wiki/Installation)
 - [Module layout](https://github.com/Netflix/ja/wiki/Module-Layout)
 - [Dependencies](https://github.com/Netflix/ja/wiki/Dependencies)
 - [Development](https://github.com/Netflix/ja/wiki/Development)

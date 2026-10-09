@@ -50,6 +50,8 @@ final class ModuleAssembler {
             Path jarArguments,
             Path javadocArguments,
             Path javadocOutput,
+            List<String> resolutionArguments,
+            String moduleVersion,
             String targetPlatform,
             boolean jmod) {}
 
@@ -63,14 +65,14 @@ final class ModuleAssembler {
             "addOpens:X",
             "addExports:X");
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final List<ToolDefinition> definitions;
     private final ResolutionOptions javadocOptions;
     private final JarPackager jars;
     private final JmodPackager jmods;
     private final ApplicationPackager applications;
 
-    ModuleAssembler(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+    ModuleAssembler(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
         this.javadocOptions = javadocOptions;
@@ -172,6 +174,8 @@ final class ModuleAssembler {
                             jarArguments,
                             javadocArguments,
                             javadocOutput,
+                            List.copyOf(arguments),
+                            options.version(),
                             options.targetPlatform(),
                             options.jmod()));
         }
@@ -206,11 +210,10 @@ final class ModuleAssembler {
     private int assemble(Plan plan, Path output, InputStream in,
                          PrintStream out, PrintStream err)
             throws IOException {
-        copyDeploymentMetadata(plan, output);
         List<String> compileArguments = ArgumentFiles.parse(Files.readString(plan.compileArguments()));
         List<String> runtimeArguments = ArgumentFiles.parse(Files.readString(plan.runtimeArguments()));
-        int sourcesResult = archiveSources(plan, output.resolve(plan.moduleName() + "-sources.jar"), in,
-                out, err);
+        int sourcesResult = archiveSources(plan, output.resolve(plan.moduleName() + "-sources.jar"), in, out,
+                err);
         if (sourcesResult != 0) {
             return sourcesResult;
         }
@@ -225,8 +228,7 @@ final class ModuleAssembler {
         }
 
         var moduleArguments = ArgumentFiles.parse(Files.readString(plan.jarArguments()));
-        try (var filteredPath = FilteredModulePath.prepare(plan.observableSources(), compileArguments,
-                runtimeArguments, definitions)) {
+        try (var filteredPath = FilteredModulePath.prepare(plan.observableSources(), compileArguments, runtimeArguments, definitions)) {
             var filteredArguments = filteredPath.arguments();
             var content = filteredPath.module(plan.moduleName());
             var jmodArtifacts = new Artifacts(
@@ -257,9 +259,14 @@ final class ModuleAssembler {
                     in,
                     out,
                     err);
-            if (jar.exitCode() != 0 || jar.automatic()) {
+            if (jar.exitCode() != 0) {
                 return jar.exitCode();
             }
+            if (jar.automatic()) {
+                writeAutomaticModulePom(plan, output, err);
+                return 0;
+            }
+            copyDeploymentMetadata(plan, output);
             if (discovery == null) {
                 discovery = ToolCommands.discover(
                         plan.moduleName(), ToolArguments.modulePath(filteredArguments));
@@ -283,6 +290,31 @@ final class ModuleAssembler {
                     in,
                     out,
                     err);
+        }
+    }
+
+    private void writeAutomaticModulePom(Plan plan, Path output, PrintStream err) throws IOException {
+        Path directory = plan.compilationRoot()
+                             .getParent()
+                             .resolve("consumer-poms");
+        var arguments = new ArrayList<>(plan.resolutionArguments());
+        arguments.add("--generate-consumer-pom");
+        arguments.add(directory.toString());
+        int result;
+        try (var toolOutput = new PrintStream(OutputStream.nullOutputStream())) {
+            result = tools.run("jig", InputStream.nullInputStream(), toolOutput, err,
+                    arguments.toArray(String[]::new));
+        }
+        if (result != 0) {
+            throw new ToolExecutionException(result);
+        }
+        Path generated = directory.resolve(plan.moduleName()).resolve(plan.moduleName() + "-" + plan.moduleVersion() + ".pom");
+        Path target = output.resolve(plan.moduleName() + ".pom");
+        Path metadata = ModuleMetadata.deploymentPom(plan.moduleSource());
+        if (Files.isRegularFile(metadata)) {
+            MavenPomMetadata.merge(generated, metadata, target);
+        } else {
+            Files.copy(generated, target);
         }
     }
 
@@ -313,7 +345,8 @@ final class ModuleAssembler {
     }
 
     private int archiveSources(Plan plan, Path archive, InputStream in,
-                               PrintStream out, PrintStream err) throws IOException {
+            PrintStream out, PrintStream err)
+            throws IOException {
         Path content = plan.moduleSource();
         Path deploymentPom = ModuleMetadata.deploymentPom(content);
         boolean addDeploymentPom = Files.isRegularFile(deploymentPom) && !deploymentPom.startsWith(content);
@@ -322,7 +355,9 @@ final class ModuleAssembler {
             return archive(content, archive, in, out, err);
         }
 
-        Path staged = Files.createDirectory(plan.compilationRoot().getParent().resolve("sources"));
+        Path staged = Files.createDirectory(plan.compilationRoot()
+                .getParent()
+                .resolve("sources"));
         copyTree(content, staged);
         Files.deleteIfExists(staged.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
         if (addDeploymentPom) {
@@ -336,7 +371,8 @@ final class ModuleAssembler {
     private static void copyTree(Path source, Path destination) throws IOException {
         try (var paths = Files.walk(source)) {
             for (Path input : paths.filter(Files::isRegularFile).toList()) {
-                Path output = destination.resolve(source.relativize(input).toString());
+                Path output = destination.resolve(source.relativize(input)
+                        .toString());
                 Files.createDirectories(output.getParent());
                 Files.copy(input, output, StandardCopyOption.COPY_ATTRIBUTES);
             }

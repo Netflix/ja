@@ -19,16 +19,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import com.netflix.tools.ja.ExecutionTrace.Event;
+import com.netflix.tools.ja.ResolvedClassModels.ModuleState;
+
 /** Observed code, module inputs, and runtime image for one test method. */
-public record TestExecution(String selector,
-                            String codeHash,
-                            String observedClassHash,
-                            List<ResolvedClassModels.ModuleState> moduleStates,
-                            String runtimeImageHash,
-                            Set<ExecutionTrace.Event> trace) {
-    public TestExecution(String selector, String codeHash,
-            List<ResolvedClassModels.ModuleState> moduleStates, String runtimeImageHash,
-            Set<ExecutionTrace.Event> trace) {
+public record TestExecution(String selector, String codeHash, String observedClassHash,
+        List<ModuleState> moduleStates, String runtimeImageHash, Set<Event> trace) {
+    public TestExecution(String selector, String codeHash, List<ModuleState> moduleStates,
+                         String runtimeImageHash, Set<Event> trace) {
         this(selector, codeHash, "", moduleStates, runtimeImageHash, trace);
     }
 
@@ -41,7 +39,7 @@ public record TestExecution(String selector,
             throw new IllegalArgumentException("runtimeImageHash is empty");
         }
         moduleStates = moduleStates.stream()
-                .sorted(Comparator.comparing(ResolvedClassModels.ModuleState::moduleName))
+                .sorted(Comparator.comparing(ModuleState::moduleName))
                 .toList();
         trace = Set.copyOf(trace);
     }
@@ -54,8 +52,9 @@ public record TestExecution(String selector,
                 .add(moduleStates.size());
         for (var module : moduleStates) {
             digest.add(module.moduleName())
-                    .add(module.moduleHash().toString())
-                    .add(module.patchHashes().size());
+                  .add(module.moduleHash().toString())
+                  .add(module.patchHashes()
+                             .size());
             for (var patch : module.patchHashes()) {
                 digest.add(patch.toString());
             }

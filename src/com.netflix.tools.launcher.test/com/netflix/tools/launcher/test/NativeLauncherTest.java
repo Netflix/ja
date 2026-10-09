@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,6 +45,9 @@ class NativeLauncherTest {
             #include <stdlib.h>
             #include <string.h>
             #include <unistd.h>
+            #ifdef __APPLE__
+            #include <dlfcn.h>
+            #endif
 
             typedef int jint;
             typedef unsigned char jboolean;
@@ -66,6 +71,16 @@ class NativeLauncherTest {
                     jboolean cpwildcard,
                     jboolean javaw,
                     jint ergo_class) {
+            #ifdef __APPLE__
+                // macOS libjli calls the executable's main again during startup.
+                static int reentered = 0;
+                if (getenv("TEST_REENTER") && !reentered) {
+                    reentered = 1;
+                    int (*entry)(int, char **) = dlsym(RTLD_DEFAULT, "main");
+                    if (!entry) return 95;
+                    return entry(argc, argv);
+                }
+            #endif
                 const char *configuration = NULL;
                 const char *cache_output = NULL;
                 const char *log = NULL;
@@ -355,6 +370,53 @@ class NativeLauncherTest {
         assertEquals(1, invalid.exitCode());
         assertTrue(invalid.output().contains("invalid -L-aot mode; expected auto, create, or off"),
                 invalid.output());
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void explicitOffSurvivesJliReentry() throws Exception {
+        Path phases = temporaryDirectory.resolve("phases");
+        Path args = temporaryDirectory.resolve("args");
+        Result result = run(
+                Map.of("TEST_REENTER", "1", "TEST_PHASE_TRACE", phases.toString(), "TEST_ARGS",
+                        args.toString()),
+                List.of("-L-aot=off", "argument"));
+
+        assertEquals(0, result.exitCode(), result.output());
+        assertEquals(List.of("run"), Files.readAllLines(phases));
+        assertEquals(List.of("argument"), Files.readAllLines(args));
+        assertFalse(result.output().contains("AOT training run"),
+                result.output());
+        try (var entries = Files.list(cache)) {
+            assertEquals(0, entries.count());
+        }
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void toolArgumentsAreNotReparsedDuringJliReentry() throws Exception {
+        Path phases = temporaryDirectory.resolve("phases");
+        Path args = temporaryDirectory.resolve("args");
+        Result result = run(
+                Map.of("TEST_REENTER", "1", "TEST_PHASE_TRACE", phases.toString(), "TEST_ARGS",
+                        args.toString()),
+                List.of("-L-aot=off", "--", "-L-aot=create", "argument"));
+
+        assertEquals(0, result.exitCode(), result.output());
+        assertEquals(List.of("run"), Files.readAllLines(phases));
+        assertEquals(List.of("-L-aot=create", "argument"), Files.readAllLines(args));
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void explicitCreateSurvivesJliReentry() throws Exception {
+        Files.writeString(image.resolve("conf/com.netflix.tools.launcher/probe.args"), "-L-aot=off\n");
+        Path phases = temporaryDirectory.resolve("phases");
+        Result result = run(Map.of("TEST_REENTER", "1", "TEST_PHASE_TRACE", phases.toString()), List.of("-L-aot=create"));
+
+        assertEquals(0, result.exitCode(), result.output());
+        assertEquals(List.of("record", "create", "run"), Files.readAllLines(phases));
+        assertTrue(Files.isRegularFile(cacheDirectory(result.output()).resolve("aot")));
     }
 
     @Test
@@ -864,8 +926,12 @@ class NativeLauncherTest {
 
     private static long staticTlsSize(Path binary) throws IOException {
         ByteBuffer elf = ByteBuffer.wrap(Files.readAllBytes(binary)).order(ByteOrder.LITTLE_ENDIAN);
-        if (elf.get(0) != 0x7f || elf.get(1) != 'E' || elf.get(2) != 'L' || elf.get(3) != 'F'
-                || elf.get(4) != 2 || elf.get(5) != 1) {
+        if (elf.get(0) != 0x7f
+                || elf.get(1) != 'E'
+                || elf.get(2) != 'L'
+                || elf.get(3) != 'F'
+                || elf.get(4) != 2
+                || elf.get(5) != 1) {
             throw new IOException("Expected a little-endian ELF64 executable: " + binary);
         }
         long programHeaders = elf.getLong(32);

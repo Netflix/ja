@@ -30,7 +30,7 @@ import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,7 +42,7 @@ class CommandAvailabilityTest {
         var commandLine = commandLine(BuiltinCommand.FMT);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
+                () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
         assertEquals("fmt is unavailable; missing tool: jfmt", failure.getMessage());
     }
@@ -52,7 +52,7 @@ class CommandAvailabilityTest {
         var commandLine = commandLine(BuiltinCommand.GENERATE);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
+                () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
         assertEquals("generate is unavailable; missing tool: javac", failure.getMessage());
     }
@@ -62,7 +62,7 @@ class CommandAvailabilityTest {
         var commandLine = commandLine(BuiltinCommand.ASSEMBLE);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
+                () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
         assertEquals("assemble is unavailable; missing tools: jar, javadoc", failure.getMessage());
     }
@@ -72,7 +72,7 @@ class CommandAvailabilityTest {
         var commandLine = commandLine(new Doc(new Terminal("java.lang.String")));
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
+                () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
         assertEquals("doc is unavailable; missing tools: jdocserver, jist", failure.getMessage());
     }
@@ -82,7 +82,7 @@ class CommandAvailabilityTest {
         var commandLine = commandLine(new Source("java.lang.String"));
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine, ToolServices.of(), new ToolCatalog(List.of())));
+                () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
         assertEquals("source is unavailable; missing tool: jist", failure.getMessage());
     }
@@ -100,7 +100,7 @@ class CommandAvailabilityTest {
                 List.of());
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> CommandAvailability.require(commandLine(BuiltinCommand.FMT), ToolServices.of(), new ToolCatalog(List.of(formatter))));
+                () -> CommandAvailability.require(commandLine(BuiltinCommand.FMT), ToolRuntime.of(), new ToolCatalog(List.of(formatter))));
 
         assertEquals("fmt is unavailable; missing tool: jfmt", failure.getMessage());
     }

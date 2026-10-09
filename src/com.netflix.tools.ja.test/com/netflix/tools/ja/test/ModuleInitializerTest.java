@@ -26,7 +26,7 @@ import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ModuleSourcePath;
 import com.netflix.tools.ja.ToolCatalog;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -173,7 +173,7 @@ class ModuleInitializerTest {
         commandLineArguments[0] = "init";
         System.arraycopy(arguments, 0, commandLineArguments, 1, arguments.length);
         var commandLine = JaInvocation.parse(workingDirectory, commandLineArguments);
-        return new CommandRunner(ModuleLayer.boot(), ToolServices.of(), new ToolCatalog(List.of()),
+        return new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(), new ToolCatalog(List.of()),
                 () -> {
                     throw new AssertionError("init must not create temporary compilation output");
                 })

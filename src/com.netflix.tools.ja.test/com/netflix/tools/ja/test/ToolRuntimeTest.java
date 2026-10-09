@@ -27,15 +27,15 @@ import com.netflix.tools.cli.CommandLine.CompletionRequest;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.cli.CommandLine.ToolOption;
 import com.netflix.tools.ja.ToolCatalog;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class ToolServicesTest {
+class ToolRuntimeTest {
     @Test
     void recognizesTheCompilerFromItsJavaCompilerContract() {
-        var tools = ToolServices.load(ModuleLayer.boot());
+        var tools = ToolRuntime.load(ModuleLayer.boot());
 
         assertEquals(
                 Set.of("module-path", "processor-module-path", "upgrade-module-path", "module-source-path", "module=list", "module-version",
@@ -45,7 +45,7 @@ class ToolServicesTest {
 
     @Test
     void addsCompilerToolsToACatalogWithoutMetadata() {
-        var tools = ToolServices.load(ModuleLayer.boot());
+        var tools = ToolRuntime.load(ModuleLayer.boot());
 
         var definition = new ToolCatalog(List.of()).withDiscovered(tools).definition("javac");
 
@@ -55,21 +55,21 @@ class ToolServicesTest {
 
     @Test
     void declaredResolutionOptionsOverrideTheImplicitContract() {
-        var tools = ToolServices.of(new CheckingTool());
+        var tools = ToolRuntime.of(new CheckingTool());
 
         assertEquals(Set.of("module-path"), tools.resolutionOptions("probe", Set.of("module-path", "verbose")));
     }
 
     @Test
     void infersResolutionOptionsWhenNoneAreDeclared() {
-        var tools = ToolServices.of(new CheckingTool());
+        var tools = ToolRuntime.of(new CheckingTool());
 
         assertEquals(Set.of("module", "enable-preview"), tools.resolutionOptions("probe", Set.of()));
     }
 
     @Test
     void completesThroughTheStandardToolProtocol() {
-        var tools = ToolServices.of(new CompletingProbe(), new CheckingTool());
+        var tools = ToolRuntime.of(new CompletingProbe(), new CheckingTool());
 
         assertEquals(List.of("--help"),
                 tools.complete("completing", new CompletionRequest(ToolInvocation.of(), "--h")).stream()
@@ -88,7 +88,7 @@ class ToolServicesTest {
 
     @Test
     void usesThePlatformOptionCheckerBeforeManifestFallback() {
-        var tools = ToolServices.load(ModuleLayer.boot());
+        var tools = ToolRuntime.load(ModuleLayer.boot());
         var checker = tools.optionChecker("javac", option -> option.equals("--module-path") ? 1 : -1);
 
         assertEquals(1, checker.isSupportedOption("--release"));

@@ -13,7 +13,8 @@
  */
 
 module com.netflix.tools.jmh {
-    opens com.netflix.tools.jmh to org.junit.platform.commons;
+    opens com.netflix.tools.jmh to
+            org.junit.platform.commons;
 
     requires org.openjdk.jmh.core; // @1.37
     requires org.openjdk.jmh.generator.asm; // @1.37
@@ -25,5 +26,6 @@ module com.netflix.tools.jmh {
     requires java.compiler;
     requires static org.junit.jupiter; // @6.1.3
 
-    provides java.util.spi.ToolProvider with com.netflix.tools.jmh.JmhToolProvider;
+    provides java.util.spi.ToolProvider with
+            com.netflix.tools.jmh.JmhToolProvider;
 }

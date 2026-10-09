@@ -41,9 +41,9 @@ final class ModuleRequirements {
             String selected) {}
 
     private final ModuleResolver moduleResolver;
-    private final ToolServices tools;
+    private final ToolRuntime tools;
 
-    ModuleRequirements(ModuleResolver moduleResolver, ToolServices tools) {
+    ModuleRequirements(ModuleResolver moduleResolver, ToolRuntime tools) {
         this.moduleResolver = moduleResolver;
         this.tools = tools;
     }
@@ -151,7 +151,10 @@ final class ModuleRequirements {
         arguments.add("--update-module-hashes");
         List<String> resolved = moduleResolver.resolve(
                 arguments,
-                new ResolutionOptions(Set.of("module-path", "module-source-path", "upgrade-module-path", "enable-native-access", "enable-final-field-mutation", "add-opens", "add-exports"), true),
+                new ResolutionOptions(
+                        Set.of("module-path", "module-source-path", "upgrade-module-path", "enable-native-access", "enable-final-field-mutation", "add-opens",
+                                "add-exports"),
+                        true),
                 in,
                 err);
         return AutomaticModules.find(resolved);

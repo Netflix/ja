@@ -15,9 +15,10 @@
 package com.netflix.tools.ja.test;
 
 import java.io.ByteArrayOutputStream;
-import java.io.PrintWriter;
+import java.io.PrintStream;
 import java.lang.classfile.Annotation;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassFile.ClassHierarchyResolverOption;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute;
 import java.lang.constant.ClassDesc;
@@ -68,7 +69,7 @@ class ExecutionTraceInstrumentationTest {
         var supplierType = ClassDesc.of("example.RootSupplier");
         var supplierInterface = ClassDesc.of("java.util.function.Supplier");
         var hierarchy = ClassHierarchyResolver.of(Set.of(), Map.of(supplierType, CD_Object)).orElse(ClassHierarchyResolver.defaultResolver());
-        var original = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(hierarchy)).build(testType,
+        var original = ClassFile.of(ClassHierarchyResolverOption.of(hierarchy)).build(testType,
                 builder -> {
                     builder.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER);
                     builder.withMethodBody(
@@ -135,8 +136,8 @@ class ExecutionTraceInstrumentationTest {
         var trace = new ExecutionTrace();
         int result;
         try (var ignored = ExecutionTraceInstrumentation.recordWith(trace);
-             var out = new PrintWriter(output, true, StandardCharsets.UTF_8);
-             var err = new PrintWriter(errors, true, StandardCharsets.UTF_8)) {
+             var out = new PrintStream(output, true, StandardCharsets.UTF_8);
+             var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
             result = runtime.run(out, err, "execute", "--select-module", moduleName, "--disable-banner",
                     "--details=summary");
         }

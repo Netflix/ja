@@ -29,7 +29,7 @@ import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolExecutionException;
-import com.netflix.tools.ja.ToolServices;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,17 +43,18 @@ class MavenDeploymentTest {
     void deploysAssembledArtifactsToMavenCentral(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment, true);
+        ToolRuntime tools = tools(directory, deployment, true);
         var commandLine = JaInvocation.parse(
                 directory,
-                new String[] {"maven", "deploy-central", "--module-version", "1.0",
-                        "--name", "Example 1.0", "--manual"});
+                new String[] {"maven", "deploy-central", "--module-version", "1.0", "--name", "Example 1.0",
+                        "--manual"});
 
         int result = run(commandLine, tools);
 
         assertEquals(0, result);
         assertEquals("maven", deployment.get(0));
         assertEquals("deploy-central", deployment.get(1));
+        assertEquals("1.0", value(deployment, "--module-version"));
         assertEquals("Example 1.0", value(deployment, "--name"));
         assertTrue(deployment.contains("--manual"));
         Path artifacts = Path.of(deployment.getLast());
@@ -64,7 +65,7 @@ class MavenDeploymentTest {
     void suppliesStandaloneApplicationsToMavenDeployment(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment, true, true);
+        ToolRuntime tools = tools(directory, deployment, true, true);
         var commandLine = JaInvocation.parse(
                 directory,
                 new String[] {"maven", "install", "--module-version", "1.0"});
@@ -80,10 +81,8 @@ class MavenDeploymentTest {
         sourceModule(directory, "com.example.application");
         sourceModule(directory, "com.example.library");
 
-        assertEquals(List.of("com.example.application", "com.example.library"),
-                roots(firstResolution(directory)));
-        assertEquals(List.of("com.example.application"),
-                roots(firstResolution(directory.resolve("src/com.example.application"))));
+        assertEquals(List.of("com.example.application", "com.example.library"), roots(firstResolution(directory)));
+        assertEquals(List.of("com.example.application"), roots(firstResolution(directory.resolve("src/com.example.application"))));
     }
 
     @Test
@@ -91,7 +90,7 @@ class MavenDeploymentTest {
         sourceModule(directory, "com.example.library");
         Path repository = directory.resolve("repository");
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment, true);
+        ToolRuntime tools = tools(directory, deployment, true);
         var commandLine = JaInvocation.parse(
                 directory,
                 new String[] {"maven", "deploy", "--module-version", "1.0", "--repository",
@@ -101,6 +100,7 @@ class MavenDeploymentTest {
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "deploy"), deployment.subList(0, 2));
+        assertEquals("1.0", value(deployment, "--module-version"));
         assertEquals(repository.toString(), value(deployment, "--repository"));
         assertTrue(deployment.contains("--sign"));
     }
@@ -108,11 +108,9 @@ class MavenDeploymentTest {
     @Test
     void deploymentRequiresARepository(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        var commandLine = JaInvocation.parse(directory,
-                new String[] {"maven", "deploy", "--module-version", "1.0"});
+        var commandLine = JaInvocation.parse(directory, new String[] {"maven", "deploy", "--module-version", "1.0"});
 
-        var failure = assertThrows(IllegalArgumentException.class,
-                () -> run(commandLine, tools(directory, new ArrayList<>(), true)));
+        var failure = assertThrows(IllegalArgumentException.class, () -> run(commandLine, tools(directory, new ArrayList<>(), true)));
 
         assertEquals("maven deploy requires --repository", failure.getMessage());
     }
@@ -120,24 +118,24 @@ class MavenDeploymentTest {
     @Test
     void installsWithoutPublicationMetadata(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.library");
-        Files.delete(directory.resolve(
-                "src/com.example.library/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
+        Files.delete(directory.resolve("src/com.example.library/META-INF/com.netflix.tools.ja/maven/deploy.pom"));
         var deployment = new ArrayList<String>();
-        ToolServices tools = tools(directory, deployment, false);
+        ToolRuntime tools = tools(directory, deployment, false);
         var commandLine = JaInvocation.parse(directory, new String[] {"maven", "install", "--module-version", "1.0"});
 
         int result = run(commandLine, tools);
 
         assertEquals(0, result);
         assertEquals(List.of("maven", "install"), deployment.subList(0, 2));
+        assertEquals("1.0", value(deployment, "--module-version"));
     }
 
-    private static ToolServices tools(Path directory, List<String> deployment, boolean expectMetadata) throws Exception {
+    private static ToolRuntime tools(Path directory, List<String> deployment, boolean expectMetadata) throws Exception {
         return tools(directory, deployment, expectMetadata, false);
     }
 
-    private static ToolServices tools(Path directory, List<String> deployment, boolean expectMetadata,
-                                      boolean standaloneApplication) throws Exception {
+    private static ToolRuntime tools(Path directory, List<String> deployment, boolean expectMetadata,
+                                     boolean standaloneApplication) throws Exception {
         String moduleName = "com.example.library";
         Path runtimeModule = Files.createDirectories(directory.resolve("runtime")
                 .resolve(moduleName));
@@ -182,13 +180,14 @@ class MavenDeploymentTest {
                     }
                     return 0;
                 });
-        return ToolServices.of(jig,
+        return ToolRuntime.of(
+                jig,
                 ToolProvider.findFirst("javac").orElseThrow(),
                 ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", arguments -> 0));
     }
 
-    private static int run(JaInvocation commandLine, ToolServices tools) throws Exception {
+    private static int run(JaInvocation commandLine, ToolRuntime tools) throws Exception {
         return new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> null)
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
                         new PrintStream(new ByteArrayOutputStream()));
@@ -196,17 +195,15 @@ class MavenDeploymentTest {
 
     private static List<String> firstResolution(Path workingDirectory) throws Exception {
         var invocation = new AtomicReference<List<String>>();
-        ToolServices tools = ToolServices.of(
-                tool("jig", arguments -> {
-                    invocation.set(List.copyOf(arguments));
-                    return 1;
-                }),
-                ToolProvider.findFirst("jar").orElseThrow(),
-                tool("javadoc", arguments -> 0));
-        var commandLine = JaInvocation.parse(workingDirectory,
-                new String[] {"maven", "install", "--module-version", "1.0"});
+        ToolRuntime tools = ToolRuntime.of(tool("jig", arguments -> {
+            invocation.set(List.copyOf(arguments));
+            return 1;
+        }),
+                ToolProvider.findFirst("jar").orElseThrow(), tool("javadoc", arguments -> 0));
+        var commandLine = JaInvocation.parse(workingDirectory, new String[] {"maven", "install", "--module-version", "1.0"});
         assertThrows(ToolExecutionException.class, () -> run(commandLine, tools));
-        assertFalse(invocation.get().contains("--validate-runtime-access"));
+        assertFalse(invocation.get()
+                              .contains("--validate-runtime-access"));
         return invocation.get();
     }
 

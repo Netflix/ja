@@ -23,11 +23,11 @@ import java.util.Optional;
 
 /** Prepares an install request and delegates installation. */
 final class InstallCommand {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final List<ToolDefinition> definitions;
     private final Installer installer;
 
-    InstallCommand(ToolServices tools, List<ToolDefinition> definitions, Installer installer) {
+    InstallCommand(ToolRuntime tools, List<ToolDefinition> definitions, Installer installer) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
         this.installer = installer;

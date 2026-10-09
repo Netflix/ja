@@ -39,7 +39,7 @@ public record ApplicationTarget(String moduleName, Optional<String> version) {
         this(moduleName, Optional.of(version));
     }
 
-    public static ApplicationTarget resolve(String value, ToolServices tools, InputStream in,
+    public static ApplicationTarget resolve(String value, ToolRuntime tools, InputStream in,
             PrintStream err) {
         if (!value.startsWith("pkg:")) {
             ApplicationTarget target = parseRequirement(value);

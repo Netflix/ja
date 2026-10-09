@@ -28,19 +28,13 @@ import com.netflix.tools.ja.ModuleAssembler.Options;
  * Jig.
  */
 final class MavenDeploymentCommand {
-    private record Request(
-            String operation,
-            Options assembly,
-            String repository,
-            boolean sign,
-            String name,
-            boolean manual) {}
+    private record Request(String operation, Options assembly, String repository,
+                           boolean sign, String name, boolean manual) {}
 
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final ModuleAssembler assembler;
 
-    MavenDeploymentCommand(ToolServices tools, List<ToolDefinition> definitions,
-            ResolutionOptions javadocOptions) {
+    MavenDeploymentCommand(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         assembler = new ModuleAssembler(tools, definitions, javadocOptions);
     }
@@ -65,6 +59,9 @@ final class MavenDeploymentCommand {
         var arguments = new ArrayList<String>();
         arguments.add("maven");
         arguments.add(request.operation());
+        arguments.add("--module-version");
+        arguments.add(request.assembly()
+                             .version());
         if (request.repository() != null) {
             arguments.add("--repository");
             arguments.add(request.repository());
@@ -141,11 +138,12 @@ final class MavenDeploymentCommand {
             throw new IllegalArgumentException("maven " + operation + " requires --module-version");
         }
         validateOperation(operation, repository, sign, name, manual);
-        return new Request(operation, new Options(version, targetPlatform, jmod), repository, sign, name, manual);
+        return new Request(operation, new Options(version, targetPlatform, jmod), repository, sign, name,
+                manual);
     }
 
-    private static void validateOperation(String operation, String repository,
-            boolean sign, String name, boolean manual) {
+    private static void validateOperation(String operation, String repository, boolean sign,
+            String name, boolean manual) {
         if (operation.equals("deploy") && repository == null) {
             throw new IllegalArgumentException("maven deploy requires --repository");
         }

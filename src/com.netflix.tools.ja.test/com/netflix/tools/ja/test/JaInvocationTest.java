@@ -203,11 +203,10 @@ class JaInvocationTest {
 
     @Test
     void missingSourceModulesExplainsHowToSelectAWorkingDirectory() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory, new String[] {"compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"compile"}));
 
-        assertEquals("No source module found from " + temporaryDirectory
-                + "; run from within a module, src, or its parent",
+        assertEquals(
+                "No source module found from " + temporaryDirectory + "; run from within a module, src, or its parent",
                 failure.getMessage());
     }
 
@@ -413,8 +412,7 @@ class JaInvocationTest {
     void rejectsJigResolutionFlags() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory, new String[] {"--prefer-jmod", "compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--prefer-jmod", "compile"}));
 
         assertEquals("Unknown ja option: --prefer-jmod", failure.getMessage());
     }

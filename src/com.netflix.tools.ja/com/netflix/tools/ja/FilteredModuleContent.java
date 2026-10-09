@@ -59,8 +59,8 @@ final class FilteredModuleContent implements AutoCloseable {
         this.temporaryDirectory = temporaryDirectory;
     }
 
-    static FilteredModuleContent prepare(String moduleName, Path deploymentPom,
-            List<String> compileArguments, List<String> runtimeArguments, List<ToolDefinition> tools)
+    static FilteredModuleContent prepare(String moduleName, Path deploymentPom, List<String> compileArguments,
+            List<String> runtimeArguments, List<ToolDefinition> tools)
             throws IOException {
         var source = ToolArguments.moduleLocation(moduleName, runtimeArguments).orElseThrow(() -> new IllegalArgumentException("Resolved arguments do not contain complete module " + moduleName));
         if (!Files.isDirectory(source)) {
@@ -68,8 +68,7 @@ final class FilteredModuleContent implements AutoCloseable {
         }
 
         var excluded = exclusions(compileArguments, runtimeArguments, tools);
-        boolean addDeploymentPom = Files.isRegularFile(deploymentPom)
-                && !Files.isRegularFile(source.resolve(ModuleMetadata.DEPLOYMENT_POM));
+        boolean addDeploymentPom = Files.isRegularFile(deploymentPom) && !Files.isRegularFile(source.resolve(ModuleMetadata.DEPLOYMENT_POM));
         boolean removeMavenExportPom = Files.isRegularFile(source.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
         if (!addDeploymentPom
                 && !removeMavenExportPom

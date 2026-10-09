@@ -19,14 +19,13 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.List;
 
-
 /** Exports Maven build projects and deploys assembled source modules. */
 final class MavenCommand {
-    private final ToolServices tools;
+    private final ToolRuntime tools;
     private final List<ToolDefinition> definitions;
     private final ResolutionOptions javadocOptions;
 
-    MavenCommand(ToolServices tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
+    MavenCommand(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
         this.definitions = List.copyOf(definitions);
         this.javadocOptions = javadocOptions;
@@ -40,8 +39,7 @@ final class MavenCommand {
         }
         return switch (commandLine.toolArguments().getFirst()) {
             case "export" -> new MavenExporter(tools).run(commandLine, moduleSourcePath, in, out, err);
-            case "install", "deploy", "deploy-central" -> new MavenDeploymentCommand(tools, definitions,
-                    javadocOptions).run(commandLine, moduleSourcePath, in, out, err);
+            case "install", "deploy", "deploy-central" -> new MavenDeploymentCommand(tools, definitions, javadocOptions).run(commandLine, moduleSourcePath, in, out, err);
             default -> throw new IllegalArgumentException("Unknown maven operation: " + commandLine.toolArguments().getFirst());
         };
     }
