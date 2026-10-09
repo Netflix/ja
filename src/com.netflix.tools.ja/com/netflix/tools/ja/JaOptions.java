@@ -82,19 +82,19 @@ final class JaOptions {
 
     static Group assembleOptions() {
         return group(ToolOption.option("--module-version", "VERSION", "Set the module version"),
-                ToolOption.flag("--jmod", "Also assemble JMOD artifacts"), ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"));
+                ToolOption.flag("--jmod", "Also assemble JMOD artifacts"), ToolOption.option("--target-platform", "TARGET", "Set the application and JMOD target platform"));
     }
 
     static Group mavenInstallOptions() {
         return group(ToolOption.option("--module-version", "VERSION", "Set the module version"),
-                ToolOption.flag("--jmod", "Also install JMOD artifacts"), ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"));
+                ToolOption.flag("--jmod", "Also install JMOD artifacts"), ToolOption.option("--target-platform", "TARGET", "Set the application and JMOD target platform"));
     }
 
     static Group mavenDeployOptions() {
         return group(
                 ToolOption.option("--module-version", "VERSION", "Set the module version"),
                 ToolOption.flag("--jmod", "Also deploy JMOD artifacts"),
-                ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"),
+                ToolOption.option("--target-platform", "TARGET", "Set the application and JMOD target platform"),
                 ToolOption.option("--repository", "ID=URI|PATH", "Select the deployment repository"),
                 ToolOption.flag("--sign", "Sign deployed artifacts"));
     }
@@ -103,7 +103,7 @@ final class JaOptions {
         return group(
                 ToolOption.option("--module-version", "VERSION", "Set the module version"),
                 ToolOption.flag("--jmod", "Also deploy JMOD artifacts"),
-                ToolOption.option("--target-platform", "TARGET", "Set the JMOD target platform"),
+                ToolOption.option("--target-platform", "TARGET", "Set the application and JMOD target platform"),
                 ToolOption.option("--name", "NAME", "Set the Central deployment name"),
                 ToolOption.flag("--manual", "Wait for manual approval after validation"));
     }

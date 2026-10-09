@@ -128,26 +128,15 @@ readonly c_flags=(-std=c17 -Wall -Wextra -Wpedantic -Werror)
 compile_unix() {
     local classifier="$1"
     local target="$2"
-    local stub_source="$3"
-    local stub_library="$4"
-    local stub_flag="$5"
-    local soname="$6"
-    local rpath="$7"
-    local extra_linker="$8"
+    local extra_linker="$3"
     local platform="$temporary/$classifier"
 
     mkdir -p "$platform"
-    "$zig" cc -target "$target" "${c_flags[@]}" -Wno-unused-parameter \
-        "$stub_flag" -o "$platform/$stub_library" \
-        "$root/$stub_source" \
-        "$soname"
     local arguments=(
         cc -target "$target" "${c_flags[@]}" -Os -s
         -I"$root/include" -I"$root/include/darwin"
         -o "$platform/launcher"
         "$root/main.c"
-        -L"$platform" -lstub_jli
-        "$rpath"
     )
     if [[ -n "$extra_linker" ]]; then
         arguments+=("$extra_linker")
@@ -160,39 +149,24 @@ compile_unix() {
 compile_windows() {
     local classifier="$1"
     local target="$2"
-    local machine="$3"
     local platform="$temporary/$classifier"
 
     mkdir -p "$platform"
-    "$zig" dlltool -d "$root/jli.def" -l "$platform/jli.lib" -m "$machine"
     "$zig" cc -target "$target" "${c_flags[@]}" -Os -s \
         -I"$root/include" -I"$root/include/windows" \
         -o "$platform/launcher.exe" \
-        "$root/main.c" \
-        "$platform/jli.lib"
+        "$root/main.c"
     "$zig" cc -target "$target" "${c_flags[@]}" -Os -s \
         -o "$platform/dispatcher.exe" \
         "$root/dispatcher.c"
 }
 
-compile_unix osx-aarch_64 aarch64-macos-none \
-    stub_jli_mac.c libstub_jli.dylib -dynamiclib \
-    '-Wl,-install_name,@rpath/libjli.dylib' \
-    '-Wl,-rpath,@executable_path/../lib' ''
-compile_unix osx-x86_64 x86_64-macos-none \
-    stub_jli_mac.c libstub_jli.dylib -dynamiclib \
-    '-Wl,-install_name,@rpath/libjli.dylib' \
-    '-Wl,-rpath,@executable_path/../lib' ''
-compile_unix linux-aarch_64 aarch64-linux-gnu \
-    stub_jli.c libstub_jli.so -shared \
-    '-Wl,-soname,libjli.so' \
-    '-Wl,-rpath,$ORIGIN/../lib' -ldl
-compile_unix linux-x86_64 x86_64-linux-gnu \
-    stub_jli.c libstub_jli.so -shared \
-    '-Wl,-soname,libjli.so' \
-    '-Wl,-rpath,$ORIGIN/../lib' -ldl
-compile_windows windows-aarch_64 aarch64-windows-gnu arm64
-compile_windows windows-x86_64 x86_64-windows-gnu i386:x86-64
+compile_unix osx-aarch_64 aarch64-macos-none ''
+compile_unix osx-x86_64 x86_64-macos-none ''
+compile_unix linux-aarch_64 aarch64-linux-gnu -ldl
+compile_unix linux-x86_64 x86_64-linux-gnu -ldl
+compile_windows windows-aarch_64 aarch64-windows-gnu
+compile_windows windows-x86_64 x86_64-windows-gnu
 
 rm -rf "$output"
 mkdir -p "$output"

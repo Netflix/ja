@@ -93,6 +93,9 @@ public final class Ja {
             return e.exitCode();
         } catch (IllegalArgumentException | IllegalStateException e) {
             err.println("ja: " + e.getMessage());
+            if (Arrays.asList(args).contains("--verbose")) {
+                e.printStackTrace(err);
+            }
             return 2;
         }
     }

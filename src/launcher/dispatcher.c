@@ -167,6 +167,7 @@ int main(int argc, char **argv) {
     CloseHandle(process.hProcess);
     return (int)result;
 #else
+    argv[0] = target;
     execv(target, argv);
     fprintf(stderr, "launcher: cannot start %s: %s\n", target, strerror(errno));
     return 1;

@@ -239,6 +239,14 @@ class NativeLauncherTest {
     }
 
     @Test
+    void runtimeImageDoesNotConsultJavaHome() throws Exception {
+        Result result = run(Map.of("JAVA_HOME", temporaryDirectory.resolve("missing").toString()),
+                List.of("-L-aot=off"));
+
+        assertEquals(0, result.exitCode(), result.output());
+    }
+
+    @Test
     void hotspotLayoutEnablesAotWithoutCustomReleaseMetadata() throws Exception {
         assertFalse(Files.readString(image.resolve("release"))
                 .contains("VM="));
@@ -275,6 +283,57 @@ class NativeLauncherTest {
         Result cached = run(Map.of("TEST_PHASE_TRACE", phases.toString()), List.of());
         assertEquals(0, cached.exitCode(), cached.output());
         assertEquals(List.of("run"), Files.readAllLines(phases));
+    }
+
+    @Test
+    void launchesInstalledApplicationAgainstJavaHomeRuntime() throws Exception {
+        Path command = installedApplication("application");
+        Path applicationModules = command.getParent().getParent().resolve("app/modules");
+        Path jargs = temporaryDirectory.resolve("application-jargs");
+
+        Result result = runProcess(command,
+                Map.of("JAVA_HOME", image.toString(), "TEST_JARGS", jargs.toString()),
+                List.of("argument"));
+
+        assertEquals(0, result.exitCode(), result.output());
+        List<String> arguments = Files.readAllLines(jargs);
+        assertTrue(arguments.contains("run:--enable-preview"), arguments.toString());
+        assertTrue(arguments.contains("run:--upgrade-module-path"), arguments.toString());
+        assertTrue(arguments.contains("run:" + applicationModules.toRealPath()), arguments.toString());
+    }
+
+    @Test
+    void launchesInstalledApplicationAgainstRuntimeOnPath() throws Exception {
+        if (isWindows()) {
+            return;
+        }
+        Path command = installedApplication("path-application");
+        Path java = image.resolve("bin/java");
+        Files.writeString(java, "#!/bin/sh\nexit 1\n");
+        java.toFile().setExecutable(true);
+
+        Result result = runProcess(command,
+                Map.of("JAVA_HOME", "", "PATH", image.resolve("bin").toString()),
+                List.of("argument"));
+
+        assertEquals(0, result.exitCode(), result.output());
+    }
+
+    @Test
+    void launchesInstalledApplicationAgainstRuntimeSelectedByPathShim() throws Exception {
+        if (isWindows()) {
+            return;
+        }
+        Path command = installedApplication("shim-application");
+        Path shim = Files.createDirectories(temporaryDirectory.resolve("shim-bin")).resolve("java");
+        Files.writeString(shim, "#!/bin/sh\nprintf '    java.home = %s\\n' '" + image + "' >&2\n");
+        shim.toFile().setExecutable(true);
+
+        Result result = runProcess(command,
+                Map.of("JAVA_HOME", "", "PATH", shim.getParent().toString()),
+                List.of("argument"));
+
+        assertEquals(0, result.exitCode(), result.output());
     }
 
     @Test
@@ -763,6 +822,21 @@ class NativeLauncherTest {
         assertEquals(9, updated.exitCode());
         assertEquals("second:argument", updated.output()
                 .strip());
+    }
+
+    private Path installedApplication(String directory) throws IOException {
+        String executable = isWindows() ? ".exe" : "";
+        Path application = temporaryDirectory.resolve(directory);
+        Path modules = Files.createDirectories(application.resolve("app/modules"));
+        Files.writeString(modules.resolve("probe.jar"), "application module");
+        Files.writeString(application.resolve("app/modules.hash"), "application hash");
+        Path configuration = Files.createDirectories(application.resolve("conf/com.netflix.tools.launcher"));
+        Files.writeString(configuration.resolve("probe.args"), "--enable-preview\n");
+        Path command = Files.createDirectories(application.resolve("bin"))
+                .resolve("probe" + executable);
+        Files.copy(launcher, command, StandardCopyOption.REPLACE_EXISTING);
+        command.toFile().setExecutable(true);
+        return command;
     }
 
     private Result run(Map<String, String> environment, List<String> arguments) throws Exception {

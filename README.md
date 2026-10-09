@@ -24,6 +24,12 @@ Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-
 
 Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer creates a `ja`-enabled copy without modifying the source JDK.
 
+The installer supports two first-class installation styles.
+
+### Development JDK
+
+The default installation links `ja` and its tools into a development JDK. Selecting that JDK selects the complete toolchain together, which works naturally with environment managers, IDE JDK discovery, `JAVA_HOME`, and `PATH`.
+
 On macOS and Linux:
 
 ```sh
@@ -36,7 +42,25 @@ On Windows PowerShell:
 irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
-The installer prints the steps needed to activate `ja`. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, shell setup and completions, custom locations, and version pinning.
+On macOS the JDK is installed under `~/Library/Java/JavaVirtualMachines`. On Linux and Windows it is installed under `~/.jdks`.
+
+### Standalone distribution
+
+Use the standalone installation when you want to add only the `ja` command and continue using an existing JDK unchanged:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
+  bash -s -- --standalone
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1))) `
+  -Installation Standalone
+```
+
+The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK.
+
+Neither installation modifies shell configuration. The installer prints the activation and completion commands to add to your shell profile. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, custom locations, version pinning, shell setup, and environment-manager guidance.
 
 Take `ja` for a spin by installing an application:
 

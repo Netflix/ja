@@ -34,13 +34,14 @@ import com.netflix.tools.ja.JmodPackager.Artifacts;
 
 /**
  * Assembles flat, module-named binary, source, documentation, deployment
- * metadata, and JMOD artifacts.
+ * metadata, JMOD artifacts, and standalone application archives.
  */
 final class ModuleAssembler {
     record Options(String version, String targetPlatform, boolean jmod) {}
 
     private record Plan(
             String moduleName,
+            String version,
             Path moduleSource,
             Map<String, Path> observableSources,
             Path compilationRoot,
@@ -69,6 +70,7 @@ final class ModuleAssembler {
     private final ResolutionOptions javadocOptions;
     private final JarPackager jars;
     private final JmodPackager jmods;
+    private final ApplicationPackager applications;
 
     ModuleAssembler(ToolRuntime tools, List<ToolDefinition> definitions, ResolutionOptions javadocOptions) {
         this.tools = tools;
@@ -76,6 +78,7 @@ final class ModuleAssembler {
         this.javadocOptions = javadocOptions;
         this.jars = new JarPackager(tools);
         this.jmods = new JmodPackager(tools);
+        this.applications = new ApplicationPackager(tools);
     }
 
     int assemble(
@@ -162,6 +165,7 @@ final class ModuleAssembler {
             plans.add(
                     new Plan(
                             module,
+                            options.version(),
                             moduleSourcePath.modules().get(module),
                             moduleSourcePath.modules(),
                             compilationRoot,
@@ -240,13 +244,18 @@ final class ModuleAssembler {
                     moduleArguments,
                     plan.targetPlatform(),
                     plan.jmod());
+            boolean explicitJmod = jmods.explicitlyCreates(jmodArtifacts);
+            ToolCommands.Discovery discovery = explicitJmod
+                    ? null
+                    : ToolCommands.discover(
+                            plan.moduleName(), ToolArguments.modulePath(filteredArguments));
             var jar = jars.createExact(
                     plan.moduleName(),
                     content,
                     moduleArguments,
                     filteredArguments,
                     output.resolve(plan.moduleName() + ".jar"),
-                    jmods.creates(jmodArtifacts),
+                    explicitJmod || !discovery.commands().isEmpty(),
                     in,
                     out,
                     err);
@@ -258,7 +267,29 @@ final class ModuleAssembler {
                 return 0;
             }
             copyDeploymentMetadata(plan, output);
-            return jmods.create(jmodArtifacts, in, out, err);
+            if (discovery == null) {
+                discovery = ToolCommands.discover(
+                        plan.moduleName(), ToolArguments.modulePath(filteredArguments));
+            }
+            int jmod = jmods.create(jmodArtifacts, discovery, in, out, err);
+            if (jmod != 0) {
+                return jmod;
+            }
+            return applications.create(
+                    plan.moduleName(),
+                    plan.version(),
+                    discovery,
+                    plan.observableSources(),
+                    plan.compilationRoot(),
+                    filteredArguments,
+                    moduleArguments,
+                    plan.compilationRoot().getParent(),
+                    output,
+                    plan.moduleName(),
+                    plan.targetPlatform(),
+                    in,
+                    out,
+                    err);
         }
     }
 

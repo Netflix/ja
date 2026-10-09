@@ -13,11 +13,26 @@
 
 set -euo pipefail
 
-if (($# > 1)); then
-    echo "Usage: $0 [output-directory]" >&2
-    exit 2
-fi
-requested_ja_home="${1:-}"
+installation=jdk
+requested_ja_home=""
+for argument in "$@"; do
+    case "$argument" in
+        --standalone) installation=standalone ;;
+        --jdk) installation=jdk ;;
+        -h|--help)
+            echo "Usage: $0 [--standalone|--jdk] [output-directory]"
+            exit 0
+            ;;
+        -*) echo "Unknown option: $argument" >&2; exit 2 ;;
+        *)
+            if [[ -n "$requested_ja_home" ]]; then
+                echo "Usage: $0 [--standalone|--jdk] [output-directory]" >&2
+                exit 2
+            fi
+            requested_ja_home="$argument"
+            ;;
+    esac
+done
 configured_java_home="${JAVA_HOME:-}"
 java_on_path="$(type -P java || true)"
 java_properties=""
@@ -52,17 +67,24 @@ case "$java_vm_name" in
 esac
 
 release="$source_java_home/release"
+javac="$source_java_home/bin/javac"
 jlink="$source_java_home/bin/jlink"
-if [[ ! -x "$java" || ! -x "$jlink" || ! -f "$release" || ! -f "$source_java_home/lib/src.zip" ]]; then
-    echo "Java must be a JDK 25 or later installation with jlink, a release file, and lib/src.zip" >&2
+if [[ ! -x "$java" || ! -x "$javac" || ! -f "$release" ]]; then
+    echo "Java must be a JDK 25 or later installation with java, javac, and a release file" >&2
     exit 1
 fi
 jdk_module_path=""
-if [[ -d "$source_java_home/jmods" ]]; then
-    jdk_module_path="$source_java_home/jmods"
-elif ! LC_ALL=C "$jlink" --help 2>&1 | grep -Fq "Linking from run-time image enabled"; then
-    echo "Java must provide JMODs or be built with --enable-linkable-runtime" >&2
-    exit 1
+if [[ "$installation" == jdk ]]; then
+    if [[ ! -x "$jlink" || ! -f "$source_java_home/lib/src.zip" ]]; then
+        echo "The development JDK installation requires jlink and lib/src.zip" >&2
+        exit 1
+    fi
+    if [[ -d "$source_java_home/jmods" ]]; then
+        jdk_module_path="$source_java_home/jmods"
+    elif ! LC_ALL=C "$jlink" --help 2>&1 | grep -Fq "Linking from run-time image enabled"; then
+        echo "Java must provide JMODs or be built with --enable-linkable-runtime" >&2
+        exit 1
+    fi
 fi
 java_version="$(awk -F= '$1 == "JAVA_VERSION" { gsub(/^"|"$/, "", $2); print $2; exit }' "$release")"
 if [[ ! "$java_version" =~ ^([0-9]+)([.+-].*)?$ ]] || ((BASH_REMATCH[1] < 25)); then
@@ -70,42 +92,6 @@ if [[ ! "$java_version" =~ ^([0-9]+)([.+-].*)?$ ]] || ((BASH_REMATCH[1] < 25)); 
     exit 1
 fi
 java_feature="${BASH_REMATCH[1]}"
-
-mac_bundle=""
-if [[ -n "$requested_ja_home" ]]; then
-    ja_home="$requested_ja_home"
-else
-    case "$(uname -s)" in
-        Darwin)
-            mac_bundle="$HOME/Library/Java/JavaVirtualMachines/ja-$java_feature.jdk"
-            ja_home="$mac_bundle/Contents/Home"
-            ;;
-        Linux)
-            ja_home="$HOME/.jdks/ja-$java_feature"
-            ;;
-        *)
-            echo "An output directory is required on this operating system" >&2
-            exit 2
-            ;;
-    esac
-fi
-install_root="${mac_bundle:-$ja_home}"
-if [[ -e "$install_root" || -L "$install_root" ]]; then
-    echo "Output path already exists: $install_root" >&2
-    exit 1
-fi
-if [[ -n "$mac_bundle" ]]; then
-    source_java_home_physical="$(cd "$source_java_home" && pwd -P)"
-    source_contents="$(dirname "$source_java_home_physical")"
-    if [[ "$(basename "$source_java_home_physical")" != Home
-            || "$(basename "$source_contents")" != Contents
-            || ! -f "$source_contents/Info.plist"
-            || ! -d "$source_contents/MacOS" ]]; then
-        echo "The default macOS installation requires a native JDK bundle" >&2
-        echo "Pass an output directory to install from this JDK" >&2
-        exit 1
-    fi
-fi
 
 java_selection=path
 jenv_root="${JENV_ROOT:-$HOME/.jenv}"
@@ -168,6 +154,128 @@ if [[ -z "$ja_version" ]]; then
     fi
 fi
 printf 'Installing ja %s with JDK %s...\n' "$ja_version" "$java_version"
+
+mac_bundle=""
+if [[ "$installation" == standalone ]]; then
+    if [[ -n "$requested_ja_home" ]]; then
+        ja_home="$requested_ja_home"
+        applications="$(dirname "$ja_home")"
+    else
+        if [[ -n "${JA_INSTALL_HOME:-}" ]]; then
+            applications="$JA_INSTALL_HOME"
+        else
+            applications="${XDG_DATA_HOME:-$HOME/.local/share}/com.netflix.tools.ja"
+        fi
+        ja_home="$applications/com.netflix.tools.ja@$ja_version"
+    fi
+else
+    if [[ -n "$requested_ja_home" ]]; then
+        ja_home="$requested_ja_home"
+    else
+        case "$(uname -s)" in
+            Darwin)
+                mac_bundle="$HOME/Library/Java/JavaVirtualMachines/ja-$java_feature.jdk"
+                ja_home="$mac_bundle/Contents/Home"
+                ;;
+            Linux)
+                ja_home="$HOME/.jdks/ja-$java_feature"
+                ;;
+            *)
+                echo "An output directory is required on this operating system" >&2
+                exit 2
+                ;;
+        esac
+    fi
+fi
+install_root="${mac_bundle:-$ja_home}"
+if [[ -e "$install_root" || -L "$install_root" ]]; then
+    echo "Output path already exists: $install_root" >&2
+    exit 1
+fi
+if [[ -n "$mac_bundle" ]]; then
+    source_java_home_physical="$(cd "$source_java_home" && pwd -P)"
+    source_contents="$(dirname "$source_java_home_physical")"
+    if [[ "$(basename "$source_java_home_physical")" != Home
+            || "$(basename "$source_contents")" != Contents
+            || ! -f "$source_contents/Info.plist"
+            || ! -d "$source_contents/MacOS" ]]; then
+        echo "The default macOS installation requires a native JDK bundle" >&2
+        echo "Pass an output directory to install from this JDK" >&2
+        exit 1
+    fi
+fi
+
+if [[ "$installation" == standalone ]]; then
+    if ! command -v unzip >/dev/null; then
+        echo "unzip is required for a standalone installation" >&2
+        exit 1
+    fi
+    case "$(uname -s):$(uname -m)" in
+        Darwin:arm64 | Darwin:aarch64) classifier=osx-aarch_64 ;;
+        Darwin:x86_64 | Darwin:amd64) classifier=osx-x86_64 ;;
+        Linux:arm64 | Linux:aarch64) classifier=linux-aarch_64 ;;
+        Linux:x86_64 | Linux:amd64) classifier=linux-x86_64 ;;
+        *) echo "Unsupported standalone platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
+    esac
+    archive="$work/com.netflix.tools.ja-$ja_version-$classifier.zip"
+    if [[ -n "${JA_STANDALONE_ARCHIVE:-}" ]]; then
+        cp "$JA_STANDALONE_ARCHIVE" "$archive"
+    else
+        curl --fail --silent --show-error --location --output "$archive" \
+            "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.ja/$ja_version/com.netflix.tools.ja-$ja_version-$classifier.zip"
+    fi
+    staged_standalone="$work/standalone"
+    unzip -q "$archive" -d "$staged_standalone"
+    if [[ ! -x "$staged_standalone/bin/ja" \
+            || ! -x "$staged_standalone/lib/com.netflix.tools.launcher/dispatcher" ]]; then
+        echo "The standalone archive does not contain executable ja and dispatcher commands" >&2
+        exit 1
+    fi
+    command="$ja_bin_home/ja"
+    current="$command.current"
+    if [[ -e "$command" || -L "$command" ]]; then
+        if [[ ! -f "$current" ]]; then
+            echo "Command already exists and is not managed by ja: $command" >&2
+            exit 1
+        fi
+        configured="$(head -n 1 "$current")"
+        configured_home="${configured%/bin/ja}"
+        if [[ "$configured_home" == "$configured" \
+                || ! -f "$configured_home/app/modules.hash" \
+                || ! -f "$configured_home/conf/com.netflix.tools.launcher/ja.args" ]]; then
+            echo "Command is owned by another installation: $command" >&2
+            exit 1
+        fi
+    fi
+
+    mkdir -p "$(dirname "$ja_home")"
+    mv "$staged_standalone" "$ja_home"
+    entrypoint="$ja_home/bin/ja"
+    dispatcher="$ja_home/lib/com.netflix.tools.launcher/dispatcher"
+    mkdir -p "$ja_bin_home"
+    temporary_command="$ja_bin_home/.ja-launcher-$$"
+    temporary_current="$ja_bin_home/.ja-current-$$"
+    cp "$dispatcher" "$temporary_command"
+    chmod 755 "$temporary_command"
+    printf '%s\n' "$entrypoint" > "$temporary_current"
+    mv -f "$temporary_command" "$command"
+    mv -f "$temporary_current" "$current"
+
+    printf 'Ja %s standalone distribution installed in %s\n' "$ja_version" "$ja_home"
+    if [[ "$ja_bin_on_path" == false ]]; then
+        printf '\nTo use Ja in this shell:\n\n'
+        printf "  export PATH=%q:\"\$PATH\"\n" "$ja_bin_home"
+    fi
+    case "${SHELL##*/}" in
+        fish) completion_command='ja completion fish | source'; completion_shell=Fish ;;
+        zsh) completion_command="eval \"\$(ja completion zsh)\""; completion_shell=Zsh ;;
+        *) completion_command="eval \"\$(ja completion bash)\""; completion_shell=Bash ;;
+    esac
+    printf '\nAfter activating ja, enable completions in this %s session with:\n\n' "$completion_shell"
+    printf '  %s\n' "$completion_command"
+    printf '\nAdd these commands to your shell configuration to use Ja in future sessions.\n'
+    exit 0
+fi
 
 resolved_arguments="$work/resolved.args"
 "${jig_command[@]}" \

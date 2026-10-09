@@ -75,7 +75,7 @@ class JaHelpTest {
                   source       Show Java source
 
                 Build and distribute:
-                  assemble     Assemble module artifacts
+                  assemble     Assemble module and application artifacts
                   install      Install a module as a command
                   maven        Export Maven projects or install and deploy modules
 
