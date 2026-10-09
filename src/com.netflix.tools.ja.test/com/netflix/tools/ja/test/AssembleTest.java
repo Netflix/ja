@@ -24,7 +24,9 @@ import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.jar.Attributes.Name;
@@ -38,6 +40,7 @@ import java.util.zip.ZipFile;
 import com.netflix.module.ModuleRuntimeAccess;
 import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.JaInvocation;
+import com.netflix.tools.ja.LauncherCatalog;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
 import com.netflix.tools.ja.ToolDefinition.Launch;
@@ -296,7 +299,9 @@ class AssembleTest {
                     }
                     return 0;
                 });
-        ToolServices tools = ToolServices.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
+        ToolServices tools = ToolServices.of(jig,
+                ToolProvider.findFirst("javac").orElseThrow(),
+                ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", (output, arguments) -> 0));
         var commandLine = JaInvocation.parse(directory, new String[] {"assemble", "--module-version", "1.0", "artifacts"});
 
@@ -574,6 +579,16 @@ class AssembleTest {
         assertEquals(0, result.exitCode(), result.error());
         Path artifact = artifacts(directory).resolve("com.example.commands-osx-aarch_64.jmod");
         assertTrue(Files.isRegularFile(artifact));
+        Path distribution = artifacts(directory).resolve("com.example.commands-osx-aarch_64.zip");
+        assertTrue(Files.isRegularFile(distribution));
+        try (var zip = new ZipFile(distribution.toFile())) {
+            assertTrue(zip.getEntry("bin/probe") != null);
+            assertTrue(zip.getEntry("lib/com.netflix.tools.launcher/dispatcher") != null);
+            assertTrue(zip.getEntry("app/modules.hash") != null);
+            assertTrue(zip.getEntry("conf/com.netflix.tools.launcher/probe.args") != null);
+        }
+        assertEquals(0755, zipUnixMode(distribution, "bin/probe"));
+        assertEquals(0755, zipUnixMode(distribution, "lib/com.netflix.tools.launcher/dispatcher"));
         String entries = jmodEntries(artifact);
         assertTrue(entries.contains("bin/probe"));
         assertTrue(entries.contains("conf/com.netflix.tools.launcher/probe.args"), entries);
@@ -582,6 +597,92 @@ class AssembleTest {
                     .readAllBytes(),
                             StandardCharsets.UTF_8));
         }
+    }
+
+    @Test
+    void assemblesMainClassAsAStandaloneApplication(@TempDir Path directory) throws Exception {
+        Path source = sourceModule(directory, "com.example.app");
+        Files.writeString(source.resolve("module-info.java"),
+                """
+                /** @mainClass com.example.Main */
+                module com.example.app {}
+                """);
+        Path packageDirectory = Files.createDirectories(source.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Main.java"),
+                """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] arguments) {}
+                }
+                """);
+
+        Result result = run(directory, "assemble", "--target-platform", "macos-aarch64", "--module-version", "1.0",
+                "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path distribution = artifacts(directory).resolve("com.example.app-osx-aarch_64.zip");
+        assertTrue(Files.isRegularFile(distribution));
+        try (var zip = new ZipFile(distribution.toFile())) {
+            assertTrue(zip.getEntry("bin/app") != null);
+            assertTrue(zip.getEntry("app/modules/com.example.app.launcher/module-info.class") != null);
+            assertTrue(zip.getEntry("conf/com.netflix.tools.launcher/app.args") != null);
+        }
+        assertEquals(0755, zipUnixMode(distribution, "bin/app"));
+    }
+
+    @Test
+    void launchesAnExtractedStandaloneApplicationAgainstJavaHomeAndPath(@TempDir Path directory) throws Exception {
+        String target = currentTarget();
+        var platform = LauncherCatalog.platforms(target).getFirst();
+        if (platform.executable().endsWith(".exe")) {
+            return;
+        }
+
+        Path source = sourceModule(directory, "com.example.app");
+        Files.writeString(source.resolve("module-info.java"),
+                """
+                /** @mainClass com.example.Main */
+                module com.example.app {}
+                """);
+        Path packageDirectory = Files.createDirectories(source.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Main.java"),
+                """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] arguments) {
+                        System.out.println("standalone application launched");
+                    }
+                }
+                """);
+
+        Result assembled = run(directory, "assemble", "--target-platform", target,
+                "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, assembled.exitCode(), assembled.error());
+        Path archive = artifacts(directory).resolve("com.example.app-" + platform.classifier() + ".zip");
+        Path extracted = directory.resolve("extracted");
+        Result extraction = process(directory, Map.of(), "unzip", "-q", archive.toString(),
+                "-d", extracted.toString());
+        assertEquals(0, extraction.exitCode(), extraction.output());
+        Path entrypoint = extracted.resolve("bin/app");
+        Path dispatcher = extracted.resolve("lib/com.netflix.tools.launcher/dispatcher");
+        assertTrue(Files.isExecutable(entrypoint), "Extracted launcher is not executable");
+        assertTrue(Files.isExecutable(dispatcher), "Extracted dispatcher is not executable");
+        Path commands = Files.createDirectories(directory.resolve("commands"));
+        Path command = commands.resolve("app");
+        Files.copy(dispatcher, command, StandardCopyOption.COPY_ATTRIBUTES);
+        Files.writeString(commands.resolve("app.current"), entrypoint.toString() + "\n");
+
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        Result fromJavaHome = process(directory, Map.of("JAVA_HOME", javaHome.toString()),
+                command.toString(), "-L-aot=off");
+        assertEquals(0, fromJavaHome.exitCode(), fromJavaHome.output());
+        assertEquals("standalone application launched\n", fromJavaHome.output());
+
+        Result fromPath = process(directory, Map.of("JAVA_HOME", "", "PATH", javaHome.resolve("bin").toString()),
+                command.toString(), "-L-aot=off");
+        assertEquals(0, fromPath.exitCode(), fromPath.output());
+        assertEquals("standalone application launched\n", fromPath.output());
     }
 
     @Test
@@ -710,6 +811,28 @@ class AssembleTest {
         return new Result(exitCode, output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
     }
 
+    private static Result process(Path directory, Map<String, String> environment, String... command)
+            throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).redirectErrorStream(true);
+        builder.environment().putAll(environment);
+        Process process = builder.start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        return new Result(process.waitFor(), output, "");
+    }
+
+    private static String currentTarget() {
+        String operatingSystem = System.getProperty("os.name").toLowerCase();
+        String os = operatingSystem.contains("mac")
+                ? "macos"
+                : operatingSystem.contains("win") ? "windows" : "linux";
+        String architecture = switch (System.getProperty("os.arch").toLowerCase()) {
+            case "aarch64", "arm64" -> "aarch64";
+            case "amd64", "x86_64" -> "x86_64";
+            default -> throw new IllegalArgumentException("Unsupported test architecture: " + System.getProperty("os.arch"));
+        };
+        return os + "-" + architecture;
+    }
+
     private static Path writeAutomaticJar(Path path, String moduleName) throws Exception {
         var manifest = new Manifest();
         manifest.getMainAttributes().put(Name.MANIFEST_VERSION, "1.0");
@@ -740,6 +863,39 @@ class AssembleTest {
         return new String(jar.getInputStream(jar.getJarEntry(name))
                              .readAllBytes(),
                 StandardCharsets.UTF_8);
+    }
+
+    private static int zipUnixMode(Path archive, String expectedName) throws Exception {
+        byte[] content = Files.readAllBytes(archive);
+        int eocd = -1;
+        for (int offset = content.length - 22; offset >= Math.max(0, content.length - 65_557); offset--) {
+            if (littleEndianInt(content, offset) == 0x06054b50) {
+                eocd = offset;
+                break;
+            }
+        }
+        assertTrue(eocd >= 0, "ZIP end record not found");
+        int offset = littleEndianInt(content, eocd + 16);
+        while (offset < eocd && littleEndianInt(content, offset) == 0x02014b50) {
+            int nameLength = littleEndianShort(content, offset + 28);
+            int extraLength = littleEndianShort(content, offset + 30);
+            int commentLength = littleEndianShort(content, offset + 32);
+            String name = new String(content, offset + 46, nameLength, StandardCharsets.UTF_8);
+            if (name.equals(expectedName)) {
+                assertEquals(3, Byte.toUnsignedInt(content[offset + 5]), "ZIP entry is not marked as Unix");
+                return littleEndianInt(content, offset + 38) >>> 16;
+            }
+            offset += 46 + nameLength + extraLength + commentLength;
+        }
+        throw new AssertionError("ZIP entry not found: " + expectedName);
+    }
+
+    private static int littleEndianShort(byte[] content, int offset) {
+        return Byte.toUnsignedInt(content[offset]) | Byte.toUnsignedInt(content[offset + 1]) << 8;
+    }
+
+    private static int littleEndianInt(byte[] content, int offset) {
+        return littleEndianShort(content, offset) | littleEndianShort(content, offset + 2) << 16;
     }
 
     private static String jmodEntries(Path jmod) throws Exception {

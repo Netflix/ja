@@ -68,7 +68,7 @@ public enum BuiltinCommand {
     ASSEMBLE(
             "assemble",
             HelpGroup.BUILD,
-            "Assemble module artifacts",
+            "Assemble module and application artifacts",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
             ResolutionOptions.EMPTY),
     INSTALL("install", HelpGroup.BUILD, "Install a module as a command",

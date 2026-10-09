@@ -59,14 +59,17 @@ final class JmodPackager {
         this.tools = tools;
     }
 
-    boolean creates(Artifacts artifacts) {
-        return artifacts.requested() || jmodLayout(artifacts.moduleSource()) != null || !discovery(artifacts).commands().isEmpty();
+    boolean explicitlyCreates(Artifacts artifacts) {
+        return artifacts.requested() || jmodLayout(artifacts.moduleSource()) != null;
     }
 
-    int create(Artifacts artifacts, InputStream in, PrintStream out,
+    boolean creates(Artifacts artifacts, Discovery discovery) {
+        return explicitlyCreates(artifacts) || !discovery.commands().isEmpty();
+    }
+
+    int create(Artifacts artifacts, Discovery discovery, InputStream in, PrintStream out,
                PrintStream err)
             throws IOException {
-        var discovery = discovery(artifacts);
         var layout = jmodLayout(artifacts.moduleSource());
         if (!artifacts.requested() && layout == null && discovery.commands().isEmpty()) {
             return 0;
@@ -130,10 +133,6 @@ final class JmodPackager {
                                .resolve(artifacts.baseName() + classifier + ".jmod")
                                .toString());
         return tools.run("jmod", in, out, err, arguments.toArray(String[]::new));
-    }
-
-    private static Discovery discovery(Artifacts artifacts) {
-        return ToolCommands.discover(artifacts.moduleName(), ToolArguments.modulePath(artifacts.runtimeArguments()));
     }
 
     private static Path commandsDirectory(Artifacts artifacts, Path jmodLayout, Set<String> commands,

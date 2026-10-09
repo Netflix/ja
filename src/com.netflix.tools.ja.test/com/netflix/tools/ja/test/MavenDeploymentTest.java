@@ -61,6 +61,21 @@ class MavenDeploymentTest {
     }
 
     @Test
+    void suppliesStandaloneApplicationsToMavenDeployment(@TempDir Path directory) throws Exception {
+        sourceModule(directory, "com.example.library");
+        var deployment = new ArrayList<String>();
+        ToolServices tools = tools(directory, deployment, true, true);
+        var commandLine = JaInvocation.parse(
+                directory,
+                new String[] {"maven", "install", "--module-version", "1.0"});
+
+        int result = run(commandLine, tools);
+
+        assertEquals(0, result);
+        assertEquals(List.of("maven", "install"), deployment.subList(0, 2));
+    }
+
+    @Test
     void preservesTheCallerSelectedModuleScopeDuringPreparation(@TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.application");
         sourceModule(directory, "com.example.library");
@@ -118,10 +133,19 @@ class MavenDeploymentTest {
     }
 
     private static ToolServices tools(Path directory, List<String> deployment, boolean expectMetadata) throws Exception {
+        return tools(directory, deployment, expectMetadata, false);
+    }
+
+    private static ToolServices tools(Path directory, List<String> deployment, boolean expectMetadata,
+                                      boolean standaloneApplication) throws Exception {
         String moduleName = "com.example.library";
         Path runtimeModule = Files.createDirectories(directory.resolve("runtime")
                 .resolve(moduleName));
         TestModules.writeModuleInfo(runtimeModule, moduleName);
+        if (standaloneApplication) {
+            Path packageDirectory = Files.createDirectories(runtimeModule.resolve("com/example"));
+            Files.writeString(packageDirectory.resolve("Main.class"), "main");
+        }
         ToolProvider jig = tool("jig",
                 arguments -> {
                     if (!arguments.isEmpty() && arguments.getFirst().equals("maven")) {
@@ -130,6 +154,15 @@ class MavenDeploymentTest {
                         assertTrue(Files.isRegularFile(artifacts.resolve(moduleName + "-sources.jar")));
                         assertTrue(Files.isRegularFile(artifacts.resolve(moduleName + "-javadoc.jar")));
                         assertEquals(expectMetadata, Files.isRegularFile(artifacts.resolve(moduleName + ".pom")));
+                        if (standaloneApplication) {
+                            for (String classifier : List.of(
+                                    "osx-aarch_64", "osx-x86_64",
+                                    "linux-aarch_64", "linux-x86_64",
+                                    "windows-aarch_64", "windows-x86_64")) {
+                                assertTrue(Files.isRegularFile(
+                                        artifacts.resolve(moduleName + "-" + classifier + ".zip")), classifier);
+                            }
+                        }
                         deployment.addAll(arguments);
                         return 0;
                     }
@@ -138,7 +171,8 @@ class MavenDeploymentTest {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
                         String content;
                         if (options.equals("main-class,module-version")) {
-                            content = "--module-version\n1.0\n";
+                            content = (standaloneApplication ? "--main-class\ncom.example.Main\n" : "")
+                                    + "--module-version\n1.0\n";
                         } else if (options.contains("module-source-path")) {
                             content = "";
                         } else {
@@ -148,7 +182,9 @@ class MavenDeploymentTest {
                     }
                     return 0;
                 });
-        return ToolServices.of(jig, ToolProvider.findFirst("jar").orElseThrow(),
+        return ToolServices.of(jig,
+                ToolProvider.findFirst("javac").orElseThrow(),
+                ToolProvider.findFirst("jar").orElseThrow(),
                 tool("javadoc", arguments -> 0));
     }
 

@@ -81,9 +81,13 @@ public final class LauncherCatalog {
     }
 
     static void copyDispatcher(Platform platform, Path destination) throws IOException {
+        copyDispatcher(platform, Path.of("."), Map.of(), destination);
+    }
+
+    static void copyDispatcher(Platform platform, Path compilationRoot, Map<String, Path> moduleSources,
+                               Path destination) throws IOException {
         String executable = platform.executable().endsWith(".exe") ? "dispatcher.exe" : "dispatcher";
-        copy(platform, Path.of("."), Map.of(), executable,
-                destination);
+        copy(platform, compilationRoot, moduleSources, executable, destination);
     }
 
     static void copy(Platform platform, Path compilationRoot, Path destination) throws IOException {

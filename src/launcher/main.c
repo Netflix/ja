@@ -53,13 +53,15 @@
 #include <unistd.h>
 #endif
 
-extern int JLI_Launch(int argc, char **argv,
+typedef int (*jli_launch_function)(int argc, char **argv,
         int jargc, const char **jargv,
         int appclassc, const char **appclassv,
         const char *fullversion, const char *dotversion,
         const char *pname, const char *lname,
         jboolean javaargs, jboolean cpwildcard,
         jboolean javaw, jint ergo_class);
+
+static jli_launch_function jli_launch;
 
 /* djb2 hash. */
 static unsigned long djb2(unsigned long hash, const char *data, size_t len) {
@@ -302,36 +304,6 @@ static int apply_launcher_options(
     return 1;
 }
 
-static int get_image_home_from_jli(char *buf, size_t size) {
-#ifdef _WIN32
-    HMODULE module;
-    DWORD flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                  GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
-    if (!GetModuleHandleExA(flags, (LPCSTR)&JLI_Launch, &module)) return 0;
-    DWORD len = GetModuleFileNameA(module, buf, (DWORD)size);
-    if (len == 0 || len >= size) return 0;
-
-    char *component = strrchr(buf, '\\');
-    if (!component) return 0;
-    *component = '\0';
-    component = strrchr(buf, '\\');
-    if (!component) return 0;
-    *component = '\0';
-#else
-    if (size < PATH_MAX) return 0;
-    Dl_info info;
-    if (dladdr((void*)&JLI_Launch, &info) == 0 || !info.dli_fname) return 0;
-    if (!realpath(info.dli_fname, buf)) return 0;
-
-    char *lib = NULL;
-    for (char *p = buf; (p = strstr(p, "/lib/")) != NULL; p += 5)
-        lib = p;
-    if (!lib) return 0;
-    *lib = '\0';
-#endif
-    return 1;
-}
-
 #ifndef _WIN32
 static int resolve_path(const char *path, char *buf, size_t size) {
     char resolved[PATH_MAX];
@@ -395,7 +367,7 @@ static int get_executable_path(const char *argv0, char *buf, size_t size) {
 }
 #endif
 
-static int get_image_home_from_executable(const char *argv0, char *buf, size_t size) {
+static int get_launcher_home(const char *argv0, char *buf, size_t size) {
     if (!get_executable_path(argv0, buf, size)) return 0;
 
 #ifdef _WIN32
@@ -412,21 +384,204 @@ static int get_image_home_from_executable(const char *argv0, char *buf, size_t s
     if (!bin) return 0;
     *bin = '\0';
 #endif
+    return 1;
+}
 
+static int is_runtime_home(const char *home) {
     char runtime[4096];
 #ifdef _WIN32
-    int len = snprintf(runtime, sizeof(runtime), "%s\\bin\\java.dll", buf);
+    int len = snprintf(runtime, sizeof(runtime), "%s\\bin\\java.dll", home);
 #elif defined(__APPLE__)
-    int len = snprintf(runtime, sizeof(runtime), "%s/lib/libjava.dylib", buf);
+    int len = snprintf(runtime, sizeof(runtime), "%s/lib/libjava.dylib", home);
 #else
-    int len = snprintf(runtime, sizeof(runtime), "%s/lib/libjava.so", buf);
+    int len = snprintf(runtime, sizeof(runtime), "%s/lib/libjava.so", home);
 #endif
     return len > 0 && len < (int)sizeof(runtime) && access(runtime, F_OK) == 0;
 }
 
-static int get_image_home(const char *argv0, char *buf, size_t size) {
-    if (get_image_home_from_executable(argv0, buf, size)) return 1;
-    return get_image_home_from_jli(buf, size);
+static int runtime_home_from_java_path(char *path) {
+#ifdef _WIN32
+    char *component = strrchr(path, '\\');
+    if (!component) return 0;
+    *component = '\0';
+    component = strrchr(path, '\\');
+#else
+    char *component = strrchr(path, '/');
+    if (!component) return 0;
+    *component = '\0';
+    component = strrchr(path, '/');
+#endif
+    if (!component) return 0;
+    *component = '\0';
+    return is_runtime_home(path);
+}
+
+static int parse_java_home(char *output, char *buf, size_t size) {
+    const char *property = "java.home = ";
+    char *value = strstr(output, property);
+    if (!value) return 0;
+    value += strlen(property);
+    char *end = strpbrk(value, "\r\n");
+    if (end) *end = '\0';
+    while (*value && isspace((unsigned char)value[strlen(value) - 1]))
+        value[strlen(value) - 1] = '\0';
+    size_t length = strlen(value);
+    if (length == 0 || length >= size) return 0;
+    memcpy(buf, value, length + 1);
+    return is_runtime_home(buf);
+}
+
+static int query_java_home(const char *java, char *buf, size_t size) {
+    char output[65536];
+    size_t used = 0;
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES security = {
+        .nLength = sizeof(SECURITY_ATTRIBUTES),
+        .lpSecurityDescriptor = NULL,
+        .bInheritHandle = TRUE
+    };
+    HANDLE read_pipe;
+    HANDLE write_pipe;
+    if (!CreatePipe(&read_pipe, &write_pipe, &security, 0)) return 0;
+    if (!SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0)) {
+        CloseHandle(read_pipe);
+        CloseHandle(write_pipe);
+        return 0;
+    }
+    char command_line[8192];
+    int length = snprintf(command_line, sizeof(command_line),
+            "\"%s\" -XshowSettings:properties -version", java);
+    if (length <= 0 || length >= (int)sizeof(command_line)) {
+        CloseHandle(read_pipe);
+        CloseHandle(write_pipe);
+        return 0;
+    }
+    STARTUPINFOA startup = {
+        .cb = sizeof(STARTUPINFOA),
+        .dwFlags = STARTF_USESTDHANDLES,
+        .hStdInput = GetStdHandle(STD_INPUT_HANDLE),
+        .hStdOutput = write_pipe,
+        .hStdError = write_pipe
+    };
+    PROCESS_INFORMATION process;
+    BOOL created = CreateProcessA(java, command_line, NULL, NULL, TRUE,
+            CREATE_NO_WINDOW, NULL, NULL, &startup, &process);
+    CloseHandle(write_pipe);
+    if (!created) {
+        CloseHandle(read_pipe);
+        return 0;
+    }
+    char chunk[4096];
+    DWORD count;
+    while (ReadFile(read_pipe, chunk, sizeof(chunk), &count, NULL) && count > 0) {
+        size_t available = sizeof(output) - 1 - used;
+        size_t retained = count < available ? count : available;
+        if (retained > 0) {
+            memcpy(output + used, chunk, retained);
+            used += retained;
+        }
+    }
+    CloseHandle(read_pipe);
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD result = 1;
+    GetExitCodeProcess(process.hProcess, &result);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    if (result != 0) return 0;
+#else
+    int pipe_fds[2];
+    if (pipe(pipe_fds) != 0) return 0;
+    pid_t child = fork();
+    if (child < 0) {
+        close(pipe_fds[0]);
+        close(pipe_fds[1]);
+        return 0;
+    }
+    if (child == 0) {
+        close(pipe_fds[0]);
+        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0
+                || dup2(pipe_fds[1], STDERR_FILENO) < 0)
+            _exit(1);
+        close(pipe_fds[1]);
+        execl(java, java, "-XshowSettings:properties", "-version", (char *)NULL);
+        _exit(1);
+    }
+    close(pipe_fds[1]);
+    char chunk[4096];
+    ssize_t count;
+    while ((count = read(pipe_fds[0], chunk, sizeof(chunk))) > 0) {
+        size_t available = sizeof(output) - 1 - used;
+        size_t retained = (size_t)count < available ? (size_t)count : available;
+        if (retained > 0) {
+            memcpy(output + used, chunk, retained);
+            used += retained;
+        }
+    }
+    close(pipe_fds[0]);
+    int status;
+    while (waitpid(child, &status, 0) < 0) {
+        if (errno != EINTR) return 0;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 0;
+#endif
+    output[used] = '\0';
+    return parse_java_home(output, buf, size);
+}
+
+static int runtime_home_from_path(char *buf, size_t size) {
+    char java[4096];
+#ifdef _WIN32
+    DWORD length = SearchPathA(NULL, "java.exe", NULL,
+            (DWORD)sizeof(java), java, NULL);
+    if (length == 0 || length >= sizeof(java)) return 0;
+#else
+    if (!resolve_from_path("java", java, sizeof(java))) return 0;
+#endif
+    memcpy(buf, java, strlen(java) + 1);
+    if (runtime_home_from_java_path(buf)) return 1;
+    return query_java_home(java, buf, size);
+}
+
+static int load_jli(const char *runtime_home, const char *tool) {
+    char path[4096];
+#ifdef _WIN32
+    int length = snprintf(path, sizeof(path), "%s\\bin\\jli.dll", runtime_home);
+    if (length <= 0 || length >= (int)sizeof(path)) return 0;
+    HMODULE library = LoadLibraryA(path);
+    if (!library) {
+        fprintf(stderr, "%s: cannot load JDK launcher library: %s: error %lu\n",
+                tool, path, (unsigned long)GetLastError());
+        return 0;
+    }
+    FARPROC symbol = GetProcAddress(library, "JLI_Launch");
+    if (!symbol) {
+        fprintf(stderr, "%s: JDK launcher library does not export JLI_Launch: %s\n",
+                tool, path);
+        return 0;
+    }
+    memcpy(&jli_launch, &symbol, sizeof(jli_launch));
+#else
+#ifdef __APPLE__
+    int length = snprintf(path, sizeof(path), "%s/lib/libjli.dylib", runtime_home);
+#else
+    int length = snprintf(path, sizeof(path), "%s/lib/libjli.so", runtime_home);
+#endif
+    if (length <= 0 || length >= (int)sizeof(path)) return 0;
+    void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!library) {
+        fprintf(stderr, "%s: cannot load JDK launcher library: %s: %s\n",
+                tool, path, dlerror());
+        return 0;
+    }
+    void *symbol = dlsym(library, "JLI_Launch");
+    if (!symbol) {
+        fprintf(stderr, "%s: JDK launcher library does not export JLI_Launch: %s\n",
+                tool, path);
+        return 0;
+    }
+    memcpy(&jli_launch, &symbol, sizeof(jli_launch));
+#endif
+    return 1;
 }
 
 static unsigned long get_process_id(void) {
@@ -684,12 +839,36 @@ static int launcher_main(int argc, char **argv) {
         fprintf(stderr, "launcher: cannot determine tool name\n");
         return 1;
     }
-    /* Match libjli's preference for the launcher's image, then its own image. */
-    static char image_home[4096];
-    if (!get_image_home(argv[0], image_home, sizeof(image_home))) {
-        fprintf(stderr, "%s: cannot determine JDK image\n", tool);
+    static char launcher_home[4096];
+    if (!get_launcher_home(argv[0], launcher_home, sizeof(launcher_home))) {
+        fprintf(stderr, "%s: cannot determine launcher home\n", tool);
         return 1;
     }
+    static char runtime_home[4096];
+    if (is_runtime_home(launcher_home)) {
+        memcpy(runtime_home, launcher_home, strlen(launcher_home) + 1);
+    } else {
+        const char *java_home = getenv("JAVA_HOME");
+        if (java_home && *java_home) {
+            if (strlen(java_home) >= sizeof(runtime_home)) {
+                fprintf(stderr, "%s: JAVA_HOME is too long\n", tool);
+                return 1;
+            }
+            memcpy(runtime_home, java_home, strlen(java_home) + 1);
+            if (!is_runtime_home(runtime_home)) {
+                fprintf(stderr, "%s: JAVA_HOME is not a Java runtime image: %s\n",
+                        tool, runtime_home);
+                return 1;
+            }
+        } else if (!runtime_home_from_path(runtime_home, sizeof(runtime_home))) {
+            fprintf(stderr,
+                    "%s: JAVA_HOME is not set and java on PATH does not identify a JDK\n",
+                    tool);
+            return 1;
+        }
+    }
+    if (!load_jli(runtime_home, tool)) return 1;
+
     enum aot_mode mode = AOT_OFF;
     int explicit_aot_mode = 0;
     if (!apply_launcher_options(
@@ -697,24 +876,35 @@ static int launcher_main(int argc, char **argv) {
 
     /* The VM validates lib/modules by size when loading an AOT cache. */
     static char release_path[4096];
-    snprintf(release_path, sizeof(release_path), "%s/release", image_home);
+    snprintf(release_path, sizeof(release_path), "%s/release", runtime_home);
     static char modules_path[4096];
-    snprintf(modules_path, sizeof(modules_path), "%s/lib/modules", image_home);
+    snprintf(modules_path, sizeof(modules_path), "%s/lib/modules", runtime_home);
     static char application_modules[4096];
     snprintf(application_modules, sizeof(application_modules),
-            "%s/app/modules", image_home);
+            "%s/app/modules", launcher_home);
     static char application_hash[4096];
     snprintf(application_hash, sizeof(application_hash),
-            "%s/app/modules.hash", image_home);
+            "%s/app/modules.hash", launcher_home);
     int managed = is_directory(application_modules);
+    int external_runtime = strcmp(launcher_home, runtime_home) != 0;
+    if (external_runtime && (!managed || !is_regular_file(application_hash))) {
+        fprintf(stderr, "%s: installed application is incomplete: %s\n",
+                tool, launcher_home);
+        return 1;
+    }
     static char runtime_options_path[4096];
     int options_length = snprintf(runtime_options_path, sizeof(runtime_options_path),
-            "%s/conf/com.netflix.tools.launcher/%s.args", image_home, tool);
+            "%s/conf/com.netflix.tools.launcher/%s.args", launcher_home, tool);
     if (options_length < 0 || options_length >= (int)sizeof(runtime_options_path)) {
         fprintf(stderr, "%s: launcher runtime options path is too long\n", tool);
         return 1;
     }
     int has_runtime_options = is_regular_file(runtime_options_path);
+    if (external_runtime && !has_runtime_options) {
+        fprintf(stderr, "%s: installed application has no launcher arguments: %s\n",
+                tool, runtime_options_path);
+        return 1;
+    }
     static char runtime_options[MAX_RUNTIME_OPTIONS][MAX_RUNTIME_OPTION_LENGTH];
     int runtime_option_count = 0;
     if (has_runtime_options) {
@@ -729,11 +919,11 @@ static int launcher_main(int argc, char **argv) {
             &hash, tool, release_path, modules_path,
             has_runtime_options, runtime_options_path,
             managed, application_modules, application_hash)) {
-        fprintf(stderr, "%s: cannot inspect JDK image: %s\n", tool, image_home);
+        fprintf(stderr, "%s: cannot inspect launcher runtime: %s\n", tool, runtime_home);
         return 1;
     }
 
-    enum runtime_vm runtime_vm = detect_runtime_vm(image_home);
+    enum runtime_vm runtime_vm = detect_runtime_vm(runtime_home);
     int hotspot_aot_supported = runtime_vm == RUNTIME_VM_HOTSPOT;
     int openj9_aot_supported = runtime_vm == RUNTIME_VM_OPENJ9;
     if (mode == AOT_CREATE && !hotspot_aot_supported && !openj9_aot_supported) {
@@ -800,16 +990,31 @@ static int launcher_main(int argc, char **argv) {
 
     int use_openj9_aot = openj9_aot_supported
             && (mode != AOT_OFF || training_id != NULL);
+    if (use_openj9_aot && external_runtime && !cache_base) {
+        if (mode == AOT_CREATE) {
+            fprintf(stderr, "%s: cannot create shared class cache without a user cache directory\n",
+                    tool);
+            return 1;
+        }
+        use_openj9_aot = 0;
+    }
     if (use_openj9_aot) {
+        static char shared_classes_home[4096];
+        if (external_runtime) {
+            snprintf(shared_classes_home, sizeof(shared_classes_home), "%s", cache_dir);
+        } else {
+            snprintf(shared_classes_home, sizeof(shared_classes_home),
+                    "%s/lib/ja", runtime_home);
+        }
         static char shared_classes[4096];
         static char shared_classes_attempted[4096];
         static char shared_classes_output[4096];
         snprintf(shared_classes, sizeof(shared_classes),
-                "%s/lib/ja/sharedclasses", image_home);
+                "%s/sharedclasses", shared_classes_home);
         snprintf(shared_classes_attempted, sizeof(shared_classes_attempted),
-                "%s/lib/ja/sharedclasses.attempted", image_home);
+                "%s/sharedclasses.attempted", shared_classes_home);
         snprintf(shared_classes_output, sizeof(shared_classes_output),
-                "%s/lib/ja/%s.out", image_home, tool);
+                "%s/%s.out", shared_classes_home, tool);
         if (training_id) {
             char *end;
             unsigned long id = strtoul(training_id, &end, 10);
@@ -824,7 +1029,7 @@ static int launcher_main(int argc, char **argv) {
             snprintf(shared_classes_flag, sizeof(shared_classes_flag),
                     "-J-Xshareclasses:name=ja,cacheDir=%s,nonfatal", shared_classes);
             snprintf(temporary_error, sizeof(temporary_error),
-                    "%s/lib/ja/.%lu.out.tmp", image_home, id);
+                    "%s/.%lu.out.tmp", shared_classes_home, id);
             warming = 1;
             openj9_warming = 1;
         } else if (mode != AOT_CREATE && directory_has_regular_file(shared_classes)) {
@@ -852,7 +1057,7 @@ static int launcher_main(int argc, char **argv) {
                     char training_id_buffer[32];
                     snprintf(training_id_buffer, sizeof(training_id_buffer), "%lu", pid);
                     snprintf(temporary_error, sizeof(temporary_error),
-                            "%s/lib/ja/.%lu.out.tmp", image_home, pid);
+                            "%s/.%lu.out.tmp", shared_classes_home, pid);
                     unlink(temporary_error);
                     fprintf(stderr, "%s: shared class cache warmup: %s\n",
                             tool, shared_classes);
@@ -1062,7 +1267,7 @@ static int launcher_main(int argc, char **argv) {
     if (recording || openj9_warming)
         jargs[jargc++] = "-J-Dcom.netflix.tools.launcher.aot.training=true";
     if (managed) {
-        jargs[jargc++] = "--module-path";
+        jargs[jargc++] = external_runtime ? "--upgrade-module-path" : "--module-path";
         jargs[jargc++] = application_modules;
     }
     for (int i = 0; i < base_argc; i++)
@@ -1073,7 +1278,7 @@ static int launcher_main(int argc, char **argv) {
         if (!freopen(temporary_error, "a", stderr)) return 1;
     }
 
-    return JLI_Launch(argc, argv,
+    return jli_launch(argc, argv,
             jargc, jargs,
             0, NULL,
             "1.0", "0.0",

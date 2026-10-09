@@ -63,6 +63,24 @@ jobs:
       - name: Test source with built ja
         run: ja test --all
 
+      - name: Verify standalone Ja distributions
+        run: |
+          artifacts="$RUNNER_TEMP/ja-release-artifacts"
+          ja assemble --module-version "$BUILD_VERSION" "$artifacts"
+          for classifier in \
+              osx-aarch_64 osx-x86_64 \
+              linux-aarch_64 linux-x86_64 \
+              windows-aarch_64 windows-x86_64; do
+            archive="$artifacts/com.netflix.tools.ja-$classifier.zip"
+            test -f "$archive"
+            case "$classifier" in
+              windows-*) command=bin/ja.exe; dispatcher=lib/com.netflix.tools.launcher/dispatcher.exe ;;
+              *) command=bin/ja; dispatcher=lib/com.netflix.tools.launcher/dispatcher ;;
+            esac
+            jar --list --file "$archive" | grep -Fxq "$command"
+            jar --list --file "$archive" | grep -Fxq "$dispatcher"
+          done
+
       - name: Publish to Maven Central with built ja
         run: >-
           ja maven deploy-central
