@@ -182,7 +182,7 @@ jobs:
       - name: Assemble standalone Ja distributions
         run: |
           artifacts="$RUNNER_TEMP/ja-standalone-artifacts"
-          ja assemble --module-version "$BUILD_VERSION" "$artifacts"
+          ja --verbose assemble --module-version "$BUILD_VERSION" "$artifacts"
           for classifier in \
               osx-aarch_64 osx-x86_64 \
               linux-aarch_64 linux-x86_64 \
