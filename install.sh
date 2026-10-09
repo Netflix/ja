@@ -218,8 +218,12 @@ if [[ "$installation" == standalone ]]; then
         *) echo "Unsupported standalone platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
     esac
     archive="$work/com.netflix.tools.ja-$ja_version-$classifier.zip"
-    curl --fail --location --output "$archive" \
-        "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.ja/$ja_version/com.netflix.tools.ja-$ja_version-$classifier.zip"
+    if [[ -n "${JA_STANDALONE_ARCHIVE:-}" ]]; then
+        cp "$JA_STANDALONE_ARCHIVE" "$archive"
+    else
+        curl --fail --silent --show-error --location --output "$archive" \
+            "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.ja/$ja_version/com.netflix.tools.ja-$ja_version-$classifier.zip"
+    fi
     staged_standalone="$work/standalone"
     unzip -q "$archive" -d "$staged_standalone"
     if [[ ! -x "$staged_standalone/bin/ja" \

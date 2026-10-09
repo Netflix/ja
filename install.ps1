@@ -172,8 +172,12 @@ try {
             default { throw "Unsupported standalone Windows architecture: $Architecture" }
         }
         $Archive = Join-Path $Work "com.netflix.tools.ja-$JaVersion-$Classifier.zip"
-        Invoke-WebRequest -OutFile $Archive `
-            "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.ja/$JaVersion/com.netflix.tools.ja-$JaVersion-$Classifier.zip"
+        if (-not [string]::IsNullOrWhiteSpace($env:JA_STANDALONE_ARCHIVE)) {
+            Copy-Item -LiteralPath $env:JA_STANDALONE_ARCHIVE -Destination $Archive
+        } else {
+            Invoke-WebRequest -OutFile $Archive `
+                "https://repo.maven.apache.org/maven2/com/netflix/com.netflix.tools.ja/$JaVersion/com.netflix.tools.ja-$JaVersion-$Classifier.zip"
+        }
         $StagedStandalone = Join-Path $Work "standalone"
         Expand-Archive -LiteralPath $Archive -DestinationPath $StagedStandalone
         $StagedEntrypoint = Join-Path $StagedStandalone "bin\ja.exe"

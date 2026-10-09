@@ -178,3 +178,67 @@ jobs:
 
       - name: Test source with built ja
         run: ja test --all
+
+      - name: Assemble standalone Ja distributions
+        run: |
+          artifacts="$RUNNER_TEMP/ja-standalone-artifacts"
+          ja assemble --module-version "$BUILD_VERSION" "$artifacts"
+          for classifier in \
+              osx-aarch_64 osx-x86_64 \
+              linux-aarch_64 linux-x86_64 \
+              windows-aarch_64 windows-x86_64; do
+            test -f "$artifacts/com.netflix.tools.ja-$classifier.zip"
+          done
+
+      - name: Upload standalone Ja distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ja-standalone-distributions
+          path: ${{ runner.temp }}/ja-standalone-artifacts/com.netflix.tools.ja-*.zip
+          if-no-files-found: error
+
+  standalone-install:
+    name: Install standalone (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      BUILD_VERSION: 0.18.1-build.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up source JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version-file: .java-version
+
+      - name: Download standalone Ja distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: ja-standalone-distributions
+          path: ${{ runner.temp }}/ja-standalone-artifacts
+
+      - name: Test standalone installer and installed ja
+        if: runner.os != 'Windows'
+        run: |
+          case "$(uname -s):$(uname -m)" in
+            Darwin:arm64 | Darwin:aarch64) classifier=osx-aarch_64 ;;
+            Darwin:x86_64 | Darwin:amd64) classifier=osx-x86_64 ;;
+            Linux:arm64 | Linux:aarch64) classifier=linux-aarch_64 ;;
+            Linux:x86_64 | Linux:amd64) classifier=linux-x86_64 ;;
+            *) echo "Unsupported test platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
+          esac
+          .github/scripts/test-standalone-install.sh \
+            "$RUNNER_TEMP/ja-standalone-artifacts/com.netflix.tools.ja-$classifier.zip" \
+            "$BUILD_VERSION"
+
+      - name: Test standalone PowerShell installer and installed ja
+        if: runner.os == 'Windows'
+        run: >-
+          ./.github/scripts/test-standalone-install.ps1
+          -Archive "$env:RUNNER_TEMP/ja-standalone-artifacts/com.netflix.tools.ja-windows-x86_64.zip"
+          -JaVersion "$env:BUILD_VERSION"
