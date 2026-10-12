@@ -51,6 +51,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -735,6 +736,48 @@ class AssembleTest {
     }
 
     @Test
+    void includesJarDependenciesInStandaloneApplications(@TempDir Path directory) throws Exception {
+        sourceModule(directory, "com.example.app");
+        Path dependency = TestModules.writeJar(directory.resolve("com.example.library-1.0.jar"), "com.example.library");
+        Path module = Files.createDirectories(directory.resolve("compiled"));
+        TestModules.writeModuleInfo(module, "com.example.app", "com.example.library");
+        Path packageDirectory = Files.createDirectories(module.resolve("com/example"));
+        Files.writeString(packageDirectory.resolve("Main.class"), "application");
+        String modulePath = module + System.getProperty("path.separator") + dependency;
+        ToolProvider jig = tool("jig", (output, arguments) -> {
+            String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
+            Path argumentFile = Path.of(arguments.get(arguments.indexOf("--write-argfile") + 1));
+            Files.writeString(argumentFile, options.equals("main-class,module-version")
+                    ? "--main-class\ncom.example.Main\n--module-version\n1.0\n"
+                    : "--module-path\n" + modulePath + "\n");
+            return 0;
+        });
+        ToolRuntime tools = ToolRuntime.of(
+                jig,
+                ToolProvider.findFirst("javac").orElseThrow(),
+                ToolProvider.findFirst("jar").orElseThrow(),
+                ToolProvider.findFirst("jmod").orElseThrow(),
+                tool("javadoc", (output, arguments) -> 0));
+        var commandLine = JaInvocation.parse(directory,
+                new String[] {"assemble", "--target-platform", "macos-aarch64", "--module-version", "1.0", "artifacts"});
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> null)
+                .run(commandLine, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        Path distribution = artifacts(directory).resolve("com.example.app-osx-aarch_64.zip");
+        try (var zip = new ZipFile(distribution.toFile())) {
+            assertTrue(zip.getEntry("app/modules/com.example.app/module-info.class") != null);
+            assertTrue(zip.getEntry("app/modules/com.example.app.launcher/module-info.class") != null);
+            var library = zip.getEntry("app/modules/com.example.library-1.0.jar");
+            assertNotNull(library);
+            assertArrayEquals(Files.readAllBytes(dependency), zip.getInputStream(library).readAllBytes());
+        }
+    }
+
+    @Test
     void launchesAnExtractedStandaloneApplicationAgainstJavaHomeAndPath(@TempDir Path directory) throws Exception {
         String target = currentTarget();
         var platform = LauncherCatalog.platforms(target).getFirst();
@@ -777,7 +820,13 @@ class AssembleTest {
         Files.copy(dispatcher, command, StandardCopyOption.COPY_ATTRIBUTES);
         Files.writeString(commands.resolve("app.current"), entrypoint.toString() + "\n");
 
-        Path javaHome = Path.of(System.getProperty("java.home"));
+        Path sourceJavaHome = Path.of(System.getProperty("java.home"));
+        Path javaHome = directory.resolve("plain-jdk");
+        Result linked = process(directory, Map.of(), sourceJavaHome.resolve("bin/jlink").toString(),
+                "--module-path", sourceJavaHome.resolve("jmods").toString(),
+                "--add-modules", "java.base,java.compiler", "--output", javaHome.toString());
+        assertEquals(0, linked.exitCode(), linked.output());
+
         Result fromJavaHome = process(directory, Map.of("JAVA_HOME", javaHome.toString()),
                 command.toString(), "-L-aot=off");
         assertEquals(0, fromJavaHome.exitCode(), fromJavaHome.output());

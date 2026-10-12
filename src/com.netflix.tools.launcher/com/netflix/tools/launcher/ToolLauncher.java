@@ -14,9 +14,13 @@
 
 package com.netflix.tools.launcher;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.lang.module.ModuleFinder;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.ServiceLoader;
@@ -24,6 +28,7 @@ import java.util.ServiceLoader.Provider;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.spi.ToolProvider;
+import java.util.stream.Collectors;
 import javax.tools.Tool;
 
 public final class ToolLauncher {
@@ -44,6 +49,7 @@ public final class ToolLauncher {
         String[] toolArguments = Arrays.copyOfRange(args, 1, args.length);
         int result;
         try {
+            requireNoSystemModuleConflicts();
             boolean training = Boolean.getBoolean(AOT_TRAINING_PROPERTY);
             Optional<Tool> compilerTool = findTool(name);
             if (compilerTool.isPresent()) {
@@ -114,6 +120,31 @@ public final class ToolLauncher {
             new PrintWriter(err, true).println(name + " warmup failed with exit code " + result);
         }
         return result;
+    }
+
+    private static void requireNoSystemModuleConflicts() {
+        String applicationHome = System.getProperty("application.home");
+        if (applicationHome == null) {
+            return;
+        }
+        Path application = Path.of(applicationHome);
+        try {
+            if (Files.isSameFile(application, Path.of(System.getProperty("java.home")))) {
+                return;
+            }
+        } catch (IOException failure) {
+            throw new LauncherConfigurationException("Cannot inspect application home: " + applicationHome, failure);
+        }
+        var systemModules = ModuleFinder.ofSystem();
+        String conflicts = ModuleFinder.of(application.resolve("app/modules")).findAll().stream()
+                .map(reference -> reference.descriptor().name())
+                .filter(name -> systemModules.find(name).isPresent())
+                .sorted()
+                .collect(Collectors.joining(", "));
+        if (!conflicts.isEmpty()) {
+            throw new LauncherConfigurationException("Standalone application modules conflict with system modules: "
+                    + conflicts + "; select a plain JDK with JAVA_HOME");
+        }
     }
 
     private static Optional<Tool> findTool(String name) {

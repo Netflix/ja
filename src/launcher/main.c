@@ -1289,7 +1289,7 @@ static int launcher_main(int argc, char **argv) {
     if (recording || openj9_warming)
         jargs[jargc++] = "-J-Dcom.netflix.tools.launcher.aot.training=true";
     if (managed) {
-        jargs[jargc++] = external_runtime ? "--upgrade-module-path" : "--module-path";
+        jargs[jargc++] = "--module-path";
         jargs[jargc++] = application_modules;
     }
     for (int i = 0; i < base_argc; i++)

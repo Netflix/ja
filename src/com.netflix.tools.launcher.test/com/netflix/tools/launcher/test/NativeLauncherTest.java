@@ -298,7 +298,8 @@ class NativeLauncherTest {
         assertEquals(0, result.exitCode(), result.output());
         List<String> arguments = Files.readAllLines(jargs);
         assertTrue(arguments.contains("run:--enable-preview"), arguments.toString());
-        assertTrue(arguments.contains("run:--upgrade-module-path"), arguments.toString());
+        assertTrue(arguments.contains("run:--module-path"), arguments.toString());
+        assertFalse(arguments.contains("run:--upgrade-module-path"), arguments.toString());
         assertTrue(arguments.contains("run:" + applicationModules.toRealPath()), arguments.toString());
     }
 

@@ -203,7 +203,7 @@ final class ApplicationStager {
                 Path module = Path.of(location.orElseThrow());
                 Path destination = Files.isDirectory(module)
                         ? modules.resolve(reference.descriptor().name())
-                        : modules.resolve(module.getFileName());
+                        : modules.resolve(module.getFileName().toString());
                 if (Files.isDirectory(module)) {
                     copyRecursively(module, destination);
                 } else if (Files.isRegularFile(module)) {
