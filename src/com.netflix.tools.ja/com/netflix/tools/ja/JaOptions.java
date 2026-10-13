@@ -30,6 +30,10 @@ final class JaOptions {
         return ToolOption.flag("--verbose", "Enable verbose output");
     }
 
+    static ToolOption project() {
+        return ToolOption.option("--project", "SELECTOR", "Select a project", "-p");
+    }
+
     static ToolOption recompile() {
         return ToolOption.flag("--recompile", "Compile without reusing prior output");
     }

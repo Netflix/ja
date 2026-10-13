@@ -15,6 +15,8 @@
 package com.netflix.tools.ja;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,11 +41,9 @@ import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
 import com.netflix.tools.ja.RequireRequest.UpdatePolicy;
 
 /**
- * Represents a parsed {@code ja} command line, including its working directory,
- * module scope, and tool arguments.
- *
- * <p>Parsing establishes the command and source-module scope without resolving
- * dependencies or interpreting arguments owned by tools.
+ * Represents a command request and its resolved project scope. Parsing records
+ * explicit selections without discovering projects or reading source
+ * descriptors.
  */
 public record JaInvocation(
         Path workingDirectory,
@@ -52,7 +52,21 @@ public record JaInvocation(
         Optional<ModuleSourcePath> moduleSourcePath,
         List<String> rootModules,
         List<String> resolutionArguments,
-        List<String> toolArguments) {
+        List<String> toolArguments,
+        List<String> requestedProjects,
+        Optional<ProjectContext> projectContext) {
+
+    public JaInvocation(
+            Path workingDirectory,
+            boolean verbose,
+            Command command,
+            Optional<ModuleSourcePath> moduleSourcePath,
+            List<String> rootModules,
+            List<String> resolutionArguments,
+            List<String> toolArguments) {
+        this(workingDirectory, verbose, command, moduleSourcePath, rootModules, resolutionArguments,
+                toolArguments, List.of(), Optional.empty());
+    }
 
     public JaInvocation(Path workingDirectory, Command command, Optional<ModuleSourcePath> moduleSourcePath,
                         List<String> rootModules, List<String> resolutionArguments, List<String> toolArguments) {
@@ -64,12 +78,76 @@ public record JaInvocation(
         rootModules = List.copyOf(rootModules);
         resolutionArguments = List.copyOf(resolutionArguments);
         toolArguments = List.copyOf(toolArguments);
+        requestedProjects = List.copyOf(requestedProjects);
     }
 
     JaInvocation withRootModules(List<String> modules) {
         return new JaInvocation(workingDirectory, verbose, command, moduleSourcePath, modules,
-                ResolutionArguments.withRoots(resolutionArguments, modules), toolArguments);
+                ResolutionArguments.withRoots(resolutionArguments, modules), toolArguments, requestedProjects, projectContext);
     }
+
+    public JaInvocation resolveProjects(ToolRuntime tools, InputStream in, PrintStream err) throws IOException {
+        if (projectContext.isPresent() || moduleSourcePath.isPresent()) {
+            return this;
+        }
+        if (command instanceof Init || command instanceof Install(var request) && request.target().isPresent()) {
+            if (!requestedProjects.isEmpty()) {
+                throw new IllegalArgumentException("--project requires a command operating on source projects");
+            }
+            return this;
+        }
+        boolean parseDescriptors = !command.equals(new Builtin(BuiltinCommand.COMPILE));
+        var context = new ProjectLocator(tools, parseDescriptors).locate(workingDirectory, requestedProjects, in, err);
+        if (context.isPresent()) {
+            return ModuleProjectScope.apply(this, context.orElseThrow());
+        }
+        if (requestedProjects.isEmpty() && (command instanceof Tool || command instanceof Tools)) {
+            return this;
+        }
+        if (command instanceof Install) {
+            throw new IllegalArgumentException("install requires a module/package reference or a current source module");
+        }
+        throw new IllegalArgumentException("No project found from " + workingDirectory + "; run from a project or select a working directory with -C");
+    }
+
+    static int commandIndex(List<String> arguments) {
+        return globalOptions(arguments).commandIndex();
+    }
+
+    private static GlobalOptions globalOptions(List<String> arguments) {
+        boolean verbose = false;
+        var projects = new ArrayList<String>();
+        int index = 0;
+        while (index < arguments.size()) {
+            String argument = arguments.get(index);
+            if (argument.equals("--verbose")) {
+                if (verbose) {
+                    throw new IllegalArgumentException("--verbose may only be specified once");
+                }
+                verbose = true;
+            } else if (argument.equals("-p") || argument.equals("--project")) {
+                if (++index >= arguments.size()) {
+                    throw new IllegalArgumentException(argument + " requires a selector");
+                }
+                projects.add(projectSelector(arguments.get(index)));
+            } else if (argument.startsWith("--project=")) {
+                projects.add(projectSelector(argument.substring("--project=".length())));
+            } else {
+                break;
+            }
+            index++;
+        }
+        return new GlobalOptions(verbose, List.copyOf(projects), index);
+    }
+
+    private static String projectSelector(String selector) {
+        if (selector.isBlank() || selector.startsWith("-")) {
+            throw new IllegalArgumentException("--project requires a nonempty selector");
+        }
+        return selector;
+    }
+
+    private record GlobalOptions(boolean verbose, List<String> projects, int commandIndex) {}
 
     public static JaInvocation parse(Path workingDirectory, String[] arguments) throws IOException {
         if (arguments.length == 0) {
@@ -80,16 +158,9 @@ public record JaInvocation(
 
         var rootModules = new ArrayList<String>();
         var resolutionArguments = new ArrayList<String>();
-        boolean explicitRoots = false;
-        boolean verbose = false;
-        int commandIndex = 0;
-        while (commandIndex < arguments.length && arguments[commandIndex].equals("--verbose")) {
-            if (verbose) {
-                throw new IllegalArgumentException("--verbose may only be specified once");
-            }
-            verbose = true;
-            commandIndex++;
-        }
+        var globals = globalOptions(List.of(arguments));
+        boolean verbose = globals.verbose();
+        int commandIndex = globals.commandIndex();
         if (commandIndex == arguments.length) {
             throw new IllegalArgumentException("Missing command");
         }
@@ -144,13 +215,11 @@ public record JaInvocation(
                         throw new IllegalArgumentException(option + " requires a value");
                     }
                     String module = moduleSelection(option, arguments[i]);
-                    explicitRoots = true;
                     rootModules.add(module);
                     resolutionArguments.add("-m");
                     resolutionArguments.add(module);
                 } else if (!separated && option.startsWith("--module=")) {
                     String module = moduleSelection("--module", option.substring("--module=".length()));
-                    explicitRoots = true;
                     rootModules.add(module);
                     resolutionArguments.add("-m");
                     resolutionArguments.add(module);
@@ -178,7 +247,6 @@ public record JaInvocation(
                     }
                     if (target != null) {
                         String module = runTargetModule(option, target);
-                        explicitRoots = true;
                         resolutionArguments.add("-m");
                         resolutionArguments.add(module);
                         runTarget = Optional.of(target);
@@ -207,67 +275,11 @@ public record JaInvocation(
             }
         }
 
-        boolean init = command instanceof Init;
-        boolean install = command instanceof Install;
-        boolean sourceInstall = command instanceof Install(var request) && request.target().isEmpty();
-        Optional<ModuleSourcePath> moduleSourcePath = Optional.empty();
-        if ((!init && !install) || sourceInstall) {
-            boolean parseDescriptors = !command.equals(new Builtin(BuiltinCommand.COMPILE));
-            moduleSourcePath = ModuleSourcePath.discover(selectedWorkingDirectory, parseDescriptors);
-            if (moduleSourcePath.isPresent()) {
-                var discovered = moduleSourcePath.get();
-                for (var sourcePath : discovered.arguments()) {
-                    resolutionArguments.add("--module-source-path");
-                    resolutionArguments.add(sourcePath);
-                }
-                if (!explicitRoots) {
-                    var defaults = discovered.defaultRoots();
-                    boolean inferLaunchRoot = defaults.size() > 1 && (sourceInstall || command instanceof Run);
-                    if (!inferLaunchRoot) {
-                        for (String root : defaults) {
-                            rootModules.add(root);
-                            resolutionArguments.add("-m");
-                            resolutionArguments.add(root);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (sourceInstall) {
-            if (moduleSourcePath.isEmpty()) {
-                throw new IllegalArgumentException("install requires a module/package reference or a current source module");
-            }
-            if (rootModules.size() == 1 && !moduleSourcePath.orElseThrow()
-                    .modules()
-                    .containsKey(rootModules.getFirst())) {
-                throw new IllegalArgumentException("install requires a source module: " + rootModules.getFirst());
-            }
-        }
-        if (!init
-                && !install
-                && !(command instanceof Tool)
-                && !(command instanceof Tools)
-                && moduleSourcePath.isEmpty()) {
-            throw new IllegalArgumentException("No source module found from " + selectedWorkingDirectory + "; run from within a module, src, or its parent");
-        }
-        if (command instanceof Require(var request)) {
-            if (moduleSourcePath.isEmpty()) {
-                throw new IllegalArgumentException("require needs a discovered module source path");
-            }
-            var discovered = moduleSourcePath.orElseThrow();
-            for (String root : rootModules) {
-                if (!discovered.modules().containsKey(root)) {
-                    throw new IllegalArgumentException("require needs a source module: " + root);
-                }
-            }
-            if (!request.updatesVersions() && rootModules.size() != 1) {
-                throw new IllegalArgumentException("require needs exactly one selected source module");
-            }
-        }
-
-        return new JaInvocation(selectedWorkingDirectory, verbose, command, moduleSourcePath, rootModules, resolutionArguments,
-                toolArguments);
+        return new JaInvocation(selectedWorkingDirectory, verbose, command,
+                Optional.empty(), rootModules, resolutionArguments,
+                toolArguments,
+                globals.projects(),
+                Optional.empty());
     }
 
     private static InitRequest parseInitRequest(String[] arguments, int firstArgument) {

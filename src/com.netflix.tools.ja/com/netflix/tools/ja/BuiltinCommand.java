@@ -51,6 +51,9 @@ public enum BuiltinCommand {
     BENCH("bench", HelpGroup.DEVELOP, "Run benchmarks", new ToolBacked("jmh"),
             runtimeTool()),
 
+    PROJECTS("projects", HelpGroup.EXPLORE, "List discovered projects",
+            workflow(), ResolutionOptions.EMPTY),
+
     LIST("list", HelpGroup.EXPLORE, "List observable modules", new LaunchJava(),
             standardOptions("module-path", "upgrade-module-path", "add-modules")),
     DESCRIBE("describe", HelpGroup.EXPLORE, "Describe a module", new LaunchJava(),

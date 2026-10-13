@@ -280,7 +280,7 @@ class CommandRunnerTest {
                     requires static com.example.tool;
                 }
                 """);
-        var commandLine = JaInvocation.parse(application, new String[] {"tool", "source-probe", "explicit"});
+        var commandLine = JaInvocation.parse(application, new String[] {"tool", "source-probe", "explicit"}).resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err);
 
         Path modules = temporaryDirectory.resolve("modules");
         int compilation = ToolProvider.findFirst("javac")

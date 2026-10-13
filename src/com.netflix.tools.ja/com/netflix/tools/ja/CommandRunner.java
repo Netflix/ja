@@ -122,6 +122,12 @@ public final class CommandRunner {
             return new CommandRunner(layer, tools.withVerbose(catalog.definitions(), err), () -> catalog, temporaryDirectoryProvider, verbose(javaLauncher, err), installer)
                     .run(commandLine, in, out, err);
         }
+        commandLine = commandLine.resolveProjects(tools, in, err);
+        if (commandLine.command().equals(new Builtin(BuiltinCommand.PROJECTS))) {
+            return ProjectsCommand.run(commandLine.projectContext()
+                    .orElseThrow(),
+                    out);
+        }
         if (commandLine.command() instanceof Init(var request)) {
             ModuleInitializer.initialize(commandLine.workingDirectory(), request);
             return 0;
@@ -380,7 +386,9 @@ public final class CommandRunner {
                 invocation.moduleSourcePath(),
                 invocation.rootModules(),
                 invocation.resolutionArguments(),
-                arguments);
+                arguments,
+                invocation.requestedProjects(),
+                invocation.projectContext());
     }
 
     private Optional<TemporaryDirectory> temporaryDirectory(JaInvocation commandLine) throws IOException {

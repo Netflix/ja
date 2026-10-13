@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,6 +75,8 @@ class JaToolTest {
         assertEquals(0, described.isSupportedOption("-h"));
         assertEquals(0, described.isSupportedOption("--version"));
         assertEquals(1, described.isSupportedOption("-C"));
+        assertEquals(1, described.isSupportedOption("-p"));
+        assertEquals(1, described.isSupportedOption("--project"));
         assertEquals(0, described.isSupportedOption("__complete"));
         assertEquals(-1, described.isSupportedOption("--completion"));
         assertEquals(-1, described.isSupportedOption("--module-path"));
@@ -108,6 +111,49 @@ class JaToolTest {
     }
 
     @Test
+    void projectSelectionDoesNotRequireDiscoveryForHelp(@TempDir Path directory) {
+        var result = run("-C", directory.toString(), "-p", "missing", "projects",
+                "--help");
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output().startsWith("Usage: ja projects"),
+                result.output());
+        assertEquals("", result.error());
+    }
+
+    @Test
+    void globalHelpAndVersionDoNotDiscoverRequestedProjects(@TempDir Path directory) {
+        var help = run("-C", directory.toString(), "-p", "missing", "--help");
+        assertEquals(0, help.exitCode(), help.error());
+        assertTrue(help.output().startsWith("Usage: ja "),
+                help.output());
+        var version = run("-C", directory.toString(), "-p", "missing", "--version");
+        assertEquals(0, version.exitCode(), version.error());
+        assertTrue(version.output().startsWith("ja "),
+                version.output());
+        assertEquals("", version.error());
+    }
+
+    @Test
+    void projectSelectionOverridesTheSelectedWorkingDirectory(@TempDir Path directory) throws Exception {
+        for (String name : List.of("com.example.server", "com.example.client")) {
+            Path source = Files.createDirectories(directory.resolve("src")
+                    .resolve(name));
+            Files.writeString(source.resolve("module-info.java"), "module " + name + " {}\n");
+        }
+        var result = run("-p", "client", "-C",
+                directory.resolve("src/com.example.server").toString(), "projects");
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output()
+                         .lines()
+                         .anyMatch(value -> value.startsWith("com.example.client ") && value.endsWith("(current - requested)")),
+                result.output());
+        assertFalse(result.output()
+                          .lines()
+                          .anyMatch(value -> value.startsWith("com.example.server ") && value.contains("current")),
+                result.output());
+    }
+
+    @Test
     void describesAndCompletesItsCommands() {
         var described = assertInstanceOf(JaTool.class, ja);
 
@@ -120,7 +166,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(17,
+        assertEquals(18,
                 described.commandLine()
                          .commands()
                          .size());

@@ -14,10 +14,13 @@
 
 package com.netflix.tools.ja;
 
+import java.io.ByteArrayOutputStream;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,16 +61,17 @@ public final class Ja {
             var invocation = COMMAND_LINE.prepare(new ToolInvocation(workingDirectory, Arrays.asList(args)));
             workingDirectory = invocation.workingDirectory();
             args = invocation.arguments().toArray(String[]::new);
-            var version = COMMAND_LINE.runVersion("ja", new PrintWriter(out, true), args);
+            int commandIndex = JaInvocation.commandIndex(Arrays.asList(args));
+            var versionArguments = args.length == commandIndex + 1 && args[commandIndex].equals("--version")
+                    ? new String[] {"--version"}
+                    : args;
+            var version = COMMAND_LINE.runVersion("ja", new PrintWriter(out, true), versionArguments);
             if (version.isPresent()) {
                 return version.orElseThrow();
             }
             if (args.length == 1 && args[0].equals("--aot-warmup")) {
                 return AotWarmup.run(err);
             }
-            int commandIndex = args.length > 0 && args[0].equals("--verbose")
-                    ? 1
-                    : 0;
             if (args.length == commandIndex || args[commandIndex].equals("-h") || args[commandIndex].equals("--help")) {
                 var layer = Ja.class.getModule().getLayer();
                 help(out, ToolRuntime.load(layer), ToolCatalog.load(layer));
@@ -101,8 +105,8 @@ public final class Ja {
     }
 
     public static void help(PrintStream out, ToolRuntime tools, ToolCatalog catalog) {
-        out.println("Usage: ja [--verbose] <command> [command-arguments]");
-        out.println("       ja [--verbose] tool [<name> [tool-arguments]]");
+        out.println("Usage: ja [OPTIONS] <command> [command-arguments]");
+        out.println("       ja [OPTIONS] tool [<name> [tool-arguments]]");
         out.println();
 
         var unavailable = new ArrayList<BuiltinCommand>();
@@ -196,9 +200,17 @@ public final class Ja {
     public static List<Completion> complete(CompletionRequest request, ToolRuntime tools) {
         var prepared = COMMAND_LINE.prepare(request.invocation());
         var arguments = prepared.arguments();
-        int commandIndex = !arguments.isEmpty() && arguments.getFirst().equals("--verbose")
-                ? 1
-                : 0;
+        if (!arguments.isEmpty() && (arguments.getLast().equals("-p") || arguments.getLast().equals("--project"))) {
+            return completeProjects(prepared.workingDirectory(), request.current(), tools);
+        }
+        if (request.current().startsWith("--project=")) {
+            String prefix = "--project=";
+            return completeProjects(prepared.workingDirectory(), request.current().substring(prefix.length()), tools)
+                    .stream()
+                    .map(completion -> new Completion(prefix + completion.value(), completion.description()))
+                    .toList();
+        }
+        int commandIndex = JaInvocation.commandIndex(arguments);
         if (arguments.size() > commandIndex && arguments.get(commandIndex).equals("tool")) {
             if (arguments.size() == commandIndex + 1) {
                 return tools.names().stream()
@@ -217,7 +229,8 @@ public final class Ja {
             var commandArguments = arguments.subList(commandIndex + 1, arguments.size());
             var selectorCommand = BuiltinCommand.find(command).filter(candidate -> candidate == BuiltinCommand.TEST || candidate == BuiltinCommand.BENCH);
             if (selectorCommand.isPresent() && !completesTagValue(selectorCommand.orElseThrow(), commandArguments)) {
-                return SelectorCompletion.complete(selectorCommand.orElseThrow(), prepared.workingDirectory(), request.current());
+                return SelectorCompletion.complete(selectorCommand.orElseThrow(), prepared.workingDirectory(), request.current(),
+                        arguments.subList(0, commandIndex));
             }
             Optional<ToolInvocation> delegated = Optional.empty();
             if (command.equals("source") && commandArguments.isEmpty()) {
@@ -237,6 +250,27 @@ public final class Ja {
                 .toList();
     }
 
+    private static List<Completion> completeProjects(Path workingDirectory, String current, ToolRuntime tools) {
+        try {
+            var errors = new ByteArrayOutputStream();
+            var context = new ProjectLocator(tools, true).locate(workingDirectory, List.of(), InputStream.nullInputStream(),
+                    new PrintStream(errors));
+            return context.map(
+                    value -> value.catalog()
+                                  .projects()
+                                  .stream()
+                                  .filter(project -> ProjectSelector.matchesPrefix(value.catalog()
+                                          .anchor()
+                                          .type(),
+                                          project, current))
+                                  .map(project -> new Completion(project.selector(), project.directory().toString()))
+                                  .toList())
+                          .orElseGet(List::of);
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Cannot discover projects for completion", failure);
+        }
+    }
+
     private static boolean completesTagValue(BuiltinCommand command, List<String> arguments) {
         return command == BuiltinCommand.TEST
                 && !arguments.isEmpty()
@@ -245,8 +279,8 @@ public final class Ja {
 
     private static CommandLine createCommandLine() {
         var commandLine = CommandLine.builder()
-                .description("Develop, explore, build, and run Java modules")
-                .options(JaOptions.verbose(), JaOptions.help())
+                .description("Develop, explore, build, and run Java projects")
+                .options(JaOptions.verbose(), JaOptions.project(), JaOptions.help())
                 .version(Ja.class.getModule())
                 .completion()
                 .workingDirectory();
@@ -303,7 +337,7 @@ public final class Ja {
                     commandLine.options(JaOptions.assembleOptions())
                                .operand("DIRECTORY", "Artifact directory", Cardinality.EXACTLY_ONE)
                                .build();
-            case GENERATE, FMT, LIST -> commandLine.build();
+            case GENERATE, FMT, PROJECTS, LIST -> commandLine.build();
             case MAVEN -> mavenCommandLine(commandLine);
         };
     }

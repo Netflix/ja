@@ -55,8 +55,8 @@ class JaHelpTest {
 
         assertEquals(
                 """
-                Usage: ja [--verbose] <command> [command-arguments]
-                       ja [--verbose] tool [<name> [tool-arguments]]
+                Usage: ja [OPTIONS] <command> [command-arguments]
+                       ja [OPTIONS] tool [<name> [tool-arguments]]
 
                 Develop:
                   init         Initialize a source module
@@ -69,6 +69,7 @@ class JaHelpTest {
                   bench        Run benchmarks
 
                 Explore:
+                  projects     List discovered projects
                   list         List observable modules
                   describe     Describe a module
                   doc          Find or browse Java APIs
@@ -85,6 +86,7 @@ class JaHelpTest {
 
                 Options:
                   --verbose  Enable verbose output
+                  -p, --project <SELECTOR>  Select a project
                   -h, --help  Print help
                   --version  Print version information
                   -C <DIRECTORY>  Run in the specified directory

@@ -15,6 +15,7 @@
 package com.netflix.tools.ja.test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,6 +41,7 @@ import com.netflix.tools.ja.RequireRequest;
 import com.netflix.tools.ja.RequireRequest.Dependency;
 import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
 import com.netflix.tools.ja.RequireRequest.UpdatePolicy;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,7 +56,7 @@ class JaInvocationTest {
 
     @Test
     void parsesInitWithoutDiscoveringAModuleSourcePath() throws IOException {
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"init", "com.example.application"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"init", "com.example.application"});
 
         assertEquals(new Init(new InitRequest("com.example.application", Optional.empty(), Optional.empty(), false,
                 List.of())),
@@ -67,7 +69,7 @@ class JaInvocationTest {
 
     @Test
     void parsesStandardModuleOptionsForInit() throws IOException {
-        var commandLine = JaInvocation.parse(
+        var commandLine = parseAndScope(
                 temporaryDirectory,
                 new String[] {
                     "init",
@@ -105,14 +107,14 @@ class JaInvocationTest {
     void initRejectsDuplicateAndUnknownOptions() {
         var duplicateRelease = assertThrows(
                 IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory,
+                () -> parseAndScope(temporaryDirectory,
                         new String[] {"init", "--release", "21", "--release=25", "com.example.app"}));
         var duplicateMainClass = assertThrows(
                 IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory,
+                () -> parseAndScope(temporaryDirectory,
                         new String[] {"init", "--main-class", "com.example.Main", "--main-class=com.example.Other", "com.example.app"}));
         var unknown = assertThrows(IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory, new String[] {"init", "--process-with", "com.example.processor", "com.example.app"}));
+                () -> parseAndScope(temporaryDirectory, new String[] {"init", "--process-with", "com.example.processor", "com.example.app"}));
 
         assertEquals("--release may only be specified once", duplicateRelease.getMessage());
         assertEquals("--main-class may only be specified once", duplicateMainClass.getMessage());
@@ -121,9 +123,9 @@ class JaInvocationTest {
 
     @Test
     void initRequiresExactlyOneValidModuleName() {
-        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"init"}));
-        IllegalArgumentException extra = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"init", "com.example.app", "other"}));
-        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"init", "com.example-app"}));
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"init"}));
+        IllegalArgumentException extra = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"init", "com.example.app", "other"}));
+        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"init", "com.example-app"}));
 
         assertEquals("init requires a module name", missing.getMessage());
         assertEquals("init accepts one module name", extra.getMessage());
@@ -134,7 +136,7 @@ class JaInvocationTest {
     void parsesTerminalDocumentationRequest() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "java.lang.String.isEmpty"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"doc", "java.lang.String.isEmpty"});
 
         assertEquals(new Doc(new Terminal("java.lang.String.isEmpty")), commandLine.command());
         assertEquals(List.of(), commandLine.toolArguments());
@@ -144,7 +146,7 @@ class JaInvocationTest {
     void parsesSourceRequest() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"source", "java.lang.String.isEmpty"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"source", "java.lang.String.isEmpty"});
 
         assertEquals(new Source("java.lang.String.isEmpty"), commandLine.command());
         assertEquals(List.of(), commandLine.toolArguments());
@@ -152,8 +154,8 @@ class JaInvocationTest {
 
     @Test
     void sourceRequiresExactlyOneSymbol() {
-        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"source"}));
-        IllegalArgumentException extra = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"source", "java.lang.String", "java.lang.Integer"}));
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"source"}));
+        IllegalArgumentException extra = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"source", "java.lang.String", "java.lang.Integer"}));
 
         assertEquals("source requires a symbol", missing.getMessage());
         assertEquals("source accepts only one symbol", extra.getMessage());
@@ -163,8 +165,8 @@ class JaInvocationTest {
     void parsesBrowserDocumentationRequest() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        JaInvocation overview = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "--browse"});
-        JaInvocation type = JaInvocation.parse(temporaryDirectory, new String[] {"doc", "--browse", "java.lang.String"});
+        JaInvocation overview = parseAndScope(temporaryDirectory, new String[] {"doc", "--browse"});
+        JaInvocation type = parseAndScope(temporaryDirectory, new String[] {"doc", "--browse", "java.lang.String"});
 
         assertEquals(new Doc(new Browse(Optional.empty())), overview.command());
         assertEquals(new Doc(new Browse(Optional.of("java.lang.String"))), type.command());
@@ -172,14 +174,14 @@ class JaInvocationTest {
 
     @Test
     void documentationRequiresASymbolOrBrowseMode() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"doc"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"doc"}));
 
         assertEquals("doc requires a symbol or --browse", failure.getMessage());
     }
 
     @Test
     void documentationAcceptsOnlyOneTarget() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"doc", "java.lang.String", "java.lang.Integer"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"doc", "java.lang.String", "java.lang.Integer"}));
 
         assertEquals("doc accepts only one symbol or type", failure.getMessage());
     }
@@ -188,7 +190,7 @@ class JaInvocationTest {
     void parsesVerboseBeforeTheCommand() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"--verbose", "compile"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"--verbose", "compile"});
 
         assertTrue(commandLine.verbose());
         assertEquals(new Builtin(BuiltinCommand.COMPILE), commandLine.command());
@@ -196,17 +198,17 @@ class JaInvocationTest {
 
     @Test
     void rejectsDuplicateVerboseOptions() {
-        var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--verbose", "--verbose", "compile"}));
+        var failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--verbose", "--verbose", "compile"}));
 
         assertEquals("--verbose may only be specified once", failure.getMessage());
     }
 
     @Test
     void missingSourceModulesExplainsHowToSelectAWorkingDirectory() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"compile"}));
 
         assertEquals(
-                "No source module found from " + temporaryDirectory + "; run from within a module, src, or its parent",
+                "No project found from " + temporaryDirectory + "; run from a project or select a working directory with -C",
                 failure.getMessage());
     }
 
@@ -215,7 +217,7 @@ class JaInvocationTest {
         Path moduleRoot = temporaryDirectory.resolve("module-root");
         module(moduleRoot.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(moduleRoot, new String[] {"compile"});
+        var commandLine = parseAndScope(moduleRoot, new String[] {"compile"});
 
         assertEquals(moduleRoot.toAbsolutePath().normalize(),
                 commandLine.workingDirectory());
@@ -235,7 +237,7 @@ class JaInvocationTest {
         Path moduleRoot = temporaryDirectory.resolve("module-root");
         module(moduleRoot.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(moduleRoot, new String[] {"compile"});
+        var commandLine = parseAndScope(moduleRoot, new String[] {"compile"});
 
         assertEquals(List.of("com.example.app"), commandLine.rootModules());
     }
@@ -246,7 +248,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         module(sourcePath, "com.example.lib");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory,
+        var commandLine = parseAndScope(temporaryDirectory,
                 new String[] {"test", "-t", "fast", "--tag", "unit"});
 
         assertEquals(new Builtin(BuiltinCommand.TEST), commandLine.command());
@@ -264,7 +266,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         module(sourcePath, "com.example.lib");
 
-        var commandLine = JaInvocation.parse(sourcePath.resolve("com.example.app"), new String[] {"test"});
+        var commandLine = parseAndScope(sourcePath.resolve("com.example.app"), new String[] {"test"});
 
         assertEquals(List.of("com.example.app"), commandLine.rootModules());
         assertEquals(
@@ -280,7 +282,7 @@ class JaInvocationTest {
                 new String[] {"-m", "com.example.app", "test"},
                 new String[] {"--module", "com.example.app", "test"},
                 new String[] {"--module=com.example.app", "test"})) {
-            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, arguments));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, arguments));
 
             assertEquals("Unknown ja option: " + arguments[0], failure.getMessage());
         }
@@ -290,7 +292,7 @@ class JaInvocationTest {
     void toolModuleQualifierRemainsAToolArgument() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool", "probe", "--module", "com.example.app"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"tool", "probe", "--module", "com.example.app"});
 
         assertEquals(List.of("--module", "com.example.app"), commandLine.toolArguments());
     }
@@ -299,7 +301,7 @@ class JaInvocationTest {
     void runModuleQualifierAcceptsAModuleWithoutAMainClass() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"run", "-m", "com.example.app", "argument"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"run", "-m", "com.example.app", "argument"});
 
         assertEquals(List.of(), commandLine.rootModules());
         assertEquals(Optional.of("com.example.app"), runTarget(commandLine));
@@ -310,7 +312,7 @@ class JaInvocationTest {
     void unqualifiedRunArgumentsRemainApplicationArguments() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"run", "data/input.txt"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"run", "data/input.txt"});
 
         assertEquals(Optional.empty(), runTarget(commandLine));
         assertEquals(List.of("data/input.txt"), commandLine.toolArguments());
@@ -320,7 +322,7 @@ class JaInvocationTest {
     void rejectsMalformedRunModuleQualifier() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"run", "--module=com.example.app/"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"run", "--module=com.example.app/"}));
 
         assertEquals("run --module expects module[/mainClass]: com.example.app/", failure.getMessage());
     }
@@ -329,7 +331,7 @@ class JaInvocationTest {
     void builtInArgumentsArePassedToItsFixedTool() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"test", "--tool", "junit"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"test", "--tool", "junit"});
 
         assertEquals(List.of("--tool", "junit"), commandLine.toolArguments());
         assertEquals(
@@ -342,7 +344,7 @@ class JaInvocationTest {
     void toolSelectionMustFollowTheCommand() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--tool", "junit", "test"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--tool", "junit", "test"}));
 
         assertEquals("Unknown ja option: --tool", failure.getMessage());
     }
@@ -351,7 +353,7 @@ class JaInvocationTest {
     void runPassesToolNamedArgumentsToTheApplication() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"run", "--tool", "launcher"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"run", "--tool", "launcher"});
 
         assertEquals(List.of("--tool", "launcher"), commandLine.toolArguments());
     }
@@ -360,7 +362,7 @@ class JaInvocationTest {
     void separatorPassesToolOptionToApplication() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"run", "--", "--tool", "application-tool"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"run", "--", "--tool", "application-tool"});
 
         assertEquals(List.of("--tool", "application-tool"), commandLine.toolArguments());
     }
@@ -369,7 +371,7 @@ class JaInvocationTest {
     void separatorPassesToolOptionToComposableTool() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"test", "--", "--tool", "test-tool"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"test", "--", "--tool", "test-tool"});
 
         assertEquals(List.of("--tool", "test-tool"), commandLine.toolArguments());
     }
@@ -378,7 +380,7 @@ class JaInvocationTest {
     void rejectsResolutionArguments() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--module-path", "modules", "compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--module-path", "modules", "compile"}));
 
         assertEquals("Unknown ja option: --module-path", failure.getMessage());
     }
@@ -387,7 +389,7 @@ class JaInvocationTest {
     void compileAcceptsRecompile() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"compile", "--recompile"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"compile", "--recompile"});
 
         assertEquals(
                 List.of(
@@ -403,7 +405,7 @@ class JaInvocationTest {
     void compileRejectsUnknownOptions() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"compile", "-d", "modules"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"compile", "-d", "modules"}));
 
         assertEquals("Unknown compile option: -d", failure.getMessage());
     }
@@ -412,7 +414,7 @@ class JaInvocationTest {
     void rejectsJigResolutionFlags() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--prefer-jmod", "compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--prefer-jmod", "compile"}));
 
         assertEquals("Unknown ja option: --prefer-jmod", failure.getMessage());
     }
@@ -423,7 +425,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         module(sourcePath, "com.example.lib");
 
-        var commandLine = JaInvocation.parse(sourcePath.resolve("com.example.app"),
+        var commandLine = parseAndScope(sourcePath.resolve("com.example.app"),
                 new String[] {"require", "--static", "--transitive", "org.example.library@1.2.3"});
 
         assertEquals(new Require(new RequireRequest(List.of(new Dependency("org.example.library", "1.2.3")), true, true)),
@@ -436,7 +438,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         module(sourcePath, "com.example.lib");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"require", "org.example.library@1.2.3"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"require", "org.example.library@1.2.3"}));
 
         assertEquals("require needs exactly one selected source module", failure.getMessage());
     }
@@ -447,7 +449,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         module(sourcePath, "com.example.lib");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"require", "-u"});
 
         assertEquals(List.of("com.example.app", "com.example.lib"), commandLine.rootModules());
     }
@@ -456,7 +458,7 @@ class JaInvocationTest {
     void parsesBareCompatibleRequireUpdate() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"require", "-u"});
 
         assertEquals(new Require(new RequireRequest(List.of(), List.of(), UpdatePolicy.MINOR, false,
                 false)),
@@ -467,7 +469,7 @@ class JaInvocationTest {
     void parsesNamedRequireUpdatePolicy() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"require", "-u=patch", "org.example.library"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"require", "-u=patch", "org.example.library"});
 
         assertEquals(
                 new RequireRequest(List.of(), List.of("org.example.library"), UpdatePolicy.PATCH, false,
@@ -479,7 +481,7 @@ class JaInvocationTest {
     void requireUpdateRejectsExplicitVersions() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"require", "--update=major", "org.example.library@2.0.0"}));
+        var failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"require", "--update=major", "org.example.library@2.0.0"}));
 
         assertTrue(failure.getMessage()
                           .contains("cannot combine --update with an explicit version"));
@@ -489,7 +491,7 @@ class JaInvocationTest {
     void requireUpdateRejectsRuntimeAccess() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"require", "--update", "--enable-native-access=com.example.library"}));
+        var failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"require", "--update", "--enable-native-access=com.example.library"}));
 
         assertEquals("require cannot combine --update with runtime access", failure.getMessage());
     }
@@ -498,7 +500,7 @@ class JaInvocationTest {
     void jigIntegrityModesAreNotJaOptions() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--verify-module-hashes", "compile"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--verify-module-hashes", "compile"}));
 
         assertEquals("Unknown ja option: --verify-module-hashes", failure.getMessage());
     }
@@ -507,7 +509,7 @@ class JaInvocationTest {
     void rejectsExplicitModuleSourcePath() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"--module-source-path", "custom/*", "test"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"--module-source-path", "custom/*", "test"}));
 
         assertEquals("Unknown ja option: --module-source-path", failure.getMessage());
     }
@@ -516,7 +518,7 @@ class JaInvocationTest {
     void parsesAdditionalToolCommand() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool", "jshell", "--help"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"tool", "jshell", "--help"});
 
         assertEquals(new Tool("jshell"), commandLine.command());
         assertEquals(List.of("--help"), commandLine.toolArguments());
@@ -527,7 +529,7 @@ class JaInvocationTest {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
         for (String name : List.of("shell", "deps")) {
-            var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {name}));
+            var failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {name}));
 
             assertEquals("Unknown command: " + name, failure.getMessage());
         }
@@ -538,7 +540,7 @@ class JaInvocationTest {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
         for (String name : List.of("jar", "mod")) {
-            var failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {name}));
+            var failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {name}));
 
             assertEquals("Unknown command: " + name, failure.getMessage());
         }
@@ -548,7 +550,7 @@ class JaInvocationTest {
     void parsesBareToolCommand() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"tool"});
 
         assertEquals(new Tools(), commandLine.command());
         assertEquals(List.of(), commandLine.toolArguments());
@@ -558,7 +560,7 @@ class JaInvocationTest {
     void retainsAssemblyArguments() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"assemble", "--module-version", "1.2.3", "build/artifacts"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"assemble", "--module-version", "1.2.3", "build/artifacts"});
 
         assertEquals(new Builtin(BuiltinCommand.ASSEMBLE), commandLine.command());
         assertEquals(List.of("--module-version", "1.2.3", "build/artifacts"), commandLine.toolArguments());
@@ -569,8 +571,8 @@ class JaInvocationTest {
     void retainsMavenOperationArguments() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var export = JaInvocation.parse(temporaryDirectory, new String[] {"maven", "export", "."});
-        var deploy = JaInvocation.parse(temporaryDirectory,
+        var export = parseAndScope(temporaryDirectory, new String[] {"maven", "export", "."});
+        var deploy = parseAndScope(temporaryDirectory,
                 new String[] {"maven", "deploy", "--module-version", "1.2.3", "--repository", "releases=https://example.test"});
 
         assertEquals(new Builtin(BuiltinCommand.MAVEN), export.command());
@@ -585,7 +587,7 @@ class JaInvocationTest {
     void parsesExternalApplicationInstallWithoutSourceDiscovery() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.source");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory,
+        var commandLine = parseAndScope(temporaryDirectory,
                 new String[] {"install", "com.example.foo@1.2.3", "--name", "foo-tool", "--force"});
 
         assertEquals(
@@ -598,21 +600,21 @@ class JaInvocationTest {
     @Test
     void rejectsJdkInstallOption() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> JaInvocation.parse(temporaryDirectory, new String[] {"install", "--jdk", "base-jdk", "com.example.foo@1.0"}));
+                () -> parseAndScope(temporaryDirectory, new String[] {"install", "--jdk", "base-jdk", "com.example.foo@1.0"}));
 
         assertEquals("Unknown install argument: --jdk", failure.getMessage());
     }
 
     @Test
     void rejectsPreferJmodInstallOption() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(temporaryDirectory, new String[] {"install", "--prefer-jmod", "com.example.foo@1.0"}));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"install", "--prefer-jmod", "com.example.foo@1.0"}));
 
         assertEquals("Unknown install argument: --prefer-jmod", failure.getMessage());
     }
 
     @Test
     void parsesStandaloneInstallOutput() throws IOException {
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"install", "--output=images/ja", "com.netflix.tools.ja@1.2.3"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"install", "--output=images/ja", "com.netflix.tools.ja@1.2.3"});
 
         assertEquals(Optional.of(temporaryDirectory.resolve("images/ja")), installRequest(commandLine).output());
     }
@@ -623,7 +625,7 @@ class JaInvocationTest {
         module(sourcePath, "com.example.app");
         Path source = sourcePath.resolve("com.example.app");
 
-        var commandLine = JaInvocation.parse(source, new String[] {"install"});
+        var commandLine = parseAndScope(source, new String[] {"install"});
 
         assertEquals(Optional.empty(), installRequest(commandLine).target());
         assertEquals(List.of("com.example.app"), commandLine.rootModules());
@@ -637,7 +639,7 @@ class JaInvocationTest {
         module(source, "com.example.app");
         module(source, "com.example.other");
 
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"install"});
+        var commandLine = parseAndScope(temporaryDirectory, new String[] {"install"});
 
         assertEquals(List.of(), commandLine.rootModules());
         assertFalse(commandLine.resolutionArguments()
@@ -650,10 +652,14 @@ class JaInvocationTest {
         module(source, "com.example.app");
         module(source, "com.example.other");
 
-        var commandLine = JaInvocation.parse(source.resolve("com.example.app"), new String[] {"install"});
+        var commandLine = parseAndScope(source.resolve("com.example.app"), new String[] {"install"});
 
         assertEquals(List.of("com.example.app"), commandLine.rootModules());
         assertEquals(Optional.empty(), installRequest(commandLine).target());
+    }
+
+    private static JaInvocation parseAndScope(Path workingDirectory, String[] arguments) throws IOException {
+        return JaInvocation.parse(workingDirectory, arguments).resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err);
     }
 
     private static void module(Path sourcePath, String name) throws IOException {

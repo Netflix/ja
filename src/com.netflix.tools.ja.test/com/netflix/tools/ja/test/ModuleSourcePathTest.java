@@ -15,6 +15,7 @@
 package com.netflix.tools.ja.test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,6 +24,7 @@ import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ModuleSourcePath;
 import com.netflix.tools.ja.ModuleSourcePath.Directory;
 import com.netflix.tools.ja.ModuleSourcePath.ModuleMapping;
+import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -158,7 +160,7 @@ class ModuleSourcePathTest {
         Path module = Files.createDirectories(sourceRoot.resolve("com.example.app"));
         Files.writeString(module.resolve("module-info.java"), "not yet a valid descriptor\n");
 
-        JaInvocation commandLine = JaInvocation.parse(sourceRoot.getParent(), new String[] {"compile"});
+        JaInvocation commandLine = JaInvocation.parse(sourceRoot.getParent(), new String[] {"compile"}).resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err);
 
         assertEquals(List.of("com.example.app"), commandLine.rootModules());
         assertEquals(List.of(sourceRoot.toString()),

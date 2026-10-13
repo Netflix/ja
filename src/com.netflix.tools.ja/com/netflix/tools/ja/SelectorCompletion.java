@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,11 +38,15 @@ public final class SelectorCompletion {
 
     private SelectorCompletion() {}
 
-    static List<Completion> complete(BuiltinCommand command, Path workingDirectory, String current) {
+    static List<Completion> complete(BuiltinCommand command, Path workingDirectory, String current,
+            List<String> globals) {
         try {
             var output = new ByteArrayOutputStream();
             var errors = new ByteArrayOutputStream();
-            var invocation = JaInvocation.parse(workingDirectory, new String[] {command.commandName(), REQUEST});
+            var arguments = new ArrayList<>(globals);
+            arguments.add(command.commandName());
+            arguments.add(REQUEST);
+            var invocation = JaInvocation.parse(workingDirectory, arguments.toArray(String[]::new));
             int result = new CommandRunner(Ja.class
                     .getModule()
                     .getLayer())
