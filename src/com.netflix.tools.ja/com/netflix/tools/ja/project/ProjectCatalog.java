@@ -12,15 +12,17 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
-import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 
-public record Project(String selector, Path directory) {
-    public Project {
-        if (selector.isBlank()) {
-            throw new IllegalArgumentException("Project selector must not be empty");
-        }
-        directory = directory.toAbsolutePath().normalize();
+public record ProjectCatalog(ProjectAnchor anchor, List<Project> projects) {
+    public ProjectCatalog {
+        Objects.requireNonNull(anchor);
+        projects = projects.stream()
+                           .sorted(Comparator.comparing(Project::selector))
+                           .toList();
     }
 }

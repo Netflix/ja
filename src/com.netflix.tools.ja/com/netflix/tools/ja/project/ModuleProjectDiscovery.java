@@ -12,13 +12,15 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.List;
+
+import com.netflix.tools.ja.ModuleSourcePath;
 
 final class ModuleProjectDiscovery implements ProjectDiscovery {
     private final boolean parseDescriptors;
@@ -33,7 +35,7 @@ final class ModuleProjectDiscovery implements ProjectDiscovery {
     }
 
     @Override
-    public List<BuildAnchor> findCandidates(Path workingDirectory) throws IOException {
+    public List<ProjectAnchor> findCandidates(Path workingDirectory) throws IOException {
         var sourcePath = ModuleSourcePath.discover(workingDirectory, false);
         if (sourcePath.isEmpty()) {
             return List.of();
@@ -49,11 +51,11 @@ final class ModuleProjectDiscovery implements ProjectDiscovery {
                         .equals("src")
                 ? parent.getParent()
                 : module;
-        return List.of(new BuildAnchor(type(), root));
+        return List.of(new ProjectAnchor(type(), root));
     }
 
     @Override
-    public ProjectCatalog discover(BuildAnchor anchor, InputStream in, PrintStream err) throws IOException {
+    public ProjectCatalog discover(ProjectAnchor anchor, InputStream in, PrintStream err) throws IOException {
         var sources = ModuleSourcePath.discover(anchor.root(), parseDescriptors).orElseThrow(() -> new IllegalArgumentException("No module projects found at " + anchor.root()));
         var projects = sources.modules()
                               .entrySet()

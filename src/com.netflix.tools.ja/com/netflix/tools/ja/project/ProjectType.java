@@ -12,7 +12,7 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
 public enum ProjectType {
     MODULE("module"),

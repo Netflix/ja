@@ -356,7 +356,7 @@ public final class ToolRuntime {
         return find(name).flatMap(ToolHandle::optionChecker).orElse(null);
     }
 
-    int resolveModules(InputStream in, PrintStream out, PrintStream err,
+    public int resolveModules(InputStream in, PrintStream out, PrintStream err,
                        String... arguments) {
         return run(Invocation.RESOLUTION, "jig", in, out, err, arguments);
     }

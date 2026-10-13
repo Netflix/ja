@@ -12,7 +12,7 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -20,9 +20,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.netflix.tools.ja.ProjectSelection.BuildScope;
-import com.netflix.tools.ja.ProjectSelection.Origin;
-import com.netflix.tools.ja.ProjectSelection.SelectedProjects;
+import com.netflix.tools.ja.project.ProjectSelection.BuildScope;
+import com.netflix.tools.ja.project.ProjectSelection.Origin;
+import com.netflix.tools.ja.project.ProjectSelection.SelectedProjects;
 
 final class ProjectSelector {
     private ProjectSelector() {}

@@ -12,7 +12,7 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,6 +25,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
+
+import com.netflix.tools.ja.ToolExecutionException;
+import com.netflix.tools.ja.ToolRuntime;
 
 final class BuildProjectDiscovery implements ProjectDiscovery {
     private final ProjectType type;
@@ -44,22 +47,22 @@ final class BuildProjectDiscovery implements ProjectDiscovery {
     }
 
     @Override
-    public List<BuildAnchor> findCandidates(Path workingDirectory) throws IOException {
+    public List<ProjectAnchor> findCandidates(Path workingDirectory) throws IOException {
         var markers = type == ProjectType.MAVEN ? List.of("pom.xml") : List.of("settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts");
-        var candidates = new ArrayList<BuildAnchor>();
+        var candidates = new ArrayList<ProjectAnchor>();
         for (Path current = workingDirectory;
              current != null;
              current = current.getParent()) {
             Path directory = current;
             if (markers.stream().anyMatch(marker -> Files.isRegularFile(directory.resolve(marker)))) {
-                candidates.add(new BuildAnchor(type, current.toRealPath()));
+                candidates.add(new ProjectAnchor(type, current.toRealPath()));
             }
         }
         return List.copyOf(candidates);
     }
 
     @Override
-    public ProjectCatalog discover(BuildAnchor anchor, InputStream in, PrintStream err) throws IOException {
+    public ProjectCatalog discover(ProjectAnchor anchor, InputStream in, PrintStream err) throws IOException {
         String rootOption = type == ProjectType.MAVEN ? "--project-base-dir" : "--root-project-dir";
         String listOption = type == ProjectType.MAVEN ? "--list-projects" : "--list-project-paths";
         var output = new ByteArrayOutputStream();

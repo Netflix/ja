@@ -12,7 +12,7 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,17 +25,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-final class ProjectLocator {
+import com.netflix.tools.ja.ToolRuntime;
+
+public final class ProjectLocator {
     private final Map<ProjectType, ProjectDiscovery> discoveries;
 
-    ProjectLocator(ToolRuntime tools, boolean parseDescriptors) {
+    public ProjectLocator(ToolRuntime tools, boolean parseDescriptors) {
         discoveries = Map.of(
                 ProjectType.MODULE, new ModuleProjectDiscovery(parseDescriptors),
                 ProjectType.MAVEN, new BuildProjectDiscovery(ProjectType.MAVEN, tools),
                 ProjectType.GRADLE, new BuildProjectDiscovery(ProjectType.GRADLE, tools));
     }
 
-    Optional<ProjectContext> locate(Path workingDirectory, List<String> requested, InputStream in,
+    public Optional<ProjectContext> locate(Path workingDirectory, List<String> requested, InputStream in,
             PrintStream err)
             throws IOException {
         Path directory = Files.isDirectory(workingDirectory) ? workingDirectory : workingDirectory.getParent();
@@ -43,7 +45,7 @@ final class ProjectLocator {
             return Optional.empty();
         }
         directory = directory.toRealPath();
-        var candidates = new ArrayList<BuildAnchor>();
+        var candidates = new ArrayList<ProjectAnchor>();
         candidates.addAll(discoveries.get(ProjectType.MAVEN)
                 .findCandidates(directory));
         candidates.addAll(discoveries.get(ProjectType.GRADLE)

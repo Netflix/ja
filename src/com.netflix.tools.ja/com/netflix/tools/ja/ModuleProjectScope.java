@@ -26,6 +26,9 @@ import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
 import com.netflix.tools.ja.Command.Tool;
 import com.netflix.tools.ja.Command.Tools;
+import com.netflix.tools.ja.project.Project;
+import com.netflix.tools.ja.project.ProjectContext;
+import com.netflix.tools.ja.project.ProjectType;
 
 final class ModuleProjectScope {
     private ModuleProjectScope() {}

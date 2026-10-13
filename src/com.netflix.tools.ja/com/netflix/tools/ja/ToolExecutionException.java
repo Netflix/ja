@@ -23,7 +23,7 @@ public final class ToolExecutionException extends RuntimeException {
 
     private final int exitCode;
 
-    ToolExecutionException(int exitCode) {
+    public ToolExecutionException(int exitCode) {
         this.exitCode = exitCode;
     }
 

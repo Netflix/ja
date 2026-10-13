@@ -272,6 +272,78 @@ class ProjectCommandsTest {
     }
 
     @Test
+    void discoveryDoesNotSearchChildrenOfTheWorkingDirectory() throws Exception {
+        maven(directory.resolve("service"));
+        gradle(directory.resolve("client"));
+        module(directory.resolve("tools"), "com.example.tools");
+        var calls = new ArrayList<List<String>>();
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> run(directory, buildTools(Map.of(), calls), "projects"));
+        assertTrue(failure.getMessage().contains("No project found"), failure.getMessage());
+        assertTrue(calls.isEmpty(), calls.toString());
+    }
+
+    @Test
+    void requestedProjectsDoNotExpandDiscoveryToSiblingCheckouts() throws Exception {
+        Path tools = directory.resolve("tools");
+        Path source = module(tools, "com.example.tools");
+        maven(directory.resolve("service"));
+        gradle(directory.resolve("client"));
+        var calls = new ArrayList<List<String>>();
+        var runtime = buildTools(Map.of(), calls);
+        var current = run(source, runtime, "projects");
+        assertTrue(current.output().contains("com.example.tools"), current.output());
+        assertFalse(current.output().contains("[maven]"), current.output());
+        assertFalse(current.output().contains("[gradle]"), current.output());
+        for (String selector : List.of("example:service", ":client")) {
+            var failure = assertThrows(IllegalArgumentException.class,
+                    () -> run(source, runtime, "-p", selector, "projects"));
+            assertTrue(failure.getMessage().contains("No project matches"), failure.getMessage());
+        }
+        assertTrue(Ja.complete(new CompletionRequest(new ToolInvocation(source, List.of("-p")), ":"), runtime).isEmpty());
+        assertTrue(calls.isEmpty(), calls.toString());
+    }
+
+    @Test
+    void independentMavenAndGradleRootsCanBeNestedInEitherOrder() throws Exception {
+        for (boolean mavenOuter : List.of(true, false)) {
+            Path outer = directory.resolve(mavenOuter ? "maven-outer" : "gradle-outer");
+            Path inner = outer.resolve("independent");
+            if (mavenOuter) {
+                maven(outer);
+                gradle(inner);
+            } else {
+                gradle(outer);
+                maven(inner);
+            }
+            var calls = new ArrayList<List<String>>();
+            var runtime = buildTools(Map.of(
+                    outer, (mavenOuter ? "example:outer" : ":") + "\t" + outer + "\n",
+                    inner, (mavenOuter ? ":" : "example:inner") + "\t" + inner + "\n"), calls);
+            var result = run(Files.createDirectories(inner.resolve("nested/directory")), runtime, "projects");
+            assertEquals(0, result.status(), result.error());
+            assertTrue(result.output().contains("[" + (mavenOuter ? "gradle" : "maven") + "]"), result.output());
+            assertFalse(result.output().contains("[" + (mavenOuter ? "maven" : "gradle") + "]"), result.output());
+            assertEquals(2, calls.size());
+        }
+    }
+
+    @Test
+    void externalRootsNestedInModuleProjectsUseTheirOwnDiscovery() throws Exception {
+        Path source = module("com.example.tools");
+        for (boolean maven : List.of(true, false)) {
+            Path root = maven ? maven(source.resolve("service")) : gradle(source.resolve("client"));
+            var calls = new ArrayList<List<String>>();
+            var runtime = buildTools(Map.of(root, (maven ? "example:service" : ":") + "\t" + root + "\n"), calls);
+            var result = run(Files.createDirectories(root.resolve("nested/directory")), runtime, "projects");
+            assertEquals(0, result.status(), result.error());
+            assertTrue(result.output().contains("[" + (maven ? "maven" : "gradle") + "]"), result.output());
+            assertFalse(result.output().contains("[module]"), result.output());
+            assertEquals(1, calls.size());
+        }
+    }
+
+    @Test
     void gradleProjectsDoNotUseModuleSuffixMatching() throws Exception {
         Path root = gradle(directory.resolve("build"));
         Path app = Files.createDirectories(root.resolve("app"));
@@ -382,7 +454,11 @@ class ProjectCommandsTest {
     }
 
     private Path module(String name) throws Exception {
-        Path source = Files.createDirectories(directory.resolve("src")
+        return module(directory, name);
+    }
+
+    private static Path module(Path root, String name) throws Exception {
+        Path source = Files.createDirectories(root.resolve("src")
                 .resolve(name));
         Files.writeString(source.resolve("module-info.java"), "module " + name + " {}\n");
         return source;

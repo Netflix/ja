@@ -12,24 +12,20 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.List;
-import java.util.Objects;
 
-import com.netflix.tools.ja.ProjectSelection.BuildScope;
-import com.netflix.tools.ja.ProjectSelection.SelectedProjects;
+interface ProjectDiscovery {
+    ProjectType type();
 
-public record ProjectContext(ProjectCatalog catalog, ProjectSelection selection) {
-    public ProjectContext {
-        Objects.requireNonNull(catalog);
-        Objects.requireNonNull(selection);
-    }
+    List<ProjectAnchor> findCandidates(Path workingDirectory) throws IOException;
 
-    public List<Project> selectedProjects() {
-        return switch (selection) {
-            case BuildScope ignored -> catalog.projects();
-            case SelectedProjects selected -> selected.projects();
-        };
-    }
+    ProjectCatalog discover(ProjectAnchor anchor, InputStream in, PrintStream err) throws IOException;
+
+    boolean matches(Project project, String selector);
 }

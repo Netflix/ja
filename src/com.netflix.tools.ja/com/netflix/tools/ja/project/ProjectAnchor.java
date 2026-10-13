@@ -12,20 +12,14 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.PrintStream;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Objects;
 
-interface ProjectDiscovery {
-    ProjectType type();
-
-    List<BuildAnchor> findCandidates(Path workingDirectory) throws IOException;
-
-    ProjectCatalog discover(BuildAnchor anchor, InputStream in, PrintStream err) throws IOException;
-
-    boolean matches(Project project, String selector);
+public record ProjectAnchor(ProjectType type, Path root) {
+    public ProjectAnchor {
+        Objects.requireNonNull(type);
+        root = root.toAbsolutePath().normalize();
+    }
 }

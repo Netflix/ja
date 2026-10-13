@@ -89,7 +89,7 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
         return discover(start, true);
     }
 
-    static Optional<ModuleSourcePath> discover(Path start, boolean parseDescriptors) throws IOException {
+    public static Optional<ModuleSourcePath> discover(Path start, boolean parseDescriptors) throws IOException {
         Path directory = start.toAbsolutePath().normalize();
         if (!Files.isDirectory(directory)) {
             directory = directory.getParent();

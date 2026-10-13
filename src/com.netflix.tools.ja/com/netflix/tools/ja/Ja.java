@@ -15,7 +15,6 @@
 package com.netflix.tools.ja;
 
 import java.io.ByteArrayOutputStream;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -35,6 +34,7 @@ import com.netflix.tools.cli.CommandLine.CompletionRequest;
 import com.netflix.tools.cli.CommandLine.Subcommand;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.ja.BuiltinCommand.HelpGroup;
+import com.netflix.tools.ja.project.ProjectLocator;
 import com.netflix.tools.launcher.CompletionBundle;
 import com.netflix.tools.launcher.CompletionShell;
 
@@ -256,13 +256,8 @@ public final class Ja {
             var context = new ProjectLocator(tools, true).locate(workingDirectory, List.of(), InputStream.nullInputStream(),
                     new PrintStream(errors));
             return context.map(
-                    value -> value.catalog()
-                                  .projects()
+                    value -> value.matchingProjects(current)
                                   .stream()
-                                  .filter(project -> ProjectSelector.matchesPrefix(value.catalog()
-                                          .anchor()
-                                          .type(),
-                                          project, current))
                                   .map(project -> new Completion(project.selector(), project.directory().toString()))
                                   .toList())
                           .orElseGet(List::of);

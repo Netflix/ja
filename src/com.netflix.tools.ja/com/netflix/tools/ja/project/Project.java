@@ -12,26 +12,15 @@
  * the License.
  */
 
-package com.netflix.tools.ja;
+package com.netflix.tools.ja.project;
 
-import java.util.List;
-import java.util.Objects;
+import java.nio.file.Path;
 
-public sealed interface ProjectSelection {
-    enum Origin {
-        WORKING_DIRECTORY,
-        REQUESTED
-    }
-
-    record BuildScope() implements ProjectSelection {}
-
-    record SelectedProjects(List<Project> projects, Origin origin) implements ProjectSelection {
-        public SelectedProjects {
-            projects = List.copyOf(projects);
-            Objects.requireNonNull(origin);
-            if (projects.isEmpty()) {
-                throw new IllegalArgumentException("Project selection must not be empty");
-            }
+public record Project(String selector, Path directory) {
+    public Project {
+        if (selector.isBlank()) {
+            throw new IllegalArgumentException("Project selector must not be empty");
         }
+        directory = directory.toAbsolutePath().normalize();
     }
 }

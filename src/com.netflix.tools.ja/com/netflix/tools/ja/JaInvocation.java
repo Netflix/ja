@@ -39,6 +39,8 @@ import com.netflix.tools.ja.DocRequest.Terminal;
 import com.netflix.tools.ja.RequireRequest.Dependency;
 import com.netflix.tools.ja.RequireRequest.RuntimeAccess;
 import com.netflix.tools.ja.RequireRequest.UpdatePolicy;
+import com.netflix.tools.ja.project.ProjectContext;
+import com.netflix.tools.ja.project.ProjectLocator;
 
 /**
  * Represents a command request and its resolved project scope. Parsing records
