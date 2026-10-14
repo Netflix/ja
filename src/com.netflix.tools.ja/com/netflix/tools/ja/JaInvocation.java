@@ -93,8 +93,17 @@ public record JaInvocation(
                 resolutionArguments, toolArguments, requestedProjects, projectContext);
     }
 
+    JaInvocation withProjectContext(ProjectContext context) {
+        return new JaInvocation(workingDirectory, verbose, command, moduleSourcePath, rootModules,
+                resolutionArguments, toolArguments, requestedProjects, Optional.of(context));
+    }
+
     public JaInvocation resolveProjects(ToolRuntime tools, InputStream in, PrintStream err) throws IOException {
-        if (projectContext.isPresent() || moduleSourcePath.isPresent()) {
+        if (projectContext.isPresent()) {
+            ProjectCommandScope.requireProjectType(command, projectContext.orElseThrow());
+            return this;
+        }
+        if (moduleSourcePath.isPresent()) {
             return this;
         }
         if (command instanceof Init || command instanceof Install(var request) && request.target().isPresent()) {
@@ -106,7 +115,7 @@ public record JaInvocation(
         boolean parseDescriptors = !command.equals(new Builtin(BuiltinCommand.COMPILE));
         var context = new ProjectLocator(tools, parseDescriptors).locate(workingDirectory, requestedProjects, in, err);
         if (context.isPresent()) {
-            return ModuleProjectScope.apply(this, context.orElseThrow());
+            return ProjectCommandScope.apply(this, context.orElseThrow());
         }
         if (requestedProjects.isEmpty() && (command instanceof Tool || command instanceof Tools)) {
             return this;

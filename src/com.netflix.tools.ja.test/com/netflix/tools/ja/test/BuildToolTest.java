@@ -134,10 +134,10 @@ class BuildToolTest {
     }
 
     @Test
-    void testDelegationIsStillNotEnabled() throws Exception {
+    void testRemainsAModuleCommand() throws Exception {
         var fixture = fixture("maven", Set.of());
         var failure = assertThrows(IllegalArgumentException.class, () -> fixture.run("-p", "example:app/test", "test"));
-        assertTrue(failure.getMessage().contains("test is not yet supported"));
+        assertTrue(failure.getMessage().contains("test requires a module project"));
     }
 
     @Test
@@ -197,6 +197,45 @@ class BuildToolTest {
         }
     }
 
+    @Test
+    void formattingUsesTheSelectedBuildContext() throws Exception {
+        var fixture = fixture("gradle", Set.of("class-path", "source-path"));
+        fixture.definition = new ToolDefinition("jfmt", Launch.PROVIDER, Optional.empty(), Optional.empty(), "capture",
+                Optional.empty(), Set.of("class-path", "source-path"), List.of());
+        assertEquals(0, fixture.run("-p", ":app/test/runtime", "fmt"));
+        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources"), fixture.received);
+        assertEquals("test", value(fixture.resolution(), "--source-set"));
+        assertEquals("runtime", value(fixture.resolution(), "--classpath"));
+    }
+
+    @Test
+    void sourceAndTerminalDocumentationUseTheSelectedBuildContext() throws Exception {
+        var fixture = fixture("maven", Set.of("class-path", "source-path"));
+        fixture.definition = new ToolDefinition("jist", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jist",
+                Optional.empty(), Set.of("class-path", "source-path"), List.of());
+        fixture.additionalTools = List.of(provider("jdocserver", (_, _) -> 0));
+        assertEquals(0, fixture.run("-p", "example:app/test", "source", "example.Example"));
+        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "symbol", "example.Example"),
+                fixture.received);
+        assertEquals("test", value(fixture.resolution(), "--scope"));
+        fixture.received.clear();
+        fixture.queries.clear();
+        assertEquals(0, fixture.run("-p", "example:app/runtime", "doc", "example.Example"));
+        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "doc", "--break",
+                "--no-line-number", "example.Example"), fixture.received);
+        assertEquals("runtime", value(fixture.resolution(), "--scope"));
+    }
+
+    @Test
+    void documentationBrowsingPassesTheContextToTheDocumentationTool() throws Exception {
+        var fixture = fixture("gradle", Set.of("class-path", "source-path"));
+        fixture.definition = new ToolDefinition("jdocserver", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jdocserver",
+                Optional.empty(), Set.of("class-path", "source-path"), List.of());
+        fixture.additionalTools = List.of(provider("jist", (_, _) -> 0));
+        assertEquals(0, fixture.run("doc", "--browse", "example.Example"));
+        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--browse=example.Example"), fixture.received);
+    }
+
     private Fixture fixture(String type, Set<String> options) throws Exception {
         Files.writeString(directory.resolve(type.equals("maven") ? "pom.xml" : "settings.gradle"), "");
         return new Fixture(type, options);
@@ -211,6 +250,7 @@ class BuildToolTest {
         String classPath = "dependencies";
         String modulePath;
         List<String> launcherArguments = List.of();
+        List<ToolProvider> additionalTools = List.of();
         int status;
 
         Fixture(String type, Set<String> options) {
@@ -220,7 +260,8 @@ class BuildToolTest {
         }
 
         int run(String... arguments) throws Exception {
-            var runtime = ToolRuntime.of(provider("jig", (out, args) -> {
+            var providers = new ArrayList<ToolProvider>();
+            providers.add(provider("jig", (out, args) -> {
                 queries.add(args);
                 if (args.contains("--format")) {
                     if (type.equals("maven")) {
@@ -264,10 +305,13 @@ class BuildToolTest {
                     }
                 }
                 return status;
-            }), provider("capture", (_, args) -> {
+            }));
+            providers.add(provider(definition.provider(), (_, args) -> {
                 received.addAll(args);
                 return 0;
             }));
+            providers.addAll(additionalTools);
+            var runtime = ToolRuntime.of(providers.toArray(ToolProvider[]::new));
             return new CommandRunner(ModuleLayer.boot(), runtime, new ToolCatalog(List.of(definition)), () -> null,
                     (args, _, _, _) -> {
                         received.addAll(args);

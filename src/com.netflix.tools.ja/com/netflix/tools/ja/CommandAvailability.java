@@ -32,7 +32,7 @@ public final class CommandAvailability {
         if (missing.isEmpty()) {
             return;
         }
-        throw new IllegalArgumentException(message(commandName(commandLine.command()), missing));
+        throw new IllegalArgumentException(message(commandLine.command().commandName(), missing));
     }
 
     public static List<String> missingTools(BuiltinCommand command, ToolRuntime tools, ToolCatalog catalog) {
@@ -72,14 +72,5 @@ public final class CommandAvailability {
     static String message(String command, List<String> missingTools) {
         var noun = missingTools.size() == 1 ? "tool" : "tools";
         return command + " is unavailable; missing " + noun + ": " + String.join(", ", missingTools);
-    }
-
-    private static String commandName(Command command) {
-        if (command instanceof Command.Tool(var name)) {
-            return "tool " + name;
-        }
-        return BuiltinCommand.from(command)
-                .orElseThrow()
-                .commandName();
     }
 }

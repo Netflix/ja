@@ -17,44 +17,20 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Install;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
-import com.netflix.tools.ja.Command.Tool;
-import com.netflix.tools.ja.Command.Tools;
 import com.netflix.tools.ja.project.Project;
 import com.netflix.tools.ja.project.ProjectContext;
-import com.netflix.tools.ja.project.ProjectType;
 
 final class ModuleProjectScope {
     private ModuleProjectScope() {}
 
     static JaInvocation apply(JaInvocation invocation, ProjectContext context) throws IOException {
         var command = invocation.command();
-        if (command.equals(new Builtin(BuiltinCommand.PROJECTS))) {
-            return scoped(invocation, context, Optional.empty(), invocation.rootModules(),
-                    invocation.resolutionArguments());
-        }
-        if (context.catalog()
-                   .anchor()
-                   .type()
-                != ProjectType.MODULE) {
-            if (command instanceof Tool || command instanceof Tools) {
-                return scoped(invocation, context, Optional.empty(), invocation.rootModules(),
-                        invocation.resolutionArguments());
-            }
-            String name = command instanceof Builtin(var builtin) ? builtin.commandName() : command.getClass()
-                    .getSimpleName()
-                    .toLowerCase(Locale.ROOT);
-            throw new IllegalArgumentException(name + " is not yet supported for " + context.catalog()
-                    .anchor()
-                    .type()
-                    + " projects");
-        }
         boolean parseDescriptors = !command.equals(new Builtin(BuiltinCommand.COMPILE));
         var sources = ModuleSourcePath.discover(invocation.workingDirectory(), parseDescriptors).orElseThrow(() -> new IllegalArgumentException("No module source path found from " + invocation.workingDirectory()));
         var projectNames = context.catalog()

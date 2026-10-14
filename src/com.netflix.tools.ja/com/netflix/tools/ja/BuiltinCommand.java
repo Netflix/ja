@@ -25,6 +25,7 @@ import com.netflix.tools.ja.BuiltinCommand.Execution.ToolBacked;
 import com.netflix.tools.ja.BuiltinCommand.Execution.Workflow;
 import com.netflix.tools.ja.BuiltinCommand.ToolRequirement.Provider;
 import com.netflix.tools.ja.Command.Builtin;
+import com.netflix.tools.ja.Command.Category;
 import com.netflix.tools.ja.Command.Doc;
 import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
@@ -35,63 +36,60 @@ import com.netflix.tools.ja.Command.Tools;
 
 /** A stable, ergonomic command in ja's base surface. */
 public enum BuiltinCommand {
-    INIT("init", HelpGroup.DEVELOP, "Initialize a source module", workflow(),
-            standardOptions()),
-    REQUIRE("require", HelpGroup.DEVELOP, "Add or update dependencies", workflow(),
-            standardOptions("module-source-path")),
-    GENERATE("generate", HelpGroup.DEVELOP, "Update generated source", workflow(requiresProvider("javac")),
-            javac()),
-    FMT("fmt", HelpGroup.DEVELOP, "Format source", new ToolBacked("jfmt"),
-            sourceTool()),
-    COMPILE("compile", HelpGroup.DEVELOP, "Compile source modules", new Materialize(),
-            standardOptions("module-path", "upgrade-module-path").withCompileDiagnostics()),
-    RUN("run", HelpGroup.DEVELOP, "Run a module", new LaunchJava(),
-            javaLauncher()),
-    TEST("test", HelpGroup.DEVELOP, "Run tests", new ToolBacked("junit"), ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS),
-    BENCH("bench", HelpGroup.DEVELOP, "Run benchmarks", new ToolBacked("jmh"),
-            runtimeTool()),
-
-    PROJECTS("projects", HelpGroup.EXPLORE, "List discovered projects",
+    PROJECTS("projects", Category.DEVELOPMENT, "List discovered projects",
             workflow(), ResolutionOptions.EMPTY),
-
-    LIST("list", HelpGroup.EXPLORE, "List observable modules", new LaunchJava(),
-            standardOptions("module-path", "upgrade-module-path", "add-modules")),
-    DESCRIBE("describe", HelpGroup.EXPLORE, "Describe a module", new LaunchJava(),
-            standardOptions("module-path", "upgrade-module-path", "describe-module")),
+    FMT("fmt", Category.DEVELOPMENT, "Format source", new ToolBacked("jfmt"),
+            sourceTool()),
     DOC(
             "doc",
-            HelpGroup.EXPLORE,
+            Category.DEVELOPMENT,
             "Find or browse Java APIs",
             workflow(requiresProvider("jist"), requiresProvider("jdocserver")),
             sourceTool()),
-    SOURCE("source", HelpGroup.EXPLORE, "Show Java source", workflow(requiresProvider("jist")),
+    SOURCE("source", Category.DEVELOPMENT, "Show Java source", workflow(requiresProvider("jist")),
             sourceTool()),
-
+    INIT("init", Category.MODULE, "Initialize a source module", workflow(),
+            standardOptions()),
+    REQUIRE("require", Category.MODULE, "Add or update dependencies", workflow(),
+            standardOptions("module-source-path")),
+    GENERATE("generate", Category.MODULE, "Update generated source", workflow(requiresProvider("javac")),
+            javac()),
+    COMPILE("compile", Category.MODULE, "Compile source modules", new Materialize(),
+            standardOptions("module-path", "upgrade-module-path").withCompileDiagnostics()),
+    RUN("run", Category.MODULE, "Run a module", new LaunchJava(),
+            javaLauncher()),
+    TEST("test", Category.MODULE, "Run tests", new ToolBacked("junit"), ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS),
+    BENCH("bench", Category.MODULE, "Run benchmarks", new ToolBacked("jmh"),
+            runtimeTool()),
+    LIST("list", Category.MODULE, "List observable modules", new LaunchJava(),
+            standardOptions("module-path", "upgrade-module-path", "add-modules")),
+    DESCRIBE("describe", Category.MODULE, "Describe a module", new LaunchJava(),
+            standardOptions("module-path", "upgrade-module-path", "describe-module")),
     ASSEMBLE(
             "assemble",
-            HelpGroup.BUILD,
+            Category.MODULE,
             "Assemble module and application artifacts",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
             ResolutionOptions.EMPTY),
-    INSTALL("install", HelpGroup.BUILD, "Install a module as a command",
+    INSTALL("install", Category.MODULE, "Install a module as a command",
             workflow(requiresProvider("jlink")), ResolutionOptions.COMPLETE_JAVA),
     MAVEN(
             "maven",
-            HelpGroup.BUILD,
+            Category.MODULE,
             "Export Maven projects or install and deploy modules",
             workflow(requiresProvider("jar"), requiresProvider("javadoc")),
             ResolutionOptions.EMPTY);
 
     private final String commandName;
-    private final HelpGroup helpGroup;
+    private final Category category;
     private final String description;
     private final Execution execution;
     private final ResolutionOptions resolutionOptions;
 
-    BuiltinCommand(String commandName, HelpGroup helpGroup, String description,
+    BuiltinCommand(String commandName, Category category, String description,
                    Execution execution, ResolutionOptions resolutionOptions) {
         this.commandName = commandName;
-        this.helpGroup = helpGroup;
+        this.category = category;
         this.description = description;
         this.execution = execution;
         this.resolutionOptions = resolutionOptions;
@@ -101,8 +99,8 @@ public enum BuiltinCommand {
         return commandName;
     }
 
-    HelpGroup helpGroup() {
-        return helpGroup;
+    Category category() {
+        return category;
     }
 
     String description() {
@@ -196,21 +194,5 @@ public enum BuiltinCommand {
         record LaunchJava() implements Execution {}
 
         record ToolBacked(String tool) implements Execution {}
-    }
-
-    enum HelpGroup {
-        DEVELOP("Develop"),
-        EXPLORE("Explore"),
-        BUILD("Build and distribute");
-
-        private final String heading;
-
-        HelpGroup(String heading) {
-            this.heading = heading;
-        }
-
-        String heading() {
-            return heading;
-        }
     }
 }

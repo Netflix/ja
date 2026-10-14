@@ -18,6 +18,33 @@ import java.util.Optional;
 
 /** Models the command selected by a parsed {@code ja} command line. */
 public sealed interface Command {
+    default Category category() {
+        return BuiltinCommand.from(this).map(BuiltinCommand::category).orElse(Category.DEVELOPMENT);
+    }
+
+    default String commandName() {
+        return switch (this) {
+            case Tool(var name) -> "tool " + name;
+            case Tools _ -> "tool";
+            default -> BuiltinCommand.from(this).orElseThrow().commandName();
+        };
+    }
+
+    enum Category {
+        DEVELOPMENT("Development commands"),
+        MODULE("Module commands");
+
+        private final String heading;
+
+        Category(String heading) {
+            this.heading = heading;
+        }
+
+        String heading() {
+            return heading;
+        }
+    }
+
     record Builtin(BuiltinCommand command) implements Command {}
 
     record Tool(String name) implements Command {

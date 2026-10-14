@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JaHelpTest {
     @Test
-    void groupsCommandsByUserIntent() {
+    void separatesDevelopmentCommandsFromModuleCommands() {
         var bytes = new ByteArrayOutputStream();
         var tools = ToolRuntime.of(
                 tool("javac"),
@@ -58,31 +58,27 @@ class JaHelpTest {
                 Usage: ja [OPTIONS] <command> [command-arguments]
                        ja [OPTIONS] tool [<name> [tool-arguments]]
 
-                Develop:
+                Development commands:
+                  projects     List discovered projects
+                  fmt          Format source
+                  doc          Find or browse Java APIs
+                  source       Show Java source
+                  tool         List or run tools
+                  completion   Print completion shims for all completion-aware tools
+
+                Module commands:
                   init         Initialize a source module
                   require      Add or update dependencies
                   generate     Update generated source
-                  fmt          Format source
                   compile      Compile source modules
                   run          Run a module
                   test         Run tests
                   bench        Run benchmarks
-
-                Explore:
-                  projects     List discovered projects
                   list         List observable modules
                   describe     Describe a module
-                  doc          Find or browse Java APIs
-                  source       Show Java source
-
-                Build and distribute:
                   assemble     Assemble module and application artifacts
                   install      Install a module as a command
                   maven        Export Maven projects or install and deploy modules
-
-                Tools:
-                  tool         List or run tools
-                  completion   Print completion shims for all completion-aware tools
 
                 Options:
                   --verbose  Enable verbose output

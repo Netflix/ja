@@ -33,7 +33,7 @@ import com.netflix.tools.cli.CommandLine.Completion;
 import com.netflix.tools.cli.CommandLine.CompletionRequest;
 import com.netflix.tools.cli.CommandLine.Subcommand;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
-import com.netflix.tools.ja.BuiltinCommand.HelpGroup;
+import com.netflix.tools.ja.Command.Category;
 import com.netflix.tools.ja.project.ProjectLocator;
 import com.netflix.tools.launcher.CompletionBundle;
 import com.netflix.tools.launcher.CompletionShell;
@@ -110,10 +110,10 @@ public final class Ja {
         out.println();
 
         var unavailable = new ArrayList<BuiltinCommand>();
-        for (HelpGroup group : HelpGroup.values()) {
+        for (Category category : Category.values()) {
             var available = new ArrayList<BuiltinCommand>();
             for (BuiltinCommand command : BuiltinCommand.values()) {
-                if (command.helpGroup() != group) {
+                if (command.category() != category) {
                     continue;
                 }
                 if (CommandAvailability.missingTools(command, tools, catalog).isEmpty()) {
@@ -125,23 +125,23 @@ public final class Ja {
             if (available.isEmpty()) {
                 continue;
             }
-            out.printf("%s:%n", group.heading());
+            out.printf("%s:%n", category.heading());
             for (BuiltinCommand command : available) {
                 out.printf("  %-12s %s%n", command.commandName(), command.description());
             }
+            if (category == Category.DEVELOPMENT) {
+                out.printf("  %-12s %s%n", "tool", "List or run tools");
+                out.printf("  %-12s %s%n", "completion", "Print completion shims for all completion-aware tools");
+            }
             out.println();
         }
-        out.println("Tools:");
-        out.printf("  %-12s %s%n", "tool", "List or run tools");
-        out.printf("  %-12s %s%n", "completion", "Print completion shims for all completion-aware tools");
         if (!unavailable.isEmpty()) {
-            out.println();
             out.println("Unavailable commands:");
             for (BuiltinCommand command : unavailable) {
                 out.printf("  %s%n", CommandAvailability.message(command.commandName(), CommandAvailability.missingTools(command, tools, catalog)));
             }
+            out.println();
         }
-        out.println();
         out.print(COMMAND_LINE.optionsHelp());
         out.println();
         out.println("Run 'ja <command> --help' for command-specific help.");

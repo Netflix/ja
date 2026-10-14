@@ -30,6 +30,8 @@ import java.util.spi.ToolProvider;
 
 import com.netflix.tools.cli.CommandLine.CompletionRequest;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
+import com.netflix.tools.ja.BuiltinCommand;
+import com.netflix.tools.ja.Command;
 import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.JaInvocation;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -374,7 +377,7 @@ class ProjectCommandsTest {
     }
 
     @Test
-    void unimplementedBuildWorkflowsDoNotFallBackToModuleSources() throws Exception {
+    void moduleCommandsDoNotFallBackToModuleSourcesInBuildProjects() throws Exception {
         Path root = maven(directory.resolve("build"));
         Path source = Files.createDirectories(root.resolve("src/main/java"));
         Files.writeString(source.resolve("module-info.java"), "module example.app {}\n");
@@ -382,8 +385,56 @@ class ProjectCommandsTest {
         var failure = assertThrows(IllegalArgumentException.class, () -> run(source, tools, "compile"));
         assertTrue(failure.getMessage().contains("maven"),
                 failure.getMessage());
-        assertTrue(failure.getMessage().contains("compile"),
+        assertTrue(failure.getMessage().contains("compile requires a module project"),
                 failure.getMessage());
+        assertFalse(failure.getMessage().contains("not yet supported"), failure.getMessage());
+    }
+
+    @Test
+    void everyModuleWorkflowRejectsMavenAndGradleContextsBeforeResolution() throws Exception {
+        var commands = List.of(List.of("require", "-u"), List.of("generate"), List.of("compile"), List.of("run"),
+                List.of("test"), List.of("bench"), List.of("list"), List.of("describe"), List.of("assemble", "artifacts"),
+                List.of("install"), List.of("maven", "export"));
+        for (boolean maven : List.of(true, false)) {
+            var root = maven ? maven(directory.resolve("maven")) : gradle(directory.resolve("gradle"));
+            var source = Files.createDirectories(root.resolve("src/main/java"));
+            Files.writeString(source.resolve("module-info.java"), "module example.app {}\n");
+            for (var command : commands) {
+                var calls = new ArrayList<List<String>>();
+                var tools = buildTools(Map.of(root, maven ? mavenRows(root, "example:app") : gradleRows(root, ":")), calls);
+                var failure = assertThrows(IllegalArgumentException.class,
+                        () -> run(source, tools, command.toArray(String[]::new)));
+                assertTrue(failure.getMessage().contains(command.getFirst() + " requires a module project"), failure.getMessage());
+                assertFalse(failure.getMessage().contains("not yet supported"), failure.getMessage());
+                assertEquals(1, calls.size(), calls.toString());
+            }
+        }
+    }
+
+    @Test
+    void alreadyResolvedBuildContextsCannotBypassTheModuleCommandBoundary() throws Exception {
+        var root = maven(directory.resolve("build"));
+        var calls = new ArrayList<List<String>>();
+        var tools = buildTools(Map.of(root, mavenRows(root, "example:app")), calls);
+        var projects = JaInvocation.parse(root, new String[] {"projects"})
+                .resolveProjects(tools, InputStream.nullInputStream(), System.err);
+        assertSame(projects, projects.resolveProjects(tools, InputStream.nullInputStream(), System.err));
+        var test = new JaInvocation(projects.workingDirectory(), projects.verbose(), new Command.Builtin(BuiltinCommand.TEST),
+                projects.moduleSourcePath(), projects.rootModules(), projects.resolutionArguments(), List.of(),
+                projects.requestedProjects(), projects.projectContext());
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> test.resolveProjects(tools, InputStream.nullInputStream(), System.err));
+        assertTrue(failure.getMessage().contains("test requires a module project"), failure.getMessage());
+        assertEquals(1, calls.size());
+    }
+
+    @Test
+    void alreadyResolvedModuleContextsKeepTheirOriginalSourceSelection() throws Exception {
+        var source = module("example.app");
+        var invocation = JaInvocation.parse(source, new String[] {"compile"})
+                .resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err);
+        assertEquals(List.of("example.app"), invocation.rootModules());
+        assertSame(invocation, invocation.resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err));
     }
 
     @Test
