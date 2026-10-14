@@ -28,7 +28,7 @@ module com.netflix.tools.ja {
     requires java.xml;
     requires jdk.compiler;
     requires jdk.zipfs;
-    requires static com.netflix.tools.jfmt; // @0.8.4
+    requires static com.netflix.tools.jfmt; // @0.9.0
     requires static com.netflix.tools.jist; // @0.5.4
     requires static com.netflix.tools.jdocserver; // @0.4.4
 
