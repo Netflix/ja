@@ -26,16 +26,26 @@ public record ProjectContext(ProjectCatalog catalog, ProjectSelection selection)
         Objects.requireNonNull(selection);
     }
 
-    public List<Project> matchingProjects(String prefix) {
+    public List<ProjectTarget> matchingTargets(String prefix) {
+        int separator = prefix.indexOf('/');
+        String projectPrefix = separator < 0 ? prefix : prefix.substring(0, separator);
         return catalog.projects().stream()
-                .filter(project -> ProjectSelector.matchesPrefix(catalog.anchor().type(), project, prefix))
+                .filter(project -> ProjectSelector.matchesPrefix(catalog.anchor().type(), project, projectPrefix))
+                .flatMap(project -> separator < 0
+                        ? java.util.stream.Stream.of(new ProjectTarget(project, java.util.Optional.empty()))
+                        : project.targets().stream().filter(target -> target.scope()
+                                .map(ProjectScope::qualifier).orElse("").startsWith(prefix.substring(separator + 1))))
                 .toList();
     }
 
-    public List<Project> selectedProjects() {
+    public List<ProjectTarget> selectedTargets() {
         return switch (selection) {
-            case BuildScope ignored -> catalog.projects();
-            case SelectedProjects selected -> selected.projects();
+            case BuildScope ignored -> catalog.projects().stream().map(Project::defaultTarget).toList();
+            case SelectedProjects selected -> selected.targets();
         };
+    }
+
+    public List<Project> selectedProjects() {
+        return selectedTargets().stream().map(ProjectTarget::project).distinct().toList();
     }
 }

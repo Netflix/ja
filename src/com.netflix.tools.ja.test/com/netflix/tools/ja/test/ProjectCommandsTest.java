@@ -199,7 +199,7 @@ class ProjectCommandsTest {
         Path source = Files.createDirectories(app.resolve("src/main/java"));
         Files.writeString(source.resolve("module-info.java"), "module example.app {}\n");
         var calls = new ArrayList<List<String>>();
-        var result = run(source, buildTools(Map.of(root, "example:root\t" + root + "\nexample:app\t" + app + "\n"), calls), "projects");
+        var result = run(source, buildTools(Map.of(root, mavenRows(root, "example:root") + mavenRows(app, "example:app")), calls), "projects");
         assertEquals(0, result.status(), result.error());
         assertTrue(result.output().contains("[maven]"),
                 result.output());
@@ -217,7 +217,7 @@ class ProjectCommandsTest {
         var calls = new ArrayList<List<String>>();
         var result = run(
                 nested,
-                buildTools(Map.of(root, "example:outer\t" + root + "\n", nested, "example:inner\t" + nested + "\n"),
+                buildTools(Map.of(root, mavenRows(root, "example:outer"), nested, mavenRows(nested, "example:inner")),
                         calls),
                 "projects");
         assertEquals(0, result.status(), result.error());
@@ -235,13 +235,7 @@ class ProjectCommandsTest {
         Files.writeString(app.resolve("build.gradle"), "");
         Path included = Files.createDirectories(directory.resolve("included tools"));
         var tools = buildTools(
-                Map.of(root, ":\t"
-                        + root
-                        + "\n:app\t"
-                        + app
-                        + "\n:tools:plugin\t"
-                        + included
-                        + "\n"),
+                Map.of(root, gradleRows(root, ":") + gradleRows(app, ":app") + gradleRows(included, ":tools:plugin")),
                 new ArrayList<>());
         var current = run(app, tools, "projects");
         assertEquals(0, current.status(), current.error());
@@ -262,7 +256,7 @@ class ProjectCommandsTest {
         var calls = new ArrayList<List<String>>();
         var result = run(
                 nested,
-                buildTools(Map.of(root, ":\t" + root + "\n", nested, ":\t" + nested + "\n:app\t" + nested.resolve("app") + "\n"),
+                buildTools(Map.of(root, gradleRows(root, ":"), nested, gradleRows(nested, ":") + gradleRows(nested.resolve("app"), ":app")),
                         calls),
                 "projects");
         assertEquals(0, result.status(), result.error());
@@ -318,8 +312,8 @@ class ProjectCommandsTest {
             }
             var calls = new ArrayList<List<String>>();
             var runtime = buildTools(Map.of(
-                    outer, (mavenOuter ? "example:outer" : ":") + "\t" + outer + "\n",
-                    inner, (mavenOuter ? ":" : "example:inner") + "\t" + inner + "\n"), calls);
+                    outer, mavenOuter ? mavenRows(outer, "example:outer") : gradleRows(outer, ":"),
+                    inner, mavenOuter ? gradleRows(inner, ":") : mavenRows(inner, "example:inner")), calls);
             var result = run(Files.createDirectories(inner.resolve("nested/directory")), runtime, "projects");
             assertEquals(0, result.status(), result.error());
             assertTrue(result.output().contains("[" + (mavenOuter ? "gradle" : "maven") + "]"), result.output());
@@ -334,7 +328,7 @@ class ProjectCommandsTest {
         for (boolean maven : List.of(true, false)) {
             Path root = maven ? maven(source.resolve("service")) : gradle(source.resolve("client"));
             var calls = new ArrayList<List<String>>();
-            var runtime = buildTools(Map.of(root, (maven ? "example:service" : ":") + "\t" + root + "\n"), calls);
+            var runtime = buildTools(Map.of(root, maven ? mavenRows(root, "example:service") : gradleRows(root, ":")), calls);
             var result = run(Files.createDirectories(root.resolve("nested/directory")), runtime, "projects");
             assertEquals(0, result.status(), result.error());
             assertTrue(result.output().contains("[" + (maven ? "maven" : "gradle") + "]"), result.output());
@@ -351,7 +345,7 @@ class ProjectCommandsTest {
                 IllegalArgumentException.class,
                 () -> run(
                         root,
-                        buildTools(Map.of(root, ":\t" + root + "\n:app\t" + app + "\n"), new ArrayList<>()),
+                        buildTools(Map.of(root, gradleRows(root, ":") + gradleRows(app, ":app")), new ArrayList<>()),
                         "-p",
                         "app",
                         "projects"));
@@ -364,7 +358,7 @@ class ProjectCommandsTest {
         Path root = maven(directory.resolve("reactor"));
         Path first = Files.createDirectories(root.resolve("first"));
         Path second = Files.createDirectories(root.resolve("second"));
-        var tools = buildTools(Map.of(root, "one:app\t" + first + "\ntwo:app\t" + second + "\n"), new ArrayList<>());
+        var tools = buildTools(Map.of(root, mavenRows(first, "one:app") + mavenRows(second, "two:app")), new ArrayList<>());
         var failure = assertThrows(IllegalArgumentException.class, () -> run(root, tools, "-p", ":app", "projects"));
         assertTrue(failure.getMessage().contains("one:app"),
                 failure.getMessage());
@@ -384,7 +378,7 @@ class ProjectCommandsTest {
         Path root = maven(directory.resolve("build"));
         Path source = Files.createDirectories(root.resolve("src/main/java"));
         Files.writeString(source.resolve("module-info.java"), "module example.app {}\n");
-        var tools = buildTools(Map.of(root, "example:app\t" + root + "\n"), new ArrayList<>());
+        var tools = buildTools(Map.of(root, mavenRows(root, "example:app")), new ArrayList<>());
         var failure = assertThrows(IllegalArgumentException.class, () -> run(source, tools, "compile"));
         assertTrue(failure.getMessage().contains("maven"),
                 failure.getMessage());
@@ -398,7 +392,7 @@ class ProjectCommandsTest {
         Path source = Files.createDirectories(root.resolve("src/main/java"));
         Files.writeString(source.resolve("module-info.java"), "module example.app {}\n");
         var tools = ToolRuntime.of(jig((out, arguments) -> {
-            out.print(":\t" + root + "\n");
+            out.print(gradleRows(root, ":"));
             return 7;
         }));
         assertThrows(ToolExecutionException.class, () -> run(source, tools, "projects"));
@@ -407,8 +401,10 @@ class ProjectCommandsTest {
     @Test
     void malformedListingsDoNotProducePartialProjectOutput() throws Exception {
         Path root = gradle(directory.resolve("build"));
-        for (String listing : List.of(":\trelative\n", ":\t" + root + "\textra\n", ":\t" + root + "\n\n",
-                ":\t" + root + "\n:\t" + root.resolve("other") + "\n")) {
+        for (String listing : List.of("relative\t:\tmain\tcompile\n", root + "\t:\tmain\n", gradleRows(root, ":") + "\n",
+                gradleRows(root, ":") + gradleRows(root.resolve("other"), ":"),
+                root + "\t:\tmain\tunknown\n", root + "\t:\t\tcompile\n",
+                ":\t" + root + "\n")) {
             var tools = buildTools(Map.of(root, listing), new ArrayList<>());
             assertThrows(IOException.class, () -> run(root, tools, "projects"));
         }
@@ -428,7 +424,7 @@ class ProjectCommandsTest {
     @Test
     void mavenAndGradleCompletionUsesTheirFullSelectors() throws Exception {
         Path root = maven(directory.resolve("reactor"));
-        var tools = buildTools(Map.of(root, "example:app\t" + root.resolve("app") + "\n"), new ArrayList<>());
+        var tools = buildTools(Map.of(root, mavenRows(root.resolve("app"), "example:app")), new ArrayList<>());
         var maven = Ja.complete(new CompletionRequest(new ToolInvocation(root, List.of("--project")), ":a"), tools);
         assertEquals(List.of("example:app"),
                 maven.stream()
@@ -436,7 +432,7 @@ class ProjectCommandsTest {
                      .toList());
         Path gradle = gradle(directory.resolve("gradle"));
         tools = buildTools(
-                Map.of(gradle, ":\t" + gradle + "\n:tools:plugin\t" + gradle.resolve("plugin") + "\n"),
+                Map.of(gradle, gradleRows(gradle, ":") + gradleRows(gradle.resolve("plugin"), ":tools:plugin")),
                 new ArrayList<>());
         var included = Ja.complete(new CompletionRequest(new ToolInvocation(gradle, List.of()), "--project=:tools"), tools);
         assertEquals(List.of("--project=:tools:plugin"),
@@ -451,6 +447,69 @@ class ProjectCommandsTest {
                 new String[] {"-p", " ", "projects"})) {
             assertThrows(IllegalArgumentException.class, () -> JaInvocation.parse(directory, arguments));
         }
+    }
+
+    @Test
+    void listsEveryDiscoveredContextAndMarksOnlyTheSelectedOne() throws Exception {
+        Path root = gradle(directory.resolve("build"));
+        String listing = gradleRows(root, ":app") + root + "\t:app\tintegrationTest\tcompile\n";
+        var result = run(root, buildTools(Map.of(root, listing), new ArrayList<>()),
+                "-p", ":app/integrationTest", "projects");
+        assertTrue(line(result, ":app/integrationTest/compile").endsWith("(current - requested)"), result.output());
+        assertFalse(line(result, ":app/main/compile").contains("current"), result.output());
+        assertFalse(line(result, ":app/main/runtime").contains("current"), result.output());
+    }
+
+    @Test
+    void defaultSelectionsAreCompileForMavenAndMainCompileForGradle() throws Exception {
+        Path maven = maven(directory.resolve("maven"));
+        var result = run(maven, buildTools(Map.of(maven, mavenRows(maven, "example:app")), new ArrayList<>()),
+                "-p", "example:app", "projects");
+        assertTrue(line(result, "example:app/compile").endsWith("(current - requested)"), result.output());
+        Path gradle = gradle(directory.resolve("gradle"));
+        result = run(gradle, buildTools(Map.of(gradle, gradleRows(gradle, ":app")), new ArrayList<>()),
+                "-p", ":app", "projects");
+        assertTrue(line(result, ":app/main/compile").endsWith("(current - requested)"), result.output());
+    }
+
+    @Test
+    void qualifiedSelectionMustNameADiscoveredContext() throws Exception {
+        Path root = gradle(directory.resolve("build"));
+        var runtime = buildTools(Map.of(root, gradleRows(root, ":app")), new ArrayList<>());
+        for (String selector : List.of(":app/missing", ":app/test/unknown", ":app/main/compile/extra", ":app/")) {
+            assertThrows(IllegalArgumentException.class, () -> run(root, runtime, "-p", selector, "projects"));
+        }
+    }
+
+    @Test
+    void nonJavaGradleProjectsDoNotAcquireAMainSourceSet() throws Exception {
+        Path root = gradle(directory.resolve("build"));
+        var runtime = buildTools(Map.of(root, root + "\t:\t\t\n"), new ArrayList<>());
+        var result = run(root, runtime, "-p", ":", "projects");
+        assertTrue(line(result, ":").endsWith("(current - requested)"), result.output());
+        assertFalse(result.output().contains("/main"), result.output());
+        assertThrows(IllegalArgumentException.class, () -> run(root, runtime, "-p", ":/main", "projects"));
+    }
+
+    @Test
+    void qualifiedCompletionIncludesCustomSourceSetsAndClasspathChoices() throws Exception {
+        Path root = gradle(directory.resolve("build"));
+        var runtime = buildTools(Map.of(root, gradleRows(root, ":app")), new ArrayList<>());
+        var completions = Ja.complete(new CompletionRequest(new ToolInvocation(root, List.of("-p")), ":app/test/"), runtime);
+        assertEquals(List.of(":app/test/compile", ":app/test/runtime"), completions.stream().map(value -> value.value()).toList());
+    }
+
+    private static String mavenRows(Path directory, String selector) {
+        return List.of("compile", "runtime", "test").stream()
+                .map(scope -> directory + "\t" + selector + "\t" + scope + "\n")
+                .collect(java.util.stream.Collectors.joining());
+    }
+
+    private static String gradleRows(Path directory, String selector) {
+        return List.of("main", "test").stream()
+                .flatMap(sourceSet -> List.of("compile", "runtime").stream()
+                        .map(classpath -> directory + "\t" + selector + "\t" + sourceSet + "\t" + classpath + "\n"))
+                .collect(java.util.stream.Collectors.joining());
     }
 
     private Path module(String name) throws Exception {
@@ -526,7 +585,7 @@ class ProjectCommandsTest {
     private static String line(Result result, String selector) {
         return result.output()
                      .lines()
-                     .filter(value -> value.startsWith(selector + " "))
+                     .filter(value -> value.startsWith(selector + " ") || value.startsWith(selector + "/"))
                      .findFirst()
                      .orElseThrow();
     }

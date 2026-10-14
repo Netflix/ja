@@ -43,13 +43,13 @@ final class ProjectsCommand {
                     .relativize(directory)
                     .toString()
                     : directory.toString();
-            out.print(project.selector()
-                    + "  "
-                    + (location.isEmpty() ? "." : location));
-            if (context.selection() instanceof SelectedProjects selected && selected.projects().contains(project)) {
-                out.print(selected.origin() == Origin.REQUESTED ? " (current - requested)" : " (current - working directory)");
+            for (var target : project.targets()) {
+                out.print(target.selector() + "  " + (location.isEmpty() ? "." : location));
+                if (context.selection() instanceof SelectedProjects selected && selected.targets().contains(target)) {
+                    out.print(selected.origin() == Origin.REQUESTED ? " (current - requested)" : " (current - working directory)");
+                }
+                out.println();
             }
-            out.println();
         }
         return 0;
     }

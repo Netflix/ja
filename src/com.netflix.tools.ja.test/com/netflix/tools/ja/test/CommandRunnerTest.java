@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -1870,6 +1871,8 @@ class CommandRunnerTest {
 
     @Test
     void namedJUnitToolDoesNotAcquireTheBuiltinTestArguments() throws Exception {
+        var runtimeOptions = new LinkedHashSet<>(RUNTIME_ACCESS_OPTIONS);
+        runtimeOptions.add("class-path");
         Path sourcePath = temporaryDirectory.resolve("src");
         Path app = Files.createDirectories(sourcePath.resolve("com.example.app"));
         Path library = Files.createDirectories(sourcePath.resolve("com.example.library"));
@@ -1890,7 +1893,7 @@ class CommandRunnerTest {
                         return 0;
                     }
                     if (jigRuns.getAndIncrement() == 0) {
-                        assertEquals(optionList(RUNTIME_ACCESS_OPTIONS), options);
+                        assertEquals(optionList(runtimeOptions), options);
                         assertFalse(arguments.contains("--validate-runtime-access"));
                         output.print("--module-path\n" + workspace.modules() + "\n--add-modules\ncom.example.app,com.example.library\n");
                     } else {

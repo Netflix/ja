@@ -250,7 +250,8 @@ class ToolRunnerTest {
                 (arguments, in, out, err) -> {
                     if (arguments.contains("--is-supported-option")) {
                         optionChecks.add(List.copyOf(arguments));
-                        out.println("1");
+                        var options = arguments.subList(arguments.indexOf("--is-supported-option") + 2, arguments.size());
+                        options.forEach(option -> out.println(option.equals("--add-modules") ? 1 : -1));
                         return 0;
                     }
                     launchedWith.addAll(arguments);

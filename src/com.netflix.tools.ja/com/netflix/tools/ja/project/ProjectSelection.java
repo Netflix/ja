@@ -25,11 +25,11 @@ public sealed interface ProjectSelection {
 
     record BuildScope() implements ProjectSelection {}
 
-    record SelectedProjects(List<Project> projects, Origin origin) implements ProjectSelection {
+    record SelectedProjects(List<ProjectTarget> targets, Origin origin) implements ProjectSelection {
         public SelectedProjects {
-            projects = List.copyOf(projects);
+            targets = List.copyOf(targets);
             Objects.requireNonNull(origin);
-            if (projects.isEmpty()) {
+            if (targets.isEmpty()) {
                 throw new IllegalArgumentException("Project selection must not be empty");
             }
         }

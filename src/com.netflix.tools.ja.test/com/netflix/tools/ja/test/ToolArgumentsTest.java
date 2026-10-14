@@ -14,6 +14,7 @@
 
 package com.netflix.tools.ja.test;
 
+import java.io.File;
 import java.util.List;
 import javax.tools.OptionChecker;
 
@@ -23,6 +24,25 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ToolArgumentsTest {
+    @Test
+    void launcherPathsAreJoinedAcrossAliasesAndKeepEmptyEntries() {
+        var separator = File.pathSeparator;
+        assertEquals(List.of("--class-path", "first" + separator + separator + "last", "--upgrade-module-path",
+                        "upgrade" + separator + "other", "--module", "tool/Main", "-cp", "user value"),
+                ToolArguments.composeLauncher(List.of("-cp", "first" + separator, "--upgrade-module-path=upgrade"),
+                        List.of("--class-path=first" + separator + "last", "--upgrade-module-path", "other",
+                                "--module", "tool/Main", "-cp", "user value")));
+    }
+
+    @Test
+    void launcherPatchesAreJoinedOnlyForTheSameModule() {
+        assertEquals(List.of("--patch-module", "one=project" + File.pathSeparator + "tool", "--patch-module",
+                        "two=other", "--enable-preview", "--module", "tool/Main"),
+                ToolArguments.composeLauncher(List.of("--patch-module", "one=project"),
+                        List.of("--patch-module=one=tool", "--patch-module", "two=other", "--enable-preview",
+                                "--module", "tool/Main")));
+    }
+
     @Test
     void selectsArgumentsSupportedByAConsumer() {
         OptionChecker source = option -> switch (option) {

@@ -31,7 +31,7 @@ final class JaOptions {
     }
 
     static ToolOption project() {
-        return ToolOption.option("--project", "SELECTOR", "Select a project", "-p");
+        return ToolOption.option("--project", "SELECTOR[/CONTEXT]", "Select a project and optional scope or source set/classpath", "-p");
     }
 
     static ToolOption recompile() {

@@ -69,7 +69,7 @@ public final class ModuleResolver {
         return arguments;
     }
 
-    private List<String> run(List<String> arguments, InputStream in, PrintStream err) {
+    List<String> run(List<String> arguments, InputStream in, PrintStream err) {
         var outputBytes = new ByteArrayOutputStream();
         int exitCode;
         try (var output = new PrintStream(outputBytes, true, StandardCharsets.UTF_8)) {

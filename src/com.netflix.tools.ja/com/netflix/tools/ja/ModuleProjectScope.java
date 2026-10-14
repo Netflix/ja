@@ -43,7 +43,7 @@ final class ModuleProjectScope {
                    .anchor()
                    .type()
                 != ProjectType.MODULE) {
-            if ((command instanceof Tool || command instanceof Tools) && invocation.requestedProjects().isEmpty()) {
+            if (command instanceof Tool || command instanceof Tools) {
                 return scoped(invocation, context, Optional.empty(), invocation.rootModules(),
                         invocation.resolutionArguments());
             }

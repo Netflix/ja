@@ -86,7 +86,7 @@ class JaHelpTest {
 
                 Options:
                   --verbose  Enable verbose output
-                  -p, --project <SELECTOR>  Select a project
+                  -p, --project <SELECTOR[/CONTEXT]>  Select a project and optional scope or source set/classpath
                   -h, --help  Print help
                   --version  Print version information
                   -C <DIRECTORY>  Run in the specified directory

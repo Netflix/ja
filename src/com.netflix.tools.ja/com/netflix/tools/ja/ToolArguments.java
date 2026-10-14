@@ -34,6 +34,69 @@ import javax.tools.OptionChecker;
 public final class ToolArguments {
     private ToolArguments() {}
 
+    static List<String> selectedModules(List<String> arguments) {
+        return optionValues(arguments, "--module").stream()
+                .flatMap(value -> java.util.Arrays.stream(value.split(",")))
+                .distinct().toList();
+    }
+
+    public static List<String> composeLauncher(List<String> projectArguments, List<String> toolArguments) {
+        var arguments = new ArrayList<String>();
+        var positions = new LinkedHashMap<String, Integer>();
+        var combined = new ArrayList<>(projectArguments);
+        combined.addAll(toolArguments);
+        for (int i = 0; i < combined.size(); i++) {
+            var argument = combined.get(i);
+            if (argument.equals("--module") || argument.equals("-m") || argument.startsWith("--module=")) {
+                arguments.addAll(combined.subList(i, combined.size()));
+                break;
+            }
+            int separator = argument.indexOf('=');
+            var option = separator < 0 ? argument : argument.substring(0, separator);
+            var pathOption = switch (option) {
+                case "--class-path", "-classpath", "-cp" -> "--class-path";
+                case "--module-path", "-p" -> "--module-path";
+                case "--upgrade-module-path" -> "--upgrade-module-path";
+                case "--patch-module" -> "--patch-module";
+                default -> null;
+            };
+            if (pathOption == null) {
+                arguments.add(argument);
+                continue;
+            }
+            if (separator < 0 && ++i >= combined.size()) {
+                throw new IllegalArgumentException(option + " requires an argument");
+            }
+            var value = separator < 0 ? combined.get(i) : argument.substring(separator + 1);
+            var prefix = "";
+            if (pathOption.equals("--patch-module")) {
+                int moduleSeparator = value.indexOf('=');
+                if (moduleSeparator <= 0) {
+                    throw new IllegalArgumentException("Invalid --patch-module value: " + value);
+                }
+                prefix = value.substring(0, moduleSeparator + 1);
+                value = value.substring(moduleSeparator + 1);
+            }
+            var key = pathOption + prefix;
+            var position = positions.get(key);
+            if (position == null) {
+                arguments.add(pathOption);
+                positions.put(key, arguments.size());
+                arguments.add(prefix + value);
+            } else {
+                var paths = new LinkedHashSet<>(List.of(arguments.get(position).substring(prefix.length())
+                        .split(Pattern.quote(java.io.File.pathSeparator), -1)));
+                paths.addAll(List.of(value.split(Pattern.quote(java.io.File.pathSeparator), -1)));
+                arguments.set(position, prefix + String.join(java.io.File.pathSeparator, paths));
+            }
+        }
+        return List.copyOf(arguments);
+    }
+
+    public static List<Path> classPath(List<String> arguments) {
+        return paths(arguments, Set.of("--class-path", "-classpath", "-cp"));
+    }
+
     public static List<Path> modulePath(List<String> arguments) {
         return paths(arguments, Set.of("--module-path"));
     }

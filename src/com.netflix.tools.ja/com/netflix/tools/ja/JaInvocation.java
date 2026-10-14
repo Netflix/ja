@@ -88,6 +88,11 @@ public record JaInvocation(
                 ResolutionArguments.withRoots(resolutionArguments, modules), toolArguments, requestedProjects, projectContext);
     }
 
+    JaInvocation withProjectModules(List<String> modules) {
+        return new JaInvocation(workingDirectory, verbose, command, moduleSourcePath, modules,
+                resolutionArguments, toolArguments, requestedProjects, projectContext);
+    }
+
     public JaInvocation resolveProjects(ToolRuntime tools, InputStream in, PrintStream err) throws IOException {
         if (projectContext.isPresent() || moduleSourcePath.isPresent()) {
             return this;

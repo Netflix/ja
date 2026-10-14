@@ -173,6 +173,14 @@ public final class ToolRunner {
         };
     }
 
+    boolean requiresSelectedModule(JaInvocation commandLine) {
+        if (!supports(commandLine)) {
+            return false;
+        }
+        var options = initialResolutionOptions(commandLine).options();
+        return options.contains("module=single") && explicitModules(commandLine, options).isEmpty();
+    }
+
     ResolutionRequest initialResolution(JaInvocation commandLine) {
         return new ResolutionRequest(resolution(commandLine, initialResolutionOptions(commandLine)), hasActivation(commandLine));
     }
@@ -298,8 +306,11 @@ public final class ToolRunner {
             }
             var version = definition.resolveVersion(definition.activation()
                     .flatMap(resolved::moduleVersion));
-            return new ToolResolver(tools).resolveLauncher(definition, version, resolutionArguments, commandLine.toolArguments(), in,
-                    err);
+            var launcherArguments = new ToolResolver(tools).resolveLauncher(definition, version, resolutionArguments,
+                    commandLine.toolArguments(), in, err);
+            return ProjectResolver.external(commandLine)
+                    ? ToolArguments.composeLauncher(ResolutionArguments.rootsAsAddedModules(resolved.arguments()), launcherArguments)
+                    : launcherArguments;
         });
     }
 
@@ -487,6 +498,9 @@ public final class ToolRunner {
     }
 
     private ResolutionOptions resolutionOptions(ToolDefinition definition) {
+        if (definition.launch() == Launch.JAVA) {
+            return new ResolutionOptions(ModuleOptions.resolutionOptions(definition.options(), ResolutionOptions.TOOL_JAVA.options()), false);
+        }
         return tools.resolutionOptions(definition.provider(), definition.resolutionOptions());
     }
 

@@ -20,6 +20,7 @@ import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleDescriptor.Provides;
 import java.lang.module.ModuleDescriptor.Requires;
 import java.lang.module.ModuleFinder;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
@@ -28,15 +29,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 /** Module descriptors reachable from roots resolved by jig. */
 final class ResolvedModules {
     private final Map<String, ModuleDescriptor> descriptors;
+    private final Set<String> classPathModules;
     private final Set<String> sourceModules;
 
-    private ResolvedModules(Map<String, ModuleDescriptor> descriptors, Set<String> sourceModules) {
+    private ResolvedModules(Map<String, ModuleDescriptor> descriptors, Set<String> classPathModules, Set<String> sourceModules) {
         this.descriptors = Map.copyOf(descriptors);
+        this.classPathModules = Set.copyOf(classPathModules);
         this.sourceModules = Set.copyOf(sourceModules);
     }
 
@@ -75,7 +79,19 @@ final class ResolvedModules {
                     .forEach(pending::addLast);
         }
         resolved.keySet().retainAll(applicationModules.keySet());
-        return new ResolvedModules(resolved, sourceModules);
+        var classPathModules = new LinkedHashSet<String>();
+        for (var path : ToolArguments.classPath(arguments)) {
+            if (!hasDeclaredModuleName(path)) {
+                continue;
+            }
+            for (var reference : ModuleFinder.of(path).findAll()) {
+                var descriptor = reference.descriptor();
+                if (resolved.putIfAbsent(descriptor.name(), descriptor) == null) {
+                    classPathModules.add(descriptor.name());
+                }
+            }
+        }
+        return new ResolvedModules(resolved, classPathModules, sourceModules);
     }
 
     Set<String> names() {
@@ -112,6 +128,7 @@ final class ResolvedModules {
 
     Set<String> toolProviderModules() {
         return descriptors.values().stream()
+                .filter(descriptor -> !classPathModules.contains(descriptor.name()))
                 .filter(descriptor -> descriptor.provides().stream()
                         .map(Provides::service)
                         .anyMatch(ToolRuntime.TOOL_SERVICE_NAMES::contains))
@@ -134,6 +151,20 @@ final class ResolvedModules {
                     .forEach(pending::addLast);
         }
         return Set.copyOf(reachable);
+    }
+
+    private static boolean hasDeclaredModuleName(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            return Files.isRegularFile(path.resolve("module-info.class"));
+        }
+        if (!Files.isRegularFile(path) || !path.getFileName().toString().endsWith(".jar")) {
+            return false;
+        }
+        try (var jar = new JarFile(path.toFile(), true, JarFile.OPEN_READ, JarFile.runtimeVersion())) {
+            var manifest = jar.getManifest();
+            return jar.getJarEntry("module-info.class") != null
+                    || manifest != null && manifest.getMainAttributes().getValue("Automatic-Module-Name") != null;
+        }
     }
 
     private static void parentModules(Configuration configuration, Map<String, ModuleDescriptor> descriptors) {

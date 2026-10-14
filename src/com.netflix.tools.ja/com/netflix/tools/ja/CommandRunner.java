@@ -66,6 +66,7 @@ public final class CommandRunner {
     private final ModuleLayer layer;
     private final ToolRuntime tools;
     private final ModuleResolver moduleResolver;
+    private final ProjectResolver projectResolver;
     private final ToolCatalogProvider catalogProvider;
     private final TemporaryDirectoryProvider temporaryDirectoryProvider;
     private final JavaLauncher javaLauncher;
@@ -108,6 +109,7 @@ public final class CommandRunner {
         this.layer = layer;
         this.tools = tools;
         this.moduleResolver = new ModuleResolver(tools);
+        this.projectResolver = new ProjectResolver(moduleResolver);
         this.catalogProvider = catalogProvider;
         this.temporaryDirectoryProvider = temporaryDirectoryProvider;
         this.javaLauncher = javaLauncher;
@@ -192,8 +194,13 @@ public final class CommandRunner {
                 resolutionArguments.addAll(applicationTarget.orElseThrow()
                         .resolutionArguments());
             }
+            if (ProjectResolver.external(commandLine) && selectedToolRunner.requiresSelectedModule(commandLine)) {
+                var moduleArguments = projectResolver.resolve(commandLine, resolutionArguments,
+                        new ResolutionOptions(Set.of("module=list"), false), in, err);
+                commandLine = commandLine.withProjectModules(ToolArguments.selectedModules(moduleArguments));
+            }
             var initialToolResolution = selectedToolRunner.supports(commandLine) ? Optional.of(selectedToolRunner.initialResolution(commandLine)) : Optional.<ResolutionRequest>empty();
-            if (commandLine.command() instanceof Tool && (commandLine.moduleSourcePath().isEmpty() || !initialToolResolution.orElseThrow().resolvesModules())) {
+            if (commandLine.command() instanceof Tool && (commandLine.moduleSourcePath().isEmpty() && !ProjectResolver.external(commandLine) || !initialToolResolution.orElseThrow().resolvesModules())) {
                 var invocation = selectedToolRunner.prepare(commandLine, Set.of());
                 return selectedToolRunner.run(
                         commandLine,
@@ -213,11 +220,12 @@ public final class CommandRunner {
             Optional<PreparedInvocation> toolInvocation = Optional.empty();
             if (initialToolResolution.filter(ResolutionRequest::resolveActivation).isPresent()) {
                 ResolvedModules resolvedModules;
-                if (scopedTools != null && scopedTools.resolutionArguments().equals(resolutionArguments)) {
+                if (scopedTools != null && !ProjectResolver.external(commandLine) && scopedTools.resolutionArguments().equals(resolutionArguments)) {
                     configurationArguments = scopedTools.configurationArguments();
                     resolvedModules = scopedTools.resolvedModules();
                 } else {
-                    var modulePathArguments = moduleResolver.resolve(resolutionArguments, ResolutionOptions.MODULE_PATHS, in, err);
+                    var options = ProjectResolver.external(commandLine) ? ResolutionOptions.PROJECT_PATHS : ResolutionOptions.MODULE_PATHS;
+                    var modulePathArguments = projectResolver.resolve(commandLine, resolutionArguments, options, in, err);
                     resolvedModules = ResolvedModules.read(modulePathArguments, layer.configuration());
                 }
                 var prepared = selectedToolRunner.prepare(commandLine, resolvedModules.names());
@@ -231,13 +239,14 @@ public final class CommandRunner {
                         resolutionArguments = new ArrayList<>(ResolutionArguments.withRoots(resolutionArguments, selectedRoots));
                     }
                 }
-                resolvedDescriptors = resolvedModules.descriptors(commandLine.rootModules());
+                resolvedDescriptors = resolvedModules.descriptors(ProjectResolver.external(commandLine)
+                        ? resolvedModules.names().stream().sorted().toList() : commandLine.rootModules());
                 toolInvocation = Optional.of(selectedToolRunner.prepare(commandLine, resolvedModules.names()));
             } else if (initialToolResolution.isPresent()) {
                 toolInvocation = Optional.of(selectedToolRunner.prepare(commandLine, Set.of()));
             }
             var requestedOptions = toolInvocation.isPresent() ? toolInvocation.orElseThrow().resolutionOptions() : workflowResolutionOptions(commandLine, selectedToolRunner);
-            List<String> launchArguments = requestedOptions.active() ? moduleResolver.resolve(resolutionArguments, requestedOptions,
+            List<String> launchArguments = requestedOptions.active() ? projectResolver.resolve(commandLine, resolutionArguments, requestedOptions,
                     commandLine.toolArguments(), in, err)
                     : List.of();
             if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
@@ -410,7 +419,7 @@ public final class CommandRunner {
         if (hasSourceModules(commandLine)) {
             resolutionArguments.add("--verify-module-hashes");
         }
-        var modulePathArguments = moduleResolver.resolve(resolutionArguments, ResolutionOptions.MODULE_PATHS, in, err);
+        var modulePathArguments = projectResolver.resolve(commandLine, resolutionArguments, ResolutionOptions.MODULE_PATHS, in, err);
         var resolvedModules = ResolvedModules.read(modulePathArguments, layer.configuration());
         var providerModules = resolvedModules.toolProviderModules();
         if (providerModules.isEmpty()) {
@@ -427,7 +436,7 @@ public final class CommandRunner {
             if (hasSourceModules(commandLine)) {
                 providerArguments.add("--verify-module-hashes");
             }
-            arguments = moduleResolver.resolve(providerArguments, ResolutionOptions.CONFIGURATION, in, err);
+            arguments = projectResolver.resolve(commandLine, providerArguments, ResolutionOptions.CONFIGURATION, in, err);
         } else {
             arguments = ResolutionArguments.withAddedModules(modulePathArguments,
                     providerModules.stream()
@@ -529,7 +538,7 @@ public final class CommandRunner {
     }
 
     private boolean loadsScopedTools(JaInvocation commandLine, ToolCatalog catalog) throws IOException {
-        if (commandLine.moduleSourcePath().isEmpty()) {
+        if (commandLine.moduleSourcePath().isEmpty() && !ProjectResolver.external(commandLine)) {
             return false;
         }
         if (commandLine.command() instanceof Tools) {
@@ -546,8 +555,8 @@ public final class CommandRunner {
         }
         var selected = definition.orElseThrow();
         var module = selected.module().or(() -> tools.moduleName(selected.provider()));
-        return module.isPresent() && sourceSelects(commandLine.moduleSourcePath().orElseThrow(),
-                module.orElseThrow());
+        return commandLine.moduleSourcePath().isPresent() && module.isPresent()
+                && sourceSelects(commandLine.moduleSourcePath().orElseThrow(), module.orElseThrow());
     }
 
     private static boolean sourceSelects(ModuleSourcePath sourcePath, String moduleName) throws IOException {

@@ -30,11 +30,13 @@ final class ProjectSelector {
     static ProjectSelection select(ProjectCatalog catalog, ProjectDiscovery discovery, Path workingDirectory,
             List<String> requested) {
         if (!requested.isEmpty()) {
-            var selected = new LinkedHashSet<Project>();
+            var selected = new LinkedHashSet<ProjectTarget>();
             for (String selector : requested) {
+                int separator = selector.indexOf('/');
+                String projectSelector = separator < 0 ? selector : selector.substring(0, separator);
                 var matches = catalog.projects()
                                      .stream()
-                                     .filter(project -> discovery.matches(project, selector))
+                                     .filter(project -> discovery.matches(project, projectSelector))
                                      .toList();
                 if (matches.isEmpty()) {
                     throw new IllegalArgumentException("No project matches '" + selector + "' in " + catalog.anchor().root());
@@ -42,7 +44,19 @@ final class ProjectSelector {
                 if (matches.size() != 1) {
                     throw ambiguous(selector, matches);
                 }
-                selected.add(matches.getFirst());
+                var project = matches.getFirst();
+                if (separator < 0) {
+                    selected.add(project.defaultTarget());
+                } else {
+                    String qualifier = selector.substring(separator + 1);
+                    var scopes = project.scopes().stream()
+                            .filter(scope -> matchesQualifier(scope, qualifier)).toList();
+                    if (scopes.size() != 1) {
+                        throw new IllegalArgumentException("No context matches '" + selector + "'; available contexts: "
+                                + project.targets().stream().map(ProjectTarget::selector).collect(Collectors.joining(", ")));
+                    }
+                    selected.add(new ProjectTarget(project, java.util.Optional.of(scopes.getFirst())));
+                }
             }
             return new SelectedProjects(List.copyOf(selected), Origin.REQUESTED);
         }
@@ -67,7 +81,16 @@ final class ProjectSelector {
         if (enclosing.size() > 1) {
             throw ambiguous(workingDirectory.toString(), enclosing);
         }
-        return enclosing.isEmpty() ? new BuildScope() : new SelectedProjects(enclosing, Origin.WORKING_DIRECTORY);
+        return enclosing.isEmpty() ? new BuildScope() : new SelectedProjects(enclosing.stream().map(Project::defaultTarget).toList(), Origin.WORKING_DIRECTORY);
+    }
+
+    private static boolean matchesQualifier(ProjectScope scope, String qualifier) {
+        if (qualifier.isEmpty() || scope instanceof ProjectScope.Module) {
+            return false;
+        }
+        return scope.qualifier().equals(qualifier)
+                || scope instanceof ProjectScope.Gradle(var sourceSet, var classpath)
+                        && sourceSet.equals(qualifier) && classpath.equals("compile");
     }
 
     static boolean matchesPrefix(ProjectType type, Project project, String current) {

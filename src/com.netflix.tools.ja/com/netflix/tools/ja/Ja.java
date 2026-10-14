@@ -256,9 +256,9 @@ public final class Ja {
             var context = new ProjectLocator(tools, true).locate(workingDirectory, List.of(), InputStream.nullInputStream(),
                     new PrintStream(errors));
             return context.map(
-                    value -> value.matchingProjects(current)
+                    value -> value.matchingTargets(current)
                                   .stream()
-                                  .map(project -> new Completion(project.selector(), project.directory().toString()))
+                                  .map(target -> new Completion(target.selector(), target.project().directory().toString()))
                                   .toList())
                           .orElseGet(List::of);
         } catch (IOException failure) {

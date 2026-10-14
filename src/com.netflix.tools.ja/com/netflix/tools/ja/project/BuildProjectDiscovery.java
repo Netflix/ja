@@ -24,6 +24,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 
 import com.netflix.tools.ja.ToolExecutionException;
@@ -89,11 +90,11 @@ final class BuildProjectDiscovery implements ProjectDiscovery {
             if (index == lines.length - 1 && line.isEmpty()) {
                 continue;
             }
-            int separator = line.indexOf('\t');
-            if (separator <= 0 || line.indexOf('\t', separator + 1) >= 0 || line.indexOf('\r') >= 0) {
+            String[] fields = line.split("\t", -1);
+            if (fields.length != (type == ProjectType.MAVEN ? 3 : 4) || line.indexOf('\r') >= 0) {
                 throw new IOException("Invalid " + type + " project listing at line " + (index + 1));
             }
-            String selector = line.substring(0, separator);
+            String selector = fields[1];
             if (type == ProjectType.MAVEN
                     ? !selector.matches("[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+")
                     : !selector.startsWith(":")
@@ -103,7 +104,7 @@ final class BuildProjectDiscovery implements ProjectDiscovery {
             }
             Path directory;
             try {
-                directory = Path.of(line.substring(separator + 1));
+                directory = Path.of(fields[0]);
                 if (!directory.isAbsolute()) {
                     throw new IOException("Invalid " + type + " project directory: expected an absolute path");
                 }
@@ -113,16 +114,40 @@ final class BuildProjectDiscovery implements ProjectDiscovery {
             } catch (InvalidPathException failure) {
                 throw new IOException("Invalid " + type + " project directory", failure);
             }
-            var project = new Project(selector, directory);
-            Project previous = projects.putIfAbsent(selector, project);
-            if (previous != null && !previous.equals(project)) {
+            ProjectScope scope = scope(fields);
+            Project previous = projects.get(selector);
+            if (previous != null && !previous.directory().equals(directory)) {
                 throw new IOException("Conflicting " + type + " project directory for " + selector);
             }
+            if (previous != null && previous.scopes().isEmpty() != (scope == null)) {
+                throw new IOException("Conflicting " + type + " project contexts for " + selector);
+            }
+            var scopes = new ArrayList<ProjectScope>(previous == null ? List.of() : previous.scopes());
+            if (scope != null) {
+                scopes.add(scope);
+            }
+            projects.put(selector, new Project(selector, directory, scopes));
         }
         if (projects.isEmpty()) {
             throw new IOException("No projects returned by " + type + " for " + anchor.root());
         }
         return new ProjectCatalog(anchor, List.copyOf(projects.values()));
+    }
+
+    private ProjectScope scope(String[] fields) throws IOException {
+        if (type == ProjectType.MAVEN) {
+            if (!Set.of("compile", "runtime", "test").contains(fields[2])) {
+                throw new IOException("Invalid Maven scope: " + fields[2]);
+            }
+            return new ProjectScope.Maven(fields[2]);
+        }
+        if (fields[2].isEmpty() && fields[3].isEmpty()) {
+            return null;
+        }
+        if (fields[2].isBlank() || fields[2].contains("/") || !Set.of("compile", "runtime").contains(fields[3])) {
+            throw new IOException("Invalid Gradle context: " + fields[2] + "/" + fields[3]);
+        }
+        return new ProjectScope.Gradle(fields[2], fields[3]);
     }
 
     @Override

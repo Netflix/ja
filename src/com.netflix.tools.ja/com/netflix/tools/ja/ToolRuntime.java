@@ -73,6 +73,7 @@ public final class ToolRuntime {
     private final Set<String> verboseProviders;
     private final PrintStream verboseLog;
     private final JavaLauncher javaLauncher;
+    private final Map<String, Map<String, Integer>> remoteOptionSupport = new LinkedHashMap<>();
 
     private ToolRuntime(Map<String, ToolHandle> tools) {
         this(tools, false, Set.of(), null,
@@ -91,14 +92,16 @@ public final class ToolRuntime {
     // Option checking is launched here when a provider's module access cannot be
     // granted to its existing layer.
     public static void main(String[] arguments) {
-        if (arguments.length != 3 || !arguments[0].equals(IS_SUPPORTED_OPTION)) {
-            System.err.println("Usage: " + ToolRuntime.class.getName() + " " + IS_SUPPORTED_OPTION + " TOOL OPTION");
+        if (arguments.length < 3 || !arguments[0].equals(IS_SUPPORTED_OPTION)) {
+            System.err.println("Usage: " + ToolRuntime.class.getName() + " " + IS_SUPPORTED_OPTION + " TOOL OPTION...");
             System.exit(2);
             return;
         }
         var tools = load(ModuleLayer.boot());
         var checker = tools.localOptionChecker(arguments[1]);
-        System.out.println(checker == null ? -1 : checker.isSupportedOption(arguments[2]));
+        for (int i = 2; i < arguments.length; i++) {
+            System.out.println(checker == null ? -1 : checker.isSupportedOption(arguments[i]));
+        }
     }
 
     public static ToolRuntime of(ToolProvider... providers) {
@@ -309,26 +312,17 @@ public final class ToolRuntime {
     }
 
     public Set<String> resolutionOptions(String name, Set<String> declaredOptions) {
-        if (!declaredOptions.isEmpty()) {
-            return ModuleOptions.resolutionOptions(declaredOptions);
-        }
-        if (find(name).map(ToolHandle::javaCompiler).orElse(false)) {
-            return ResolutionOptions.JAVAC_OPTIONS;
-        }
         var checker = optionChecker(name);
-        return checker == null ? Set.of() : ModuleOptions.supportedBy(checker);
+        var discovered = new LinkedHashSet<>(checker == null ? Set.<String>of() : ModuleOptions.supportedBy(checker));
+        if (find(name).map(ToolHandle::javaCompiler).orElse(false) && discovered.remove("module")) {
+            discovered.add("module=list");
+        }
+        return ModuleOptions.resolutionOptions(declaredOptions, discovered);
     }
 
     ResolutionOptions resolutionOptions(String name, ResolutionOptions declared) {
-        if (declared.active()) {
-            return declared;
-        }
-        if (find(name).map(ToolHandle::javaCompiler).orElse(false)) {
-            return ResolutionOptions.JAVAC;
-        }
-        var checker = optionChecker(name);
-        return new ResolutionOptions(checker == null ? Set.of() : ModuleOptions.supportedBy(checker),
-                false);
+        return new ResolutionOptions(resolutionOptions(name, declared.options()),
+                declared.validateRuntimeAccess(), declared.emitCompileDiagnostics());
     }
 
     public OptionChecker optionChecker(String name, OptionChecker fallback) {
@@ -403,25 +397,39 @@ public final class ToolRuntime {
         }
     }
 
-    private int isSupportedOption(String name, String option, OptionChecker checker) {
+    private synchronized int isSupportedOption(String name, String option, OptionChecker checker) {
         var access = declaredRuntimeAccess(name);
         if (access.isEmpty() || runtimeAccessIsEffective(access.orElseThrow())) {
             return checker.isSupportedOption(option);
         }
+        var supported = remoteOptionSupport.computeIfAbsent(name, _ -> new LinkedHashMap<>());
+        if (supported.containsKey(option)) {
+            return supported.get(option);
+        }
+        var requested = new LinkedHashSet<>(ModuleOptions.optionNames().stream().sorted().toList());
+        requested.removeAll(supported.keySet());
+        requested.add(option);
+        var options = List.copyOf(requested);
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
-        int result = launchOptionCheck(access.orElseThrow(), name, option, new PrintStream(output, true, StandardCharsets.UTF_8),
+        int result = launchOptionCheck(access.orElseThrow(), name, options, new PrintStream(output, true, StandardCharsets.UTF_8),
                 new PrintStream(errors, true, StandardCharsets.UTF_8));
         if (result != 0) {
             var diagnostics = errors.toString(StandardCharsets.UTF_8).strip();
             throw new IllegalStateException(diagnostics.isEmpty() ? "Unable to inspect tool option for " + name : diagnostics);
         }
+        var responses = output.toString(StandardCharsets.UTF_8).lines().toList();
+        if (responses.size() != options.size()) {
+            throw new IllegalStateException("Invalid option check response from " + name);
+        }
         try {
-            return Integer.parseInt(output.toString(StandardCharsets.UTF_8)
-                    .strip());
+            for (int i = 0; i < options.size(); i++) {
+                supported.put(options.get(i), Integer.parseInt(responses.get(i).strip()));
+            }
         } catch (NumberFormatException e) {
             throw new IllegalStateException("Invalid option check response from " + name, e);
         }
+        return supported.get(option);
     }
 
     private int launch(String name, RuntimeAccess access, InputStream in,
@@ -444,7 +452,7 @@ public final class ToolRuntime {
         return launchJava(arguments, in, out, err);
     }
 
-    private int launchOptionCheck(RuntimeAccess access, String name, String option,
+    private int launchOptionCheck(RuntimeAccess access, String name, List<String> options,
             PrintStream out, PrintStream err) {
         var arguments = new ArrayList<String>();
         var serviceLocation = moduleLocation(ToolRuntime.class.getModule());
@@ -462,7 +470,7 @@ public final class ToolRuntime {
         arguments.add(ToolRuntime.class.getModule().getName() + "/" + ToolRuntime.class.getName());
         arguments.add(IS_SUPPORTED_OPTION);
         arguments.add(name);
-        arguments.add(option);
+        arguments.addAll(options);
         return launchJava(arguments, InputStream.nullInputStream(), out, err);
     }
 
@@ -687,6 +695,19 @@ public final class ToolRuntime {
 
         @Override
         public Optional<OptionChecker> optionChecker() {
+            if (service instanceof JavaCompiler compiler) {
+                return Optional.of(option -> {
+                    int operands = compiler.isSupportedOption(option);
+                    if (operands >= 0) {
+                        return operands;
+                    }
+                    try (var manager = compiler.getStandardFileManager(null, null, null)) {
+                        return manager.isSupportedOption(option);
+                    } catch (IOException failure) {
+                        throw new UncheckedIOException(failure);
+                    }
+                });
+            }
             return service instanceof OptionChecker checker ? Optional.of(checker) : Optional.empty();
         }
 

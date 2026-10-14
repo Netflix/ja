@@ -15,12 +15,29 @@
 package com.netflix.tools.ja.project;
 
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
-public record Project(String selector, Path directory) {
+public record Project(String selector, Path directory, List<ProjectScope> scopes) {
+    public Project(String selector, Path directory) {
+        this(selector, directory, List.of(new ProjectScope.Module()));
+    }
+
     public Project {
         if (selector.isBlank()) {
             throw new IllegalArgumentException("Project selector must not be empty");
         }
         directory = directory.toAbsolutePath().normalize();
+        scopes = scopes.stream().distinct().sorted(Comparator.comparing(ProjectScope::qualifier)).toList();
+    }
+
+    public ProjectTarget defaultTarget() {
+        return new ProjectTarget(this, scopes.stream().filter(ProjectScope::isDefault).findFirst());
+    }
+
+    public List<ProjectTarget> targets() {
+        return scopes.isEmpty() ? List.of(defaultTarget())
+                : scopes.stream().map(scope -> new ProjectTarget(this, Optional.of(scope))).toList();
     }
 }

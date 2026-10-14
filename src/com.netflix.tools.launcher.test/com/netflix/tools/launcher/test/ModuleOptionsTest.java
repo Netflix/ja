@@ -45,6 +45,21 @@ class ModuleOptionsTest {
     }
 
     @Test
+    void checksClasspathAndCompilerArgumentsWithTheirStandardSpellings() {
+        var checker = ModuleOptions.checker(Set.of("class-path", "processor-path", "source", "target", "encoding", "system", "add-reads"));
+        for (String spelling : Set.of("--class-path", "-classpath", "-cp", "--processor-path", "-processorpath",
+                "--source", "-source", "--target", "-target", "-encoding", "--system", "--add-reads")) {
+            assertEquals(1, checker.isSupportedOption(spelling), spelling);
+        }
+    }
+
+    @Test
+    void discoversAllStandardArgumentsAcceptedByATool() {
+        var options = Set.of("class-path", "processor-path", "source", "target", "encoding", "system", "add-reads", "d");
+        assertEquals(options, ModuleOptions.supportedBy(ModuleOptions.checker(options)));
+    }
+
+    @Test
     void compilationOutputUsesItsShortSpelling() {
         assertEquals(1, ModuleOptions.checker(Set.of("d"))
                 .isSupportedOption("-d"));

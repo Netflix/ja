@@ -46,9 +46,14 @@ public record ResolutionOptions(Set<String> options, boolean validateRuntimeAcce
 
     static final ResolutionOptions MODULE_PATHS = new ResolutionOptions(Set.of("module-path", "module-source-path", "upgrade-module-path", "add-modules"), false);
 
+    static final ResolutionOptions PROJECT_PATHS = new ResolutionOptions(union(MODULE_PATHS.options(), Set.of("class-path")), false);
+
     static final ResolutionOptions CONFIGURATION = new ResolutionOptions(Set.of("module-path", "upgrade-module-path", "add-modules"), false);
 
     static final ResolutionOptions RUNTIME = new ResolutionOptions(RUNTIME_OPTIONS, false);
+
+    static final ResolutionOptions TOOL_JAVA = new ResolutionOptions(union(RUNTIME_OPTIONS, ACCESS_OPTIONS,
+            Set.of("class-path", "enable-preview")), false);
 
     static final ResolutionOptions RUNTIME_WITH_ACCESS = runtimeWithAccess();
 

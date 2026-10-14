@@ -16,6 +16,7 @@ package com.netflix.tools.launcher;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -33,6 +34,13 @@ public final class ModuleOptions {
             option(JdkModuleOptions.patchModule()),
             option(JdkCompilationOptions.moduleSourcePath()),
             option(JdkCompilationOptions.sourcePath()),
+            option("class-path", JdkOptionDescriptors.option("class-path", "--class-path", "PATH", "Where to find classes", "-classpath", "-cp")),
+            option("processor-path", JdkOptionDescriptors.option("processor-path", "--processor-path", "PATH", "Where to find annotation processors", "-processorpath")),
+            option("source", JdkOptionDescriptors.option("source", "--source", "RELEASE", "Source language version", "-source")),
+            option("target", JdkOptionDescriptors.option("target", "--target", "RELEASE", "Target class file version", "-target")),
+            option("encoding", JdkOptionDescriptors.option("encoding", "-encoding", "CHARSET", "Source file encoding")),
+            option("system", JdkOptionDescriptors.option("system", "--system", "PATH", "Where to find system modules")),
+            option("add-reads", JdkOptionDescriptors.option("add-reads", "--add-reads", "MODULE=TARGET", "Add module reads")),
             option("module", JdkOptionDescriptors.option("module=single", "--module", "MODULE", "Select the module", "-m")),
             option(JdkModuleOptions.addModules()),
             option(JdkModuleOptions.describeModule()),
@@ -49,6 +57,12 @@ public final class ModuleOptions {
             option(JdkCompilationOptions.destination()));
 
     private ModuleOptions() {}
+
+    public static Set<String> optionNames() {
+        return KNOWN_OPTIONS.values().stream()
+                .flatMap(option -> option.descriptor().names().stream())
+                .collect(Collectors.toUnmodifiableSet());
+    }
 
     /**
      * Returns the standard output option specifications accepted by an option
@@ -73,6 +87,16 @@ public final class ModuleOptions {
                     return option == null || option.resolution();
                 })
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    public static Set<String> resolutionOptions(Set<String> declared, Set<String> discovered) {
+        var options = new LinkedHashSet<>(discovered);
+        var explicit = resolutionOptions(declared);
+        if (explicit.stream().anyMatch(option -> baseSpecification(option).equals("module"))) {
+            options.removeIf(option -> baseSpecification(option).equals("module"));
+        }
+        options.addAll(explicit);
+        return Set.copyOf(options);
     }
 
     /** Returns an option checker for the exact declared option specifications. */

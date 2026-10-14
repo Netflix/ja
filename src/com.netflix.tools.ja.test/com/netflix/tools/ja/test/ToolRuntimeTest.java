@@ -31,16 +31,16 @@ import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolRuntimeTest {
     @Test
     void recognizesTheCompilerFromItsJavaCompilerContract() {
         var tools = ToolRuntime.load(ModuleLayer.boot());
 
-        assertEquals(
-                Set.of("module-path", "processor-module-path", "upgrade-module-path", "module-source-path", "module=list", "module-version",
-                        "patch-module", "release", "enable-preview", "add-exports"),
-                tools.resolutionOptions("javac", Set.of()));
+        var options = tools.resolutionOptions("javac", Set.of());
+        assertTrue(options.containsAll(Set.of("module-path", "processor-module-path", "module-source-path", "module=list",
+                "class-path", "source-path", "processor-path", "source", "target", "encoding", "release", "d")), options.toString());
     }
 
     @Test
@@ -54,10 +54,13 @@ class ToolRuntimeTest {
     }
 
     @Test
-    void declaredResolutionOptionsOverrideTheImplicitContract() {
+    void declaredOptionsSupplementDiscoveryAndPreserveTheDeclaredModuleForm() {
         var tools = ToolRuntime.of(new CheckingTool());
 
-        assertEquals(Set.of("module-path"), tools.resolutionOptions("probe", Set.of("module-path", "verbose")));
+        assertEquals(Set.of("module-path", "module=list", "enable-preview"),
+                tools.resolutionOptions("probe", Set.of("module-path", "module=list", "verbose")));
+        assertEquals(Set.of("module=single", "enable-preview"),
+                tools.resolutionOptions("probe", Set.of("module=single")));
     }
 
     @Test
@@ -65,6 +68,15 @@ class ToolRuntimeTest {
         var tools = ToolRuntime.of(new CheckingTool());
 
         assertEquals(Set.of("module", "enable-preview"), tools.resolutionOptions("probe", Set.of()));
+    }
+
+    @Test
+    void bundledToolMetadataDoesNotHideTheirClasspathOptions() {
+        var tools = ToolRuntime.load(ModuleLayer.boot());
+        for (String name : List.of("jfmt", "jist", "jdocserver")) {
+            var options = tools.resolutionOptions(name, Set.of("module-path", "module-source-path", "module=list"));
+            assertTrue(options.containsAll(Set.of("class-path", "source-path", "module=list")), name + ": " + options);
+        }
     }
 
     @Test
@@ -93,6 +105,9 @@ class ToolRuntimeTest {
 
         assertEquals(1, checker.isSupportedOption("--release"));
         assertEquals(1, checker.isSupportedOption("--module-path"));
+        assertEquals(1, checker.isSupportedOption("--class-path"));
+        assertEquals(1, checker.isSupportedOption("--source-path"));
+        assertEquals(1, checker.isSupportedOption("--processor-path"));
         assertEquals(-1, checker.isSupportedOption("--not-an-option"));
     }
 
