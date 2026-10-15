@@ -3,16 +3,13 @@
 [![Maven Central](https://img.shields.io/maven-central/v/com.netflix/com.netflix.tools.ja)](https://central.sonatype.com/artifact/com.netflix/com.netflix.tools.ja)
 ![JDK 25+](https://img.shields.io/badge/JDK-25%2B-blue)
 
-Java has [paved the on-ramp](https://openjdk.org/projects/amber/design-notes/on-ramp) for people learning Java and writing simple programs. `ja` lets those programs grow naturally into a module with dependencies, and later into multiple modules on a module source path, without requiring a complex build system.
+Java developers have long been exceptionally well served by IDEs. Formatting source, navigating declarations and usages, reading API documentation, and exploring dependency sources and references are all part of the experience. In the terminal, those same tasks often mean searching dependency caches, locating source archives, and assembling tool arguments by hand. Coding agents encounter these gaps constantly.
 
-`ja` uses the Java module descriptor as the source of truth throughout development. Start with one module in the current directory, add dependencies without changing the tools, and move the module beneath `src` when it enters source control or develops additional module boundaries.
+`ja` is a terminal development environment for Java, bringing those capabilities to the command line through small, composable tools. The goal is to make common Java development tasks as accessible to terminal users and coding agents as they are to someone working in an IDE.
 
-- Install Java applications from Maven repositories as ordinary commands with dedicated runtimes
-- Declare dependencies directly in `module-info.java`
-- Build, test, and distribute modules and applications from the same module declarations
-- Preserve module boundaries and integrity from development through distribution
-- Format source, find declarations and usages, browse APIs, and reuse compilation work across tools
-- Keep output concise so coding agents can work effectively without losing important errors
+It works with module, Maven, and Gradle projects. Your working directory selects the project, and each tool gets the sources, dependencies, and Java options it needs automatically. That includes standard JDK tools such as `javac`, `jdeps`, `jlink`, and `jshell`.
+
+For module projects, the environment also supports building, testing, and distributing applications directly from `module-info.java`. A simple program can grow into one module with dependencies, then multiple modules, without introducing a separate build configuration.
 
 > [!IMPORTANT]
 > This project and its bundled tools are currently in preview. We are collecting feedback for all of the tools together in [Discussions](https://github.com/Netflix/ja/discussions).
