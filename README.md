@@ -19,9 +19,7 @@ For module projects, the environment also supports building, testing, and distri
 > [!NOTE]
 > Netflix engineers should use the internally bundled toolchain rather than installing `ja` or its tools separately.
 
-Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer creates a `ja`-enabled copy without modifying the source JDK.
-
-The installer supports two first-class installation styles.
+Make a JDK 25 or later available through `JAVA_HOME`, `PATH`, or an environment manager such as [jenv](https://www.jenv.be/). The installer supports two first-class installation styles.
 
 ### Development JDK
 
@@ -39,7 +37,7 @@ On Windows PowerShell:
 irm https://raw.githubusercontent.com/Netflix/ja/main/install.ps1 | iex
 ```
 
-On macOS the JDK is installed under `~/Library/Java/JavaVirtualMachines`. On Linux and Windows it is installed under `~/.jdks`.
+On macOS the JDK is installed under `~/Library/Java/JavaVirtualMachines`. On Linux and Windows it is installed under `~/.jdks`. The source JDK is not modified.
 
 ### Standalone distribution
 
