@@ -116,10 +116,6 @@ final class JaOptions {
         return group(ToolOption.option("--module", "MODULE[/MAIN-CLASS]", "Select the module", "-m"));
     }
 
-    static Group singleModule() {
-        return group(ToolOption.option("--module", "MODULE", "Select the module", "-m"));
-    }
-
     private static ToolOption enableNativeAccess() {
         return ToolOption.option("--enable-native-access", "MODULE[,MODULE...]", "Allow restricted native access");
     }

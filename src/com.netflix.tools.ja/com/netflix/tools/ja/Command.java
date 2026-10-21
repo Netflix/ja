@@ -67,6 +67,10 @@ public sealed interface Command {
 
     record Doc(DocRequest request) implements Command {}
 
+    record Describe(DescribeRequest request) implements Command {}
+
+    record Find(FindRequest request) implements Command {}
+
     record Source(String symbol) implements Command {
         public Source {
             if (symbol.isBlank()) {

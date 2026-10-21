@@ -220,29 +220,9 @@ public record JaInvocation(
         } else if (command.equals(new Builtin(BuiltinCommand.SOURCE))) {
             command = new Source(parseSourceSymbol(arguments, commandArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.DESCRIBE))) {
-            boolean separated = false;
-            for (int i = commandArguments; i < arguments.length; i++) {
-                String option = arguments[i];
-                if (!separated && option.equals("--")) {
-                    separated = true;
-                    toolArguments.add(option);
-                } else if (!separated && (option.equals("-m") || option.equals("--module"))) {
-                    if (++i >= arguments.length) {
-                        throw new IllegalArgumentException(option + " requires a value");
-                    }
-                    String module = moduleSelection(option, arguments[i]);
-                    rootModules.add(module);
-                    resolutionArguments.add("-m");
-                    resolutionArguments.add(module);
-                } else if (!separated && option.startsWith("--module=")) {
-                    String module = moduleSelection("--module", option.substring("--module=".length()));
-                    rootModules.add(module);
-                    resolutionArguments.add("-m");
-                    resolutionArguments.add(module);
-                } else {
-                    toolArguments.add(option);
-                }
-            }
+            command = new Command.Describe(DescribeRequest.parse(List.of(arguments).subList(commandArguments, arguments.length)));
+        } else if (command.equals(new Builtin(BuiltinCommand.FIND))) {
+            command = new Command.Find(FindRequest.parse(List.of(arguments).subList(commandArguments, arguments.length)));
         } else if (command.equals(new Builtin(BuiltinCommand.RUN))) {
             Optional<String> runTarget = Optional.empty();
             if (commandArguments < arguments.length) {

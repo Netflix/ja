@@ -227,6 +227,40 @@ class BuildToolTest {
     }
 
     @Test
+    void codeInsightUsesTheSelectedMavenAndGradleContexts() throws Exception {
+        for (var type : List.of("maven", "gradle")) {
+            Files.deleteIfExists(directory.resolve("pom.xml"));
+            Files.deleteIfExists(directory.resolve("settings.gradle"));
+            var fixture = fixture(type, Set.of("class-path", "source-path"));
+            fixture.definition = new ToolDefinition("jist", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jist",
+                    Optional.empty(), Set.of("class-path", "source-path"), List.of());
+            var selector = type.equals("maven") ? "example:app/test" : ":app/test/runtime";
+            for (var query : List.of(
+                    List.of("describe", "module", "java.base"), List.of("describe", "type", "example.Example"),
+                    List.of("describe", "member", "example.Example.run"), List.of("describe", "file", "Example.java"),
+                    List.of("find", "usages", "example.Example"), List.of("find", "callers", "example.Example.run"),
+                    List.of("find", "impl", "example.Example"), List.of("find", "impl", "example.Example.run"))) {
+                fixture.received.clear();
+                fixture.queries.clear();
+                fixture.toolQueries.clear();
+                var arguments = new ArrayList<>(List.of("-p", selector));
+                arguments.addAll(query);
+                assertEquals(0, fixture.run(arguments.toArray(String[]::new)), query.toString());
+                assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources"), fixture.received.subList(0, 4));
+                assertEquals(query.get(1).equals("file") ? directory.resolve("Example.java").toString() : query.getLast(), fixture.received.getLast());
+                assertEquals("test", value(fixture.resolution(), type.equals("maven") ? "--scope" : "--source-set"));
+                if (type.equals("gradle")) assertEquals("runtime", value(fixture.resolution(), "--classpath"));
+                if (query.get(1).equals("impl")) {
+                    assertEquals(2, fixture.toolQueries.size());
+                    assertEquals(fixture.received.subList(0, 4), fixture.toolQueries.getFirst().subList(0, 4));
+                    assertEquals(query.getLast().equals("example.Example") ? "--subtypes" : "--overrides", fixture.received.get(4));
+                    assertEquals(1, fixture.queries.stream().filter(argumentsForJig -> argumentsForJig.contains("--resolve-options")).count());
+                }
+            }
+        }
+    }
+
+    @Test
     void documentationBrowsingPassesTheContextToTheDocumentationTool() throws Exception {
         var fixture = fixture("gradle", Set.of("class-path", "source-path"));
         fixture.definition = new ToolDefinition("jdocserver", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jdocserver",
@@ -244,6 +278,7 @@ class BuildToolTest {
     private final class Fixture {
         final String type;
         final List<List<String>> queries = new ArrayList<>();
+        final List<List<String>> toolQueries = new ArrayList<>();
         final List<String> received = new ArrayList<>();
         ToolDefinition definition;
         Path cwd = directory;
@@ -306,8 +341,13 @@ class BuildToolTest {
                 }
                 return status;
             }));
-            providers.add(provider(definition.provider(), (_, args) -> {
-                received.addAll(args);
+            providers.add(provider(definition.provider(), (out, args) -> {
+                toolQueries.add(args);
+                if (definition.provider().equals("jist") && args.contains("-l")) {
+                    out.println("class example.Example");
+                } else {
+                    received.addAll(args);
+                }
                 return 0;
             }));
             providers.addAll(additionalTools);

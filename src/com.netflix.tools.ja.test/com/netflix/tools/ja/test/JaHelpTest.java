@@ -63,6 +63,8 @@ class JaHelpTest {
                   fmt          Format source
                   doc          Find or browse Java APIs
                   source       Show Java source
+                  describe     Describe Java modules, types, members, and files
+                  find         Find related Java code
                   tool         List or run tools
                   completion   Print completion shims for all completion-aware tools
 
@@ -75,7 +77,6 @@ class JaHelpTest {
                   test         Run tests
                   bench        Run benchmarks
                   list         List observable modules
-                  describe     Describe a module
                   assemble     Assemble module and application artifacts
                   install      Install a module as a command
                   maven        Export Maven projects or install and deploy modules

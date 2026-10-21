@@ -266,7 +266,7 @@ public final class ToolRuntime {
         return completionProtocol(output.toString(StandardCharsets.UTF_8));
     }
 
-    private static List<Completion> completionProtocol(String output) {
+    static List<Completion> completionProtocol(String output) {
         var completions = new ArrayList<Completion>();
         for (String line : output.lines().toList()) {
             if (line.startsWith(":")) {

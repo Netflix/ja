@@ -31,7 +31,6 @@ import com.netflix.tools.cli.CommandLine.Builder;
 import com.netflix.tools.cli.CommandLine.Cardinality;
 import com.netflix.tools.cli.CommandLine.Completion;
 import com.netflix.tools.cli.CommandLine.CompletionRequest;
-import com.netflix.tools.cli.CommandLine.Subcommand;
 import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.ja.Command.Category;
 import com.netflix.tools.ja.project.ProjectLocator;
@@ -147,27 +146,26 @@ public final class Ja {
         out.println("Run 'ja <command> --help' for command-specific help.");
     }
 
-    private static Optional<Subcommand> commandHelp(String[] arguments, int commandIndex) {
-        var command = COMMAND_LINE.commands().stream()
-                .filter(candidate -> candidate.name().equals(arguments[commandIndex]))
-                .findFirst();
-        if (command.isEmpty()) {
-            return Optional.empty();
+    private record CommandHelp(String name, CommandLine commandLine) {}
+
+    private static Optional<CommandHelp> commandHelp(String[] arguments, int commandIndex) {
+        var commands = COMMAND_LINE.commands();
+        CommandHelp selected = null;
+        int index = commandIndex;
+        while (index < arguments.length) {
+            String name = arguments[index];
+            var command = commands.stream().filter(candidate -> candidate.name().equals(name)).findFirst();
+            if (command.isEmpty()) break;
+            var current = command.orElseThrow();
+            selected = new CommandHelp(selected == null ? current.name() : selected.name() + " " + current.name(), current.commandLine());
+            commands = current.commandLine().commands();
+            index++;
         }
-        boolean commandGroup = !command.orElseThrow()
-                .commandLine()
-                .commands()
-                .isEmpty();
-        if (arguments.length == commandIndex + 1 && commandGroup) {
-            return command;
-        }
-        for (int i = commandIndex + 1; i < arguments.length; i++) {
-            if (arguments[i].equals("--")) {
-                return Optional.empty();
-            }
-            if (arguments[i].equals("-h") || arguments[i].equals("--help")) {
-                return command;
-            }
+        if (selected == null) return Optional.empty();
+        if (index == arguments.length && !commands.isEmpty()) return Optional.of(selected);
+        for (; index < arguments.length; index++) {
+            if (arguments[index].equals("--")) return Optional.empty();
+            if (arguments[index].equals("-h") || arguments[index].equals("--help")) return Optional.of(selected);
         }
         return Optional.empty();
     }
@@ -231,6 +229,23 @@ public final class Ja {
             if (selectorCommand.isPresent() && !completesTagValue(selectorCommand.orElseThrow(), commandArguments)) {
                 return SelectorCompletion.complete(selectorCommand.orElseThrow(), prepared.workingDirectory(), request.current(),
                         arguments.subList(0, commandIndex));
+            }
+            if (commandArguments.size() == 1 && command.equals("describe")) {
+                for (var subject : DescribeRequest.Subject.values()) {
+                    if (subject.command().equals(commandArguments.getFirst())) {
+                        return subject == DescribeRequest.Subject.FILE
+                                ? CodeCompletion.paths(prepared.workingDirectory(), request.current())
+                                : CodeCompletion.symbols(tools, prepared.workingDirectory(), arguments.subList(0, commandIndex),
+                                        subject.completionArguments(), request.current());
+                    }
+                }
+            } else if (commandArguments.size() == 1 && command.equals("find")) {
+                for (var question : FindRequest.Question.values()) {
+                    if (question.command().equals(commandArguments.getFirst())) {
+                        return CodeCompletion.symbols(tools, prepared.workingDirectory(), arguments.subList(0, commandIndex),
+                                question.completionArguments(), request.current());
+                    }
+                }
             }
             Optional<ToolInvocation> delegated = Optional.empty();
             if (command.equals("source") && commandArguments.isEmpty()) {
@@ -317,7 +332,20 @@ public final class Ja {
                     commandLine.options(JaOptions.testOptions())
                                .operand("CLASS[.METHOD]", "Select test classes or methods", Cardinality.ZERO_OR_MORE)
                                .build();
-            case DESCRIBE -> commandLine.options(JaOptions.singleModule()).build();
+            case DESCRIBE -> {
+                for (var subject : DescribeRequest.Subject.values()) {
+                    commandLine.command(subject.command(), subject.description(),
+                            CommandLine.builder().option(JaOptions.help()).operand("SUBJECT", subject.description(), Cardinality.EXACTLY_ONE).build());
+                }
+                yield commandLine.build();
+            }
+            case FIND -> {
+                for (var question : FindRequest.Question.values()) {
+                    commandLine.command(question.command(), question.description(),
+                            CommandLine.builder().option(JaOptions.help()).operand("SUBJECT", "Java type or member", Cardinality.EXACTLY_ONE).build());
+                }
+                yield commandLine.build();
+            }
             case DOC ->
                     commandLine.option(JaOptions.browse())
                                .operand("SYMBOL|TYPE", "Java source symbol or type", Cardinality.ZERO_OR_ONE)

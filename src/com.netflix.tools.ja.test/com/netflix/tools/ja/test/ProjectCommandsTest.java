@@ -393,7 +393,7 @@ class ProjectCommandsTest {
     @Test
     void everyModuleWorkflowRejectsMavenAndGradleContextsBeforeResolution() throws Exception {
         var commands = List.of(List.of("require", "-u"), List.of("generate"), List.of("compile"), List.of("run"),
-                List.of("test"), List.of("bench"), List.of("list"), List.of("describe"), List.of("assemble", "artifacts"),
+                List.of("test"), List.of("bench"), List.of("list"), List.of("assemble", "artifacts"),
                 List.of("install"), List.of("maven", "export"));
         for (boolean maven : List.of(true, false)) {
             var root = maven ? maven(directory.resolve("maven")) : gradle(directory.resolve("gradle"));

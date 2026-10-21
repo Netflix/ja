@@ -14,11 +14,13 @@
 
 package com.netflix.tools.ja;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.lang.ModuleLayer.Controller;
 import java.lang.module.ModuleDescriptor;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -305,7 +307,8 @@ public final class CommandRunner {
         if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
             return ResolutionOptions.RUNTIME_WITH_ACCESS;
         }
-        if (commandLine.command() instanceof Doc || commandLine.command() instanceof Source) {
+        if (commandLine.command() instanceof Doc || commandLine.command() instanceof Source
+                || commandLine.command() instanceof Command.Describe || commandLine.command() instanceof Command.Find) {
             var provider = commandLine.command() instanceof Doc(Browse _) ? "jdocserver" : "jist";
             return toolRunner.providerResolutionOptions(provider,
                     BuiltinCommand.from(commandLine.command())
@@ -363,6 +366,24 @@ public final class CommandRunner {
                 }
             }
             return toolRunner.run(toolInvocation(commandLine, provider, arguments), resolutionArguments,
+                    resolved, in, out, err);
+        }
+        if (commandLine.command() instanceof Command.Describe(var request)) {
+            return toolRunner.run(toolInvocation(commandLine, "jist", request.arguments(commandLine.workingDirectory())), resolutionArguments,
+                    resolved, in, out, err);
+        }
+        if (commandLine.command() instanceof Command.Find(var request)) {
+            var arguments = request.arguments();
+            if (request.question() == FindRequest.Question.IMPL) {
+                var symbols = new ByteArrayOutputStream();
+                int result = toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
+                        resolved, in, new PrintStream(symbols, true, StandardCharsets.UTF_8), err);
+                if (result != 0) {
+                    return result;
+                }
+                arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
+            }
+            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Source(var symbol)) {
@@ -532,6 +553,8 @@ public final class CommandRunner {
                 && (builtin.execution() instanceof ToolBacked
                         || builtin == BuiltinCommand.DOC
                         || builtin == BuiltinCommand.SOURCE
+                        || builtin == BuiltinCommand.DESCRIBE
+                        || builtin == BuiltinCommand.FIND
                         || builtin == BuiltinCommand.INSTALL
                         || builtin == BuiltinCommand.ASSEMBLE
                         || builtin == BuiltinCommand.MAVEN);
@@ -600,6 +623,8 @@ public final class CommandRunner {
             case Run _ -> false;
             case Doc _ -> false;
             case Source _ -> false;
+            case Command.Describe _ -> false;
+            case Command.Find _ -> false;
         };
     }
 }

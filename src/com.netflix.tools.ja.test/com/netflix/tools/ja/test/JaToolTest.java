@@ -166,7 +166,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(18,
+        assertEquals(19,
                 described.commandLine()
                          .commands()
                          .size());
@@ -390,6 +390,32 @@ class JaToolTest {
         var described = assertInstanceOf(JaTool.class, ja);
         assertEquals(commandLine(described, "maven").help("ja maven"), result.output());
         assertEquals("", result.error());
+    }
+
+    @Test
+    void printsCodeInsightGroupHelpWithoutASubcommand() {
+        var described = assertInstanceOf(JaTool.class, ja);
+        for (var command : List.of("describe", "find")) {
+            var result = run(command);
+            assertEquals(0, result.exitCode(), result.error());
+            assertEquals(commandLine(described, command).help("ja " + command), result.output());
+            assertEquals("", result.error());
+        }
+    }
+
+    @Test
+    void printsCodeInsightSubcommandHelp() {
+        var described = assertInstanceOf(JaTool.class, ja);
+        for (var command : List.of("describe", "find")) {
+            for (var subcommand : commandLine(described, command).commands()) {
+                for (var help : List.of("-h", "--help")) {
+                    var result = run("--verbose", command, subcommand.name(), help);
+                    assertEquals(0, result.exitCode(), result.error());
+                    assertEquals(subcommand.commandLine().help("ja " + command + " " + subcommand.name()), result.output());
+                    assertEquals("", result.error());
+                }
+            }
+        }
     }
 
     @Test

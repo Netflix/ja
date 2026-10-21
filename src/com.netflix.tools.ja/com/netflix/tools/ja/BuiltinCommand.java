@@ -48,6 +48,9 @@ public enum BuiltinCommand {
             sourceTool()),
     SOURCE("source", Category.DEVELOPMENT, "Show Java source", workflow(requiresProvider("jist")),
             sourceTool()),
+    DESCRIBE("describe", Category.DEVELOPMENT, "Describe Java modules, types, members, and files",
+            workflow(requiresProvider("jist")), sourceTool()),
+    FIND("find", Category.DEVELOPMENT, "Find related Java code", workflow(requiresProvider("jist")), sourceTool()),
     INIT("init", Category.MODULE, "Initialize a source module", workflow(),
             standardOptions()),
     REQUIRE("require", Category.MODULE, "Add or update dependencies", workflow(),
@@ -63,8 +66,6 @@ public enum BuiltinCommand {
             runtimeTool()),
     LIST("list", Category.MODULE, "List observable modules", new LaunchJava(),
             standardOptions("module-path", "upgrade-module-path", "add-modules")),
-    DESCRIBE("describe", Category.MODULE, "Describe a module", new LaunchJava(),
-            standardOptions("module-path", "upgrade-module-path", "describe-module")),
     ASSEMBLE(
             "assemble",
             Category.MODULE,
@@ -137,6 +138,8 @@ public enum BuiltinCommand {
             case Run _ -> Optional.of(RUN);
             case Doc _ -> Optional.of(DOC);
             case Source _ -> Optional.of(SOURCE);
+            case Command.Describe _ -> Optional.of(DESCRIBE);
+            case Command.Find _ -> Optional.of(FIND);
             case Command.Tool _ -> Optional.empty();
             case Tools _ -> Optional.empty();
         };

@@ -415,7 +415,14 @@ public final class ToolRunner {
         var sourceOptions = ModuleOptions.checker(resolutionOptions);
         var arguments = new ArrayList<>(ToolArguments.select(resolved.arguments(), sourceOptions, checker));
         arguments.addAll(definition.defaults());
-        arguments.addAll(nativeArguments);
+        if (!nativeArguments.isEmpty() && nativeArguments.getFirst().equals("__complete")
+                && checker.isSupportedOption("__complete") == 0) {
+            // The completion protocol requires its marker before the resolved compilation options.
+            arguments.addFirst("__complete");
+            arguments.addAll(nativeArguments.subList(1, nativeArguments.size()));
+        } else {
+            arguments.addAll(nativeArguments);
+        }
         if (!tools.sameImplementation(definition.provider(), directTools)) {
             return runModularProvider(commandLine, definition, resolved, arguments, in, out,
                     err);
