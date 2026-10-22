@@ -14,10 +14,16 @@
 
 package com.netflix.tools.ja;
 
+import java.io.IOException;
+import java.io.PrintStream;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+
+import com.netflix.tools.launcher.ModuleOptions;
 
 /**
  * Discovers native command names and warmup support provided by a resolved
@@ -33,14 +39,39 @@ final class ToolCommands {
 
     private ToolCommands() {}
 
-    static Discovery discover(String moduleName, List<Path> modulePath) {
+    static Discovery discover(String moduleName, List<String> launchArguments, PrintStream out, PrintStream err) throws IOException {
+        var modulePath = ToolArguments.applicationModulePath(launchArguments);
+        var target = ModuleFinder.of(modulePath.toArray(Path[]::new))
+                .find(moduleName)
+                .or(() -> ModuleLayer.boot()
+                        .configuration()
+                        .findModule(moduleName)
+                        .map(module -> module.reference()))
+                .orElseThrow(() -> new IllegalArgumentException("Module not found: " + moduleName));
+        boolean providesTools = target.descriptor()
+                .provides()
+                .stream()
+                .anyMatch(provider -> ToolRuntime.TOOL_SERVICE_NAMES.contains(provider.service()));
+        if (!providesTools) {
+            return new Discovery(Set.of(), Set.of());
+        }
         var resolution = Configurations.resolveAndBindBeforeParent(ModuleLayer.boot().configuration(), modulePath,
                 Set.of(moduleName));
-        var layer = resolution.defineLayer(ModuleLayer.boot()).layer();
+        ToolRuntime tools;
+        if (resolution.requiresFork()) {
+            var arguments = new ArrayList<>(ToolArguments.select(launchArguments,
+                    ModuleOptions.checker(ResolutionOptions.JAVA.options()),
+                    ModuleOptions.checker(ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS.options())));
+            arguments.add("--add-modules");
+            arguments.add(moduleName);
+            tools = ToolRuntime.forked(arguments, Set.of(moduleName), JavaProcess::launch, out, err);
+        } else {
+            var layer = resolution.defineLayer(ModuleLayer.boot()).layer();
+            tools = ToolRuntime.load(layer, Set.of(moduleName));
+        }
 
         var commands = new TreeSet<String>();
         var warmupCommands = new TreeSet<String>();
-        var tools = ToolRuntime.load(layer, Set.of(moduleName));
         for (String discovered : tools.names()) {
             String name = requireCommandName(discovered);
             commands.add(name);

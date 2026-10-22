@@ -146,9 +146,9 @@ public final class ToolRunner {
         this.testRunner = new TestRunner(testResults, runtimeImage);
     }
 
-    ToolRunner(Controller controller, ToolRuntime tools, ToolRuntime directTools,
+    ToolRunner(ModuleLayer layer, Controller controller, ToolRuntime tools, ToolRuntime directTools,
                ToolCatalog catalog, JavaLauncher javaLauncher) {
-        this.layer = controller.layer();
+        this.layer = layer;
         this.controller = controller;
         this.tools = tools.withJavaLauncher(javaLauncher);
         this.directTools = directTools.withJavaLauncher(javaLauncher);
@@ -423,7 +423,7 @@ public final class ToolRunner {
         } else {
             arguments.addAll(nativeArguments);
         }
-        if (!tools.sameImplementation(definition.provider(), directTools)) {
+        if (!tools.isForked(definition.provider()) && !tools.sameImplementation(definition.provider(), directTools)) {
             return runModularProvider(commandLine, definition, resolved, arguments, in, out,
                     err);
         }
@@ -474,6 +474,9 @@ public final class ToolRunner {
         if (!executionTools.contains(definition.provider())) {
             var resolution = Configurations.resolveBeforeParent(executionLayer.configuration(), ToolArguments.modulePath(runtimeArguments),
                     Set.of(module));
+            if (resolution.requiresFork()) {
+                return tools.launch(definition.provider(), runtimeArguments, toolArguments, in, out, err);
+            }
             executionController = resolution.defineLayer(executionLayer);
             executionLayer = executionController.layer();
             executionTools = tools.withAdditional(ToolRuntime.load(executionLayer, Set.of(module)));

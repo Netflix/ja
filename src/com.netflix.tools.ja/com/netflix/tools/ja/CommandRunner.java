@@ -138,7 +138,7 @@ public final class CommandRunner {
         }
         var catalog = usesToolCatalog(commandLine) ? catalogProvider.load().withDiscovered(tools) : new ToolCatalog(List.of());
         boolean moduleHashesAlreadyVerified = loadsScopedTools(commandLine, catalog);
-        var scopedTools = moduleHashesAlreadyVerified ? toolsOnModulePath(commandLine, catalog, in, err).orElse(null) : null;
+        var scopedTools = moduleHashesAlreadyVerified ? toolsOnModulePath(commandLine, catalog, in, out, err).orElse(null) : null;
         return run(commandLine, in, out, err, catalog, scopedTools,
                 moduleHashesAlreadyVerified);
     }
@@ -157,7 +157,7 @@ public final class CommandRunner {
         if (commandLine.verbose()) {
             selectedTools = selectedTools.withVerbose(selectedCatalog.definitions());
         }
-        var selectedToolRunner = scopedTools == null ? new ToolRunner(layer, tools, catalog, javaLauncher) : new ToolRunner(scopedTools.controller(), selectedTools, tools, selectedCatalog, javaLauncher);
+        var selectedToolRunner = scopedTools == null ? new ToolRunner(layer, tools, catalog, javaLauncher) : new ToolRunner(scopedTools.layer(), scopedTools.controller(), selectedTools, tools, selectedCatalog, javaLauncher);
         CommandAvailability.require(commandLine, selectedTools, selectedCatalog);
         if (commandLine.command() instanceof Tools) {
             selectedCatalog.definitions().forEach(definition -> out.println(definition.name()));
@@ -433,7 +433,7 @@ public final class CommandRunner {
     }
 
     private Optional<ScopedTools> toolsOnModulePath(JaInvocation commandLine, ToolCatalog catalog, InputStream in,
-            PrintStream err)
+            PrintStream out, PrintStream err)
             throws IOException {
         var baseResolutionArguments = List.copyOf(commandLine.resolutionArguments());
         var resolutionArguments = new ArrayList<>(baseResolutionArguments);
@@ -471,10 +471,20 @@ public final class CommandRunner {
             return Optional.empty();
         }
 
-        var controller = resolution.defineLayer(layer);
-        var scopedLayer = controller.layer();
-        var moduleCatalog = ToolCatalog.load(scopedLayer, moduleNames);
-        var scopedServices = ToolRuntime.load(scopedLayer, moduleNames);
+        Controller controller = null;
+        var scopedLayer = layer;
+        ToolRuntime scopedServices;
+        if (resolution.requiresFork()) {
+            var runtimeArguments = projectResolver.resolve(commandLine,
+                    ResolutionArguments.withAddedModules(modulePathArguments, providerModules.stream().sorted().toList()),
+                    ResolutionOptions.COMPLETE_RUNTIME_WITH_ACCESS, in, err);
+            scopedServices = ToolRuntime.forked(runtimeArguments, moduleNames, javaLauncher, out, err);
+        } else {
+            controller = resolution.defineLayer(layer);
+            scopedLayer = controller.layer();
+            scopedServices = ToolRuntime.load(scopedLayer, moduleNames);
+        }
+        var moduleCatalog = ToolCatalog.load(resolution.configuration(), moduleNames);
         var selectedServices = tools.withOverrides(scopedServices);
         moduleCatalog = moduleCatalog.withDiscovered(scopedServices);
         requireNoDuplicateTools(catalog, moduleCatalog, scopedServices);
@@ -491,7 +501,7 @@ public final class CommandRunner {
                         .isPresent())
                 .filter(definition -> !existing.contains(definition.name()))
                 .forEach(definitions::add);
-        return Optional.of(new ScopedTools(controller, selectedServices, new ToolCatalog(definitions), baseResolutionArguments, arguments,
+        return Optional.of(new ScopedTools(scopedLayer, controller, selectedServices, new ToolCatalog(definitions), baseResolutionArguments, arguments,
                 resolvedModules));
     }
 
@@ -596,7 +606,7 @@ public final class CommandRunner {
         return false;
     }
 
-    private record ScopedTools(Controller controller, ToolRuntime services, ToolCatalog catalog,
+    private record ScopedTools(ModuleLayer layer, Controller controller, ToolRuntime services, ToolCatalog catalog,
             List<String> resolutionArguments, List<String> configurationArguments, ResolvedModules resolvedModules) {
         ScopedTools {
             resolutionArguments = List.copyOf(resolutionArguments);

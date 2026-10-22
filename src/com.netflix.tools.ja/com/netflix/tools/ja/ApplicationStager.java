@@ -98,7 +98,7 @@ final class ApplicationStager {
         if (modulePath.isEmpty()) {
             throw new IllegalArgumentException("Application launch arguments have no module path");
         }
-        Discovery discovery = ToolCommands.discover(target.moduleName(), modulePath);
+        Discovery discovery = ToolCommands.discover(target.moduleName(), launchArguments, out, err);
         if (discovery.commands().contains(commandName)) {
             return InstalledCommandModule.generateAnchor(
                     target.moduleName(),

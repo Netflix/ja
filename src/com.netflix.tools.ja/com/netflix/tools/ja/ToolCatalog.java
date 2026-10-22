@@ -15,6 +15,7 @@
 package com.netflix.tools.ja;
 
 import java.io.IOException;
+import java.lang.module.Configuration;
 import java.lang.module.ResolvedModule;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -58,9 +59,13 @@ public final class ToolCatalog {
     }
 
     public static ToolCatalog load(ModuleLayer layer, Set<String> moduleNames) throws IOException {
+        return load(layer.configuration(), moduleNames);
+    }
+
+    static ToolCatalog load(Configuration configuration, Set<String> moduleNames) throws IOException {
         var selectedModules = Set.copyOf(moduleNames);
         var definitions = new ArrayList<ToolDefinition>();
-        for (ResolvedModule module : layer.configuration().modules().stream()
+        for (ResolvedModule module : configuration.modules().stream()
                 .filter(module -> selectedModules.contains(module.name()))
                 .sorted(Comparator.comparing(ResolvedModule::name))
                 .toList()) {

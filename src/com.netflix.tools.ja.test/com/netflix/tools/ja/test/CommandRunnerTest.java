@@ -49,6 +49,9 @@ import com.netflix.tools.ja.ToolExecutionException;
 import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -247,6 +250,67 @@ class CommandRunnerTest {
         assertTrue(formatterArguments.contains("explicit"));
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "java.sql,java.sql.DriverManager.class.getModule().getName(),false,true",
+        "java.se,java.sql.DriverManager.class.getModule().getName(),false,true",
+        "jdk.xml.dom,org.w3c.dom.html.HTMLDocument.class.getModule().getName(),false,true",
+        "java.sql,java.sql.DriverManager.class.getModule().getName(),true,true",
+        "java.xml,javax.xml.XMLConstants.class.getModule().getName(),false,false"
+    })
+    void discoversAndRunsToolsWithSystemDependencies(String requirement, String expression, boolean streamTool, boolean fork)
+            throws Exception {
+        assertEquals(!fork, ModuleLayer.boot().findModule(requirement).isPresent(),
+                "The hosting graph must exercise the intended loading path");
+        Path module = Files.createDirectories(temporaryDirectory.resolve("src/com.example.systemtool"));
+        Files.writeString(module.resolve("module-info.java"), "module com.example.systemtool { requires " + requirement + "; requires java.compiler;"
+                + (streamTool ? " provides javax.tools.Tool" : " provides java.util.spi.ToolProvider")
+                + " with example.SystemTool; }\n");
+        Files.createFile(module.resolve("module-info.hash"));
+        Path packageDirectory = Files.createDirectories(module.resolve("example"));
+        String run = streamTool
+                ? "public int run(java.io.InputStream in, java.io.OutputStream output, java.io.OutputStream error, String... args) {"
+                        + " var out = new java.io.PrintWriter(output, true);"
+                : "public int run(java.io.PrintWriter out, java.io.PrintWriter err, String... args) {";
+        Files.writeString(packageDirectory.resolve("SystemTool.java"),
+                """
+                package example;
+                public final class SystemTool implements %s, javax.tools.OptionChecker {
+                    public SystemTool() { %s; }
+                    public String name() { return "system-probe"; }
+                    public int isSupportedOption(String option) { return option.equals("--module-path") ? 1 : -1; }
+                    public java.util.Set<javax.lang.model.SourceVersion> getSourceVersions() {
+                        return java.util.Set.of(javax.lang.model.SourceVersion.latest());
+                    }
+                    %s
+                        out.println(%s);
+                        out.println(ProcessHandle.current().pid());
+                        for (String argument : args) out.println(argument);
+                        return args.length == 0 ? 0 : 7;
+                    }
+                }
+                """.formatted(streamTool ? "javax.tools.Tool" : "java.util.spi.ToolProvider",
+                        expression + ".length()", run, expression));
+        var output = new ByteArrayOutputStream();
+        var error = new ByteArrayOutputStream();
+        var runner = new CommandRunner(ModuleLayer.boot());
+        var out = new PrintStream(output);
+        var err = new PrintStream(error);
+
+        assertEquals(0, runner.run(JaInvocation.parse(module, new String[] {"tool"}), InputStream.nullInputStream(), out, err),
+                error.toString());
+        assertTrue(output.toString().lines().toList().contains("system-probe"));
+        output.reset();
+        error.reset();
+        assertEquals(7, runner.run(JaInvocation.parse(module, new String[] {"tool", "system-probe", "explicit"}),
+                InputStream.nullInputStream(), out, err), error.toString());
+        var lines = output.toString().lines().toList();
+        assertEquals(requirement.equals("java.se") ? "java.sql" : requirement, lines.getFirst());
+        assertEquals(fork, Long.parseLong(lines.get(1)) != ProcessHandle.current().pid());
+        assertTrue(lines.contains("--module-path"), output.toString());
+        assertEquals("explicit", lines.getLast());
+    }
+
     @Test
     void discoversToolsOnTheCurrentModulePath() throws Exception {
         Path sources = temporaryDirectory.resolve("src");
@@ -321,8 +385,10 @@ class CommandRunnerTest {
         assertEquals(modules.resolve("com.example.tool").toUri() + "\nexplicit\n", output.toString());
     }
 
-    @Test
-    void resolvesAVersionedProviderForAnActivatedSourceModule() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resolvesAVersionedProviderForAnActivatedSourceModule(boolean needsSystemModule) throws Exception {
+        assertTrue(ModuleLayer.boot().findModule("java.sql").isEmpty());
         Path supportSources = temporaryDirectory.resolve("support-sources");
         Path framework = Files.createDirectories(supportSources.resolve("com.example.framework"));
         Files.writeString(framework.resolve("module-info.java"), "module com.example.framework {}\n");
@@ -347,6 +413,10 @@ class CommandRunnerTest {
                     }
                 }
                 """);
+        if (needsSystemModule) {
+            Files.writeString(toolModule.resolve("module-info.java"),
+                    "module com.example.tool { requires java.sql; provides java.util.spi.ToolProvider with com.example.Probe; }\n");
+        }
         Path modules = temporaryDirectory.resolve("modules");
         int supportCompilation = ToolProvider.findFirst("javac")
                 .orElseThrow()
@@ -396,11 +466,25 @@ class CommandRunnerTest {
         var output = new ByteArrayOutputStream();
         var error = new ByteArrayOutputStream();
 
-        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(probe)), () -> null)
+        var launches = new AtomicInteger();
+        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(probe)), () -> null,
+                (arguments, _, out, _) -> {
+                    launches.incrementAndGet();
+                    assertTrue(needsSystemModule, "Tools with satisfiable dependencies must stay in-process");
+                    assertTrue(joinedPair(arguments, "--module-path", modules.toString()));
+                    assertTrue(joinedPair(arguments, "--add-modules", "com.example.tool"));
+                    assertTrue(joinedPair(arguments, "--module", "com.netflix.tools.launcher/com.netflix.tools.launcher.ToolLauncher"));
+                    int main = arguments.indexOf("--module");
+                    assertEquals("probe", arguments.get(main + 2));
+                    assertEquals("explicit", arguments.getLast());
+                    out.println("explicit");
+                    return 0;
+                })
                 .run(commandLine, InputStream.nullInputStream(), new PrintStream(output),
                         new PrintStream(error));
 
         assertEquals(0, result, error.toString());
+        assertEquals(needsSystemModule ? 1 : 0, launches.get());
         assertTrue(jigInvocations.getFirst()
                 .contains("--verify-module-hashes"));
         var providerResolution = jigInvocations.stream()
@@ -412,8 +496,9 @@ class CommandRunnerTest {
                          .endsWith("explicit\n"));
     }
 
-    @Test
-    void sourceToolOverridesBundledToolWithTheSameName() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void sourceToolOverridesBundledToolWithTheSameName(boolean needsSystemModule) throws Exception {
         Path toolModule = Files.createDirectories(temporaryDirectory.resolve("src/com.example.source.override.tool"));
         Files.writeString(toolModule.resolve("module-info.java"),
                 """
@@ -422,6 +507,11 @@ class CommandRunnerTest {
                     provides java.util.spi.ToolProvider with com.example.Probe;
                 }
                 """);
+        if (needsSystemModule) {
+            assertTrue(ModuleLayer.boot().findModule("java.sql").isEmpty());
+            Files.writeString(toolModule.resolve("module-info.java"), Files.readString(toolModule.resolve("module-info.java"))
+                    .replace("module com.example.source.override.tool {", "module com.example.source.override.tool { requires java.sql;"));
+        }
         Files.createFile(toolModule.resolve("module-info.hash"));
         Path packageDirectory = Files.createDirectories(toolModule.resolve("com/example"));
         Files.writeString(packageDirectory.resolve("Probe.java"),
@@ -466,6 +556,23 @@ class CommandRunnerTest {
 
         assertEquals(0, result, error.toString());
         assertEquals("source\n", output.toString());
+    }
+
+    @Test
+    void runsSystemInstalledToolWithoutForking() throws Exception {
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+        var runner = new CommandRunner(ModuleLayer.boot(), ToolRuntime.load(ModuleLayer.boot()), ToolCatalog.load(ModuleLayer.boot()),
+                () -> null,
+                (_, _, _, _) -> {
+                    throw new AssertionError("A system-installed tool must not fork");
+                });
+
+        int result = runner.run(JaInvocation.parse(temporaryDirectory, new String[] {"tool", "jig", "--version"}),
+                InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertTrue(output.toString().startsWith("jig "), output.toString());
     }
 
     @Test

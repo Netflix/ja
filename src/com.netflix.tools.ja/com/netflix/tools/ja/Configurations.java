@@ -104,6 +104,14 @@ final class Configurations {
                     .collect(Collectors.toUnmodifiableSet());
         }
 
+        boolean requiresFork() {
+            // Additional system modules need the built-in loader mapping supplied at JVM startup.
+            return configuration != parent && configuration.modules().stream()
+                    .anyMatch(module -> module.reference().location()
+                            .filter(location -> location.getScheme().equals("jrt"))
+                            .isPresent());
+        }
+
         Controller defineLayer(ModuleLayer parent) {
             return ModuleLayer.defineModulesWithOneLoader(configuration, List.of(parent), ClassLoader.getSystemClassLoader());
         }
@@ -130,14 +138,14 @@ final class Configurations {
                 .map(reference -> reference.descriptor().name())
                 .collect(Collectors.toUnmodifiableSet());
         var configuration = Configuration.resolve(selectedModules(pathFinder, beforeModules),
-                List.of(parent), pathFinder, roots);
+                List.of(parent), ModuleFinder.compose(pathFinder, ModuleFinder.ofSystem()), roots);
         return new Resolution(parent, configuration, pathModules, beforeModules);
     }
 
     /** Resolves every module on the path before the parent configuration. */
     static Resolution resolveBeforeParent(Configuration parent, List<Path> modulePath, Set<String> roots) {
         var finder = ModuleFinder.of(modulePath.toArray(Path[]::new));
-        return resolve(parent, finder, ModuleFinder.of(), roots);
+        return resolve(parent, finder, ModuleFinder.ofSystem(), roots);
     }
 
     /**
@@ -146,7 +154,7 @@ final class Configurations {
      */
     static Resolution resolveAndBindBeforeParent(Configuration parent, List<Path> modulePath, Set<String> roots) {
         var finder = ModuleFinder.of(modulePath.toArray(Path[]::new));
-        var configuration = Configuration.resolveAndBind(finder, List.of(parent), ModuleFinder.of(), roots);
+        var configuration = Configuration.resolveAndBind(finder, List.of(parent), ModuleFinder.ofSystem(), roots);
         var pathModules = moduleNames(finder);
         return new Resolution(parent, configuration, pathModules, pathModules);
     }

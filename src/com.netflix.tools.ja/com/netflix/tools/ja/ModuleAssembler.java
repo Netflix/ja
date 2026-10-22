@@ -248,7 +248,7 @@ final class ModuleAssembler {
             ToolCommands.Discovery discovery = explicitJmod
                     ? null
                     : ToolCommands.discover(
-                            plan.moduleName(), ToolArguments.modulePath(filteredArguments));
+                            plan.moduleName(), filteredArguments, out, err);
             var jar = jars.createExact(
                     plan.moduleName(),
                     content,
@@ -269,7 +269,7 @@ final class ModuleAssembler {
             copyDeploymentMetadata(plan, output);
             if (discovery == null) {
                 discovery = ToolCommands.discover(
-                        plan.moduleName(), ToolArguments.modulePath(filteredArguments));
+                        plan.moduleName(), filteredArguments, out, err);
             }
             int jmod = jmods.create(jmodArtifacts, discovery, in, out, err);
             if (jmod != 0) {

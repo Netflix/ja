@@ -591,8 +591,9 @@ class AssembleTest {
         }
     }
 
-    @Test
-    void generatesAotOptInForWarmupTool(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void generatesAotOptInForWarmupTool(boolean needsSystemModule, @TempDir Path directory) throws Exception {
         var module = directory.resolve("src/com.example.tool");
         var classes = moduleAt(module.resolve("classes"), "com.example.tool");
         Files.writeString(classes.resolve("module-info.java"),
@@ -615,6 +616,11 @@ class AssembleTest {
                                    String... arguments) { return 0; }
                 }
                 """);
+        if (needsSystemModule) {
+            assertTrue(ModuleLayer.boot().findModule("java.sql").isEmpty());
+            Files.writeString(classes.resolve("module-info.java"), Files.readString(classes.resolve("module-info.java"))
+                    .replace("module com.example.tool {", "module com.example.tool { requires java.sql;"));
+        }
         Path metadata = classes.resolve("META-INF/com.netflix.tools/tools/probe.properties");
         Files.createDirectories(metadata.getParent());
         Files.writeString(metadata, "warmup=--warmup\n");

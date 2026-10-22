@@ -22,8 +22,10 @@ import java.io.UncheckedIOException;
 import java.lang.ModuleLayer.Controller;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -31,11 +33,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.spi.ToolProvider;
+import java.util.stream.Collectors;
 import javax.tools.JavaCompiler;
 import javax.tools.OptionChecker;
 import javax.tools.Tool;
@@ -59,6 +63,7 @@ import com.netflix.tools.launcher.WarmupPlans;
  */
 public final class ToolRuntime {
     private static final String IS_SUPPORTED_OPTION = "--is-supported-option";
+    private static final String DISCOVER = "--discover";
     static final String TOOL_SERVICE = Tool.class.getName();
     static final String TOOL_PROVIDER_SERVICE = ToolProvider.class.getName();
     static final Set<String> TOOL_SERVICE_NAMES = Set.of(TOOL_SERVICE, TOOL_PROVIDER_SERVICE);
@@ -89,9 +94,32 @@ public final class ToolRuntime {
         this.javaLauncher = Objects.requireNonNull(javaLauncher);
     }
 
-    // Option checking is launched here when a provider's module access cannot be
-    // granted to its existing layer.
-    public static void main(String[] arguments) {
+    // Discovery and option checking run here when providers need a new hosting JVM.
+    public static void main(String[] arguments) throws IOException {
+        if (arguments.length >= 3 && arguments[0].equals(DISCOVER)) {
+            var modules = Arrays.stream(arguments).skip(2).collect(Collectors.toSet());
+            var tools = load(ModuleLayer.boot(), modules);
+            var properties = new Properties();
+            var names = tools.names().stream().sorted().toList();
+            properties.setProperty("count", Integer.toString(names.size()));
+            for (int i = 0; i < names.size(); i++) {
+                String name = names.get(i);
+                String prefix = i + ".";
+                var handle = tools.tool(name);
+                properties.setProperty(prefix + "name", name);
+                properties.setProperty(prefix + "module", tools.moduleName(name).orElseThrow());
+                properties.setProperty(prefix + "compiler", Boolean.toString(handle.javaCompiler()));
+                tools.warmup(name).ifPresent(warmup -> properties.setProperty(prefix + "warmup", warmup));
+                var checker = tools.localOptionChecker(name);
+                for (String option : inspectionOptions()) {
+                    properties.setProperty(prefix + option, Integer.toString(checker == null ? -1 : checker.isSupportedOption(option)));
+                }
+            }
+            try (var output = Files.newOutputStream(Path.of(arguments[1]))) {
+                properties.store(output, null);
+            }
+            return;
+        }
         if (arguments.length < 3 || !arguments[0].equals(IS_SUPPORTED_OPTION)) {
             System.err.println("Usage: " + ToolRuntime.class.getName() + " " + IS_SUPPORTED_OPTION + " TOOL OPTION...");
             System.exit(2);
@@ -151,6 +179,50 @@ public final class ToolRuntime {
         return new ToolRuntime(tools);
     }
 
+    static ToolRuntime forked(List<String> runtimeArguments, Set<String> modules, JavaLauncher javaLauncher,
+            PrintStream out, PrintStream err) throws IOException {
+        var host = new ToolRuntime(Map.of()).withJavaLauncher(javaLauncher);
+        try (var directory = TemporaryDirectory.create()) {
+            Path metadata = directory.root().resolve("tools.properties");
+            var arguments = inspectionArguments(runtimeArguments);
+            arguments.add(DISCOVER);
+            arguments.add(metadata.toString());
+            arguments.addAll(modules.stream().sorted().toList());
+            int result = host.launchJava(arguments, InputStream.nullInputStream(), out, err);
+            if (result != 0) {
+                throw new ToolExecutionException(result);
+            }
+            var properties = new Properties();
+            try (var input = Files.newInputStream(metadata)) {
+                properties.load(input);
+            }
+            var handles = new LinkedHashMap<String, ToolHandle>();
+            int count = Integer.parseInt(properties.getProperty("count"));
+            for (int i = 0; i < count; i++) {
+                String prefix = i + ".";
+                var options = new LinkedHashMap<String, Integer>();
+                for (String option : inspectionOptions()) {
+                    options.put(option, Integer.parseInt(properties.getProperty(prefix + option)));
+                }
+                var name = properties.getProperty(prefix + "name");
+                handles.put(name, new ForkedHandle(name, properties.getProperty(prefix + "module"),
+                        List.copyOf(runtimeArguments), Optional.ofNullable(properties.getProperty(prefix + "warmup")),
+                        Boolean.parseBoolean(properties.getProperty(prefix + "compiler")), options));
+            }
+            return new ToolRuntime(handles).withJavaLauncher(javaLauncher);
+        }
+    }
+
+    private static Set<String> inspectionOptions() {
+        var options = new LinkedHashSet<>(ModuleOptions.optionNames());
+        options.add("__complete");
+        return options;
+    }
+
+    boolean isForked(String name) {
+        return tools.get(name) instanceof ForkedHandle;
+    }
+
     private static boolean isEffectiveProvider(ModuleLayer layer, Class<?> type) {
         var module = type.getModule();
         return !module.isNamed() || layer.findModule(module.getName())
@@ -177,7 +249,13 @@ public final class ToolRuntime {
     boolean sameImplementation(String name, ToolRuntime other) {
         var selected = tools.get(name);
         var candidate = other.tools.get(name);
-        return selected != null && candidate != null && selected.type() == candidate.type();
+        if (selected == null || candidate == null) {
+            return false;
+        }
+        if (selected instanceof ForkedHandle || candidate instanceof ForkedHandle) {
+            return selected == candidate;
+        }
+        return selected.type() == candidate.type();
     }
 
     ToolRuntime withJavaLauncher(JavaLauncher javaLauncher) {
@@ -298,10 +376,16 @@ public final class ToolRuntime {
     }
 
     public Optional<String> moduleName(String name) {
+        if (tool(name) instanceof ForkedHandle forked) {
+            return Optional.of(forked.moduleName());
+        }
         return Optional.ofNullable(module(name).getName());
     }
 
     Optional<String> warmup(String name) {
+        if (tool(name) instanceof ForkedHandle forked) {
+            return forked.warmup();
+        }
         var module = module(name);
         String resource = "META-INF/com.netflix.tools/tools/" + name + ".properties";
         try (var input = module.getResourceAsStream(resource)) {
@@ -375,6 +459,9 @@ public final class ToolRuntime {
                 VerboseLog.executing(verboseLog, name, List.of(arguments));
             }
         }
+        if (tool(name) instanceof ForkedHandle forked) {
+            return launch(name, forked.runtimeArguments(), List.of(arguments), in, out, err);
+        }
         var access = declaredRuntimeAccess(name);
         if (access.isPresent() && !runtimeAccessIsEffective(access.orElseThrow())) {
             return launch(name, access.orElseThrow(), in, out, err,
@@ -398,6 +485,14 @@ public final class ToolRuntime {
     }
 
     private synchronized int isSupportedOption(String name, String option, OptionChecker checker) {
+        if (tool(name) instanceof ForkedHandle forked) {
+            if (forked.options().containsKey(option)) {
+                return forked.options().get(option);
+            }
+            var supported = inspectOptions(forked.runtimeArguments(), name, List.of(option));
+            forked.options().put(option, supported.getFirst());
+            return supported.getFirst();
+        }
         var access = declaredRuntimeAccess(name);
         if (access.isEmpty() || runtimeAccessIsEffective(access.orElseThrow())) {
             return checker.isSupportedOption(option);
@@ -410,9 +505,17 @@ public final class ToolRuntime {
         requested.removeAll(supported.keySet());
         requested.add(option);
         var options = List.copyOf(requested);
+        var responses = inspectOptions(runtimeArguments(access.orElseThrow()), name, options);
+        for (int i = 0; i < options.size(); i++) {
+            supported.put(options.get(i), responses.get(i));
+        }
+        return supported.get(option);
+    }
+
+    private List<Integer> inspectOptions(List<String> runtimeArguments, String name, List<String> options) {
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
-        int result = launchOptionCheck(access.orElseThrow(), name, options, new PrintStream(output, true, StandardCharsets.UTF_8),
+        int result = launchOptionCheck(runtimeArguments, name, options, new PrintStream(output, true, StandardCharsets.UTF_8),
                 new PrintStream(errors, true, StandardCharsets.UTF_8));
         if (result != 0) {
             var diagnostics = errors.toString(StandardCharsets.UTF_8).strip();
@@ -423,13 +526,10 @@ public final class ToolRuntime {
             throw new IllegalStateException("Invalid option check response from " + name);
         }
         try {
-            for (int i = 0; i < options.size(); i++) {
-                supported.put(options.get(i), Integer.parseInt(responses.get(i).strip()));
-            }
+            return responses.stream().map(response -> Integer.parseInt(response.strip())).toList();
         } catch (NumberFormatException e) {
             throw new IllegalStateException("Invalid option check response from " + name, e);
         }
-        return supported.get(option);
     }
 
     private int launch(String name, RuntimeAccess access, InputStream in,
@@ -452,8 +552,16 @@ public final class ToolRuntime {
         return launchJava(arguments, in, out, err);
     }
 
-    private int launchOptionCheck(RuntimeAccess access, String name, List<String> options,
+    private int launchOptionCheck(List<String> runtimeArguments, String name, List<String> options,
             PrintStream out, PrintStream err) {
+        var arguments = inspectionArguments(runtimeArguments);
+        arguments.add(IS_SUPPORTED_OPTION);
+        arguments.add(name);
+        arguments.addAll(options);
+        return launchJava(arguments, InputStream.nullInputStream(), out, err);
+    }
+
+    private static ArrayList<String> inspectionArguments(List<String> runtimeArguments) {
         var arguments = new ArrayList<String>();
         var serviceLocation = moduleLocation(ToolRuntime.class.getModule());
         serviceLocation.ifPresent(path -> {
@@ -465,13 +573,10 @@ public final class ToolRuntime {
             arguments.add("--patch-module");
             arguments.add(ToolRuntime.class.getModule().getName() + "=" + path);
         });
-        arguments.addAll(runtimeArguments(access));
+        arguments.addAll(runtimeArguments);
         arguments.add("--module");
         arguments.add(ToolRuntime.class.getModule().getName() + "/" + ToolRuntime.class.getName());
-        arguments.add(IS_SUPPORTED_OPTION);
-        arguments.add(name);
-        arguments.addAll(options);
-        return launchJava(arguments, InputStream.nullInputStream(), out, err);
+        return arguments;
     }
 
     private int launchJava(List<String> arguments, InputStream in, PrintStream out,
@@ -666,7 +771,7 @@ public final class ToolRuntime {
         return find(name).orElseThrow(() -> new IllegalArgumentException("Tool " + name + " is not installed"));
     }
 
-    private sealed interface ToolHandle permits StreamHandle, ProviderHandle {
+    private sealed interface ToolHandle permits StreamHandle, ProviderHandle, ForkedHandle {
         String name();
 
         Class<?> type();
@@ -743,6 +848,29 @@ public final class ToolRuntime {
         public int run(InputStream in, PrintStream out, PrintStream err,
                        String... arguments) {
             return service.run(out, err, arguments);
+        }
+
+        @Override
+        public boolean streamAware() {
+            return false;
+        }
+    }
+
+    private record ForkedHandle(String name, String moduleName, List<String> runtimeArguments,
+            Optional<String> warmup, boolean javaCompiler, Map<String, Integer> options) implements ToolHandle {
+        @Override
+        public Class<?> type() {
+            throw new IllegalStateException("Tool " + name + " is hosted in a separate JVM");
+        }
+
+        @Override
+        public Optional<OptionChecker> optionChecker() {
+            return Optional.of(option -> options.getOrDefault(option, -1));
+        }
+
+        @Override
+        public int run(InputStream in, PrintStream out, PrintStream err, String... arguments) {
+            throw new IllegalStateException("Tool " + name + " must be launched in a separate JVM");
         }
 
         @Override

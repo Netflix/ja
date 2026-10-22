@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.module.ModuleFinder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,6 +47,8 @@ import com.netflix.tools.ja.ToolExecutionException;
 import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -56,6 +59,85 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InstallerTest {
     @TempDir
     Path temporaryDirectory;
+
+    @ParameterizedTest
+    @CsvSource({"java.sql,false", "java.se,false", "java.sql,true", "java.se,true"})
+    void installsAndRunsApplicationsRequiringUnresolvedSystemModules(String requirement, boolean provider) throws Exception {
+        assertTrue(ModuleLayer.boot()
+                .findModule("java.sql")
+                .isEmpty(),
+                "The test JVM must not resolve java.sql, which would mask missing system-module discovery");
+        Path source = Files.createDirectories(temporaryDirectory.resolve("source"));
+        Files.writeString(source.resolve("module-info.java"), "module com.example.sql { requires " + requirement + ";"
+                + (provider ? " provides java.util.spi.ToolProvider with example.Main;" : "") + " }\n");
+        Path packageDirectory = Files.createDirectories(source.resolve("example"));
+        Files.writeString(packageDirectory.resolve("Main.java"),
+                """
+                package example;
+
+                public final class Main implements java.util.spi.ToolProvider {
+                    public String name() { return "sqlprobe"; }
+                    public int run(java.io.PrintWriter out, java.io.PrintWriter err, String... args) {
+                        out.println(java.sql.DriverManager.class.getModule().getName());
+                        out.println(ProcessHandle.current().pid());
+                        return 0;
+                    }
+                    public static void main(String[] args) {
+                        System.out.println(java.sql.DriverManager.class.getModule().getName() + " main");
+                        System.out.println(ProcessHandle.current().pid());
+                    }
+                }
+                """);
+        Path classes = temporaryDirectory.resolve("classes");
+        ToolRuntime tools = ToolRuntime.load(ModuleLayer.boot());
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+        var out = new PrintStream(output);
+        var err = new PrintStream(errors);
+        assertEquals(
+                0,
+                tools.run(
+                        "javac",
+                        new ByteArrayInputStream(new byte[0]),
+                        out,
+                        err,
+                        "-d",
+                        classes.toString(),
+                        source.resolve("module-info.java").toString(),
+                        packageDirectory.resolve("Main.java").toString()),
+                errors.toString());
+        Path image = temporaryDirectory.resolve("image");
+        boolean windows = System.getProperty("os.name").startsWith("Windows");
+        var installer = new Installer(
+                tools,
+                new InstallationDirectories(temporaryDirectory.resolve("store"), temporaryDirectory.resolve("commands")),
+                windows);
+
+        assertEquals(
+                0,
+                installer.install(
+                        new ApplicationTarget("com.example.sql", Optional.empty()),
+                        new InstallRequest(Optional.empty(), Optional.of("sqlprobe"), false, false,
+                                Optional.of(image)),
+                        List.of("--module-path", classes.toString(), "--module", "com.example.sql/example.Main"),
+                        new ByteArrayInputStream(new byte[0]),
+                        out,
+                        err),
+                errors.toString());
+
+        ProcessBuilder builder = new ProcessBuilder(image.resolve("bin")
+                .resolve(windows ? "sqlprobe.exe" : "sqlprobe")
+                .toString())
+                .redirectErrorStream(true);
+        builder.environment().remove("JAVA_TOOL_OPTIONS");
+        builder.environment().remove("JDK_JAVA_OPTIONS");
+        Process process = builder.start();
+        String result = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, process.waitFor(), result);
+        var lines = result.lines().toList();
+        assertEquals(provider ? "java.sql" : "java.sql main", lines.getFirst());
+        assertEquals(process.pid(), Long.parseLong(lines.get(1)), "Installed commands must not fork another JVM");
+    }
 
     @Test
     void requiresAnApplicationMainClass() throws Exception {
