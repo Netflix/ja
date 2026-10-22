@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -1567,6 +1568,32 @@ class CommandRunnerTest {
 
         assertEquals(List.of("--verbose"), supportedArguments);
         assertEquals(List.of(), unsupportedArguments);
+    }
+
+    @Test
+    void verboseToolArgumentsPreserveSubcommandsAndOperandSeparators() throws Exception {
+        var cases = Map.of(
+                List.of("inspect", "value"), List.of("inspect", "value", "--verbose"),
+                List.of("inspect", "--", "value"), List.of("inspect", "--verbose", "--", "value"),
+                List.of("inspect", "--", "--verbose"), List.of("inspect", "--verbose", "--", "--verbose"),
+                List.of("inspect", "--verbose", "--", "value"), List.of("inspect", "--verbose", "--", "value"));
+        for (var entry : cases.entrySet()) {
+            var received = new ArrayList<String>();
+            var tools = ToolRuntime.of(tool("probe", (_, arguments) -> {
+                received.addAll(arguments);
+                return 0;
+            }));
+            var definition = ToolDefinition.read("probe", new ByteArrayInputStream("provider=probe\noptions=verbose\n".getBytes(StandardCharsets.UTF_8)));
+            var runner = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(definition)), () -> null);
+            var arguments = new ArrayList<>(List.of("--verbose", "tool", "probe"));
+            arguments.addAll(entry.getKey());
+
+            int status = runner.run(JaInvocation.parse(temporaryDirectory, arguments.toArray(String[]::new)), InputStream.nullInputStream(),
+                    new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream()));
+
+            assertEquals(0, status);
+            assertEquals(entry.getValue(), received, entry.getKey().toString());
+        }
     }
 
     @Test

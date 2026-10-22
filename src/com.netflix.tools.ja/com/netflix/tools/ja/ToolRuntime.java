@@ -446,11 +446,8 @@ public final class ToolRuntime {
 
     private int run(Invocation invocation, String name, InputStream in,
                     PrintStream out, PrintStream err, String... arguments) {
-        if (verbose && supportsVerbose(name) && !List.of(arguments).contains("--verbose")) {
-            var verboseArguments = new String[arguments.length + 1];
-            verboseArguments[0] = "--verbose";
-            System.arraycopy(arguments, 0, verboseArguments, 1, arguments.length);
-            arguments = verboseArguments;
+        if (verbose && supportsVerbose(name)) {
+            arguments = ToolArguments.withVerbose(List.of(arguments)).toArray(String[]::new);
         }
         if (verbose) {
             if (invocation == Invocation.RESOLUTION) {

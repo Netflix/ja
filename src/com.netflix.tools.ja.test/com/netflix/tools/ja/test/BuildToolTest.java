@@ -261,6 +261,28 @@ class BuildToolTest {
     }
 
     @Test
+    void verboseSourceQueriesPreserveBuildSubcommands() throws Exception {
+        for (var type : List.of("maven", "gradle")) {
+            Files.deleteIfExists(directory.resolve("pom.xml"));
+            Files.deleteIfExists(directory.resolve("settings.gradle"));
+            var fixture = fixture(type, Set.of("class-path", "source-path"));
+            fixture.definition = new ToolDefinition("jist", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jist",
+                    Optional.empty(), Set.of("class-path", "source-path"), List.of());
+            fixture.additionalTools = List.of(provider("jdocserver", (_, _) -> 0));
+
+            assertEquals(0, fixture.run("--verbose", "-p", type.equals("maven") ? "example:app" : ":app", "source", "java.lang.String"));
+
+            assertEquals(2, fixture.queries.size(), fixture.queries.toString());
+            for (var query : fixture.queries) {
+                assertEquals(type, query.getFirst(), query.toString());
+                assertEquals("--verbose", query.getLast(), query.toString());
+            }
+            assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "symbol", "java.lang.String"),
+                    fixture.received);
+        }
+    }
+
+    @Test
     void documentationBrowsingPassesTheContextToTheDocumentationTool() throws Exception {
         var fixture = fixture("gradle", Set.of("class-path", "source-path"));
         fixture.definition = new ToolDefinition("jdocserver", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jdocserver",

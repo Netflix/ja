@@ -378,13 +378,7 @@ public final class ToolRunner {
 
     private List<String> arguments(JaInvocation commandLine, ToolDefinition definition) {
         var arguments = commandLine.toolArguments();
-        if (!commandLine.verbose() || !supportsVerbose(definition) || arguments.contains("--verbose")) {
-            return arguments;
-        }
-        var verboseArguments = new ArrayList<String>();
-        verboseArguments.add("--verbose");
-        verboseArguments.addAll(arguments);
-        return List.copyOf(verboseArguments);
+        return commandLine.verbose() && supportsVerbose(definition) ? ToolArguments.withVerbose(arguments) : arguments;
     }
 
     private int runJava(ToolDefinition definition, List<String> nativeArguments, List<String> runtimeArguments,
