@@ -80,6 +80,19 @@ class ToolRuntimeTest {
     }
 
     @Test
+    void bundledInsightToolSupportsTheModuleCompilationContext() {
+        var tools = ToolRuntime.load(ModuleLayer.boot());
+        var checker = tools.optionChecker("jist", _ -> -1);
+        for (var option : List.of("--module-path", "--upgrade-module-path", "--patch-module", "--module-source-path",
+                "--module", "--add-modules", "--add-reads", "--add-exports", "--limit-modules", "--system")) {
+            assertEquals(1, checker.isSupportedOption(option), option);
+        }
+        var options = tools.resolutionOptions("jist", Set.of("module=list"));
+        assertTrue(options.containsAll(Set.of("module-path", "upgrade-module-path", "patch-module", "module-source-path",
+                "module=list", "add-modules", "add-reads", "add-exports", "system")), options.toString());
+    }
+
+    @Test
     void completesThroughTheStandardToolProtocol() {
         var tools = ToolRuntime.of(new CompletingProbe(), new CheckingTool());
 
