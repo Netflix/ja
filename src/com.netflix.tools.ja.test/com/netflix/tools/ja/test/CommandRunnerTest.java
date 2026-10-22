@@ -57,6 +57,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1574,6 +1575,8 @@ class CommandRunnerTest {
     void verboseToolArgumentsPreserveSubcommandsAndOperandSeparators() throws Exception {
         var cases = Map.of(
                 List.of("inspect", "value"), List.of("inspect", "value", "--verbose"),
+                List.of("inspect", "--format", "tsv"), List.of("inspect", "--verbose", "--format", "tsv"),
+                List.of("--create", "--file", "archive.jar", "-C", "sources", "."), List.of("--verbose", "--create", "--file", "archive.jar", "-C", "sources", "."),
                 List.of("inspect", "--", "value"), List.of("inspect", "--verbose", "--", "value"),
                 List.of("inspect", "--", "--verbose"), List.of("inspect", "--verbose", "--", "--verbose"),
                 List.of("inspect", "--verbose", "--", "value"), List.of("inspect", "--verbose", "--", "value"));
@@ -1593,6 +1596,26 @@ class CommandRunnerTest {
 
             assertEquals(0, status);
             assertEquals(entry.getValue(), received, entry.getKey().toString());
+        }
+    }
+
+    @Test
+    void verboseJarCreationKeepsOptionsBeforeFileInputs() throws Exception {
+        var sources = Files.createDirectories(temporaryDirectory.resolve("sources"));
+        Files.writeString(sources.resolve("example.txt"), "example");
+        var archive = temporaryDirectory.resolve("example.jar");
+        var tools = ToolRuntime.of(ToolProvider.findFirst("jar").orElseThrow());
+        var definition = ToolDefinition.read("jar", new ByteArrayInputStream("provider=jar\noptions=verbose\n".getBytes(StandardCharsets.UTF_8)));
+        var runner = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of(definition)), () -> null);
+        var error = new ByteArrayOutputStream();
+
+        int status = runner.run(JaInvocation.parse(temporaryDirectory,
+                        new String[] {"--verbose", "tool", "jar", "--create", "--file", archive.toString(), "-C", sources.toString(), "."}),
+                InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()), new PrintStream(error));
+
+        assertEquals(0, status, error.toString(StandardCharsets.UTF_8));
+        try (var jar = new java.util.jar.JarFile(archive.toFile())) {
+            assertNotNull(jar.getJarEntry("example.txt"));
         }
     }
 

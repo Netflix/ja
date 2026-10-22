@@ -275,7 +275,7 @@ class BuildToolTest {
             assertEquals(2, fixture.queries.size(), fixture.queries.toString());
             for (var query : fixture.queries) {
                 assertEquals(type, query.getFirst(), query.toString());
-                assertEquals("--verbose", query.getLast(), query.toString());
+                assertEquals("--verbose", query.get(1), query.toString());
             }
             assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "symbol", "java.lang.String"),
                     fixture.received);

@@ -40,8 +40,12 @@ public final class ToolArguments {
         if (arguments.subList(0, position).contains("--verbose")) {
             return arguments;
         }
+        int option = 0;
+        while (option < position && !arguments.get(option).startsWith("-")) {
+            option++;
+        }
         var verboseArguments = new ArrayList<>(arguments);
-        verboseArguments.add(position, "--verbose");
+        verboseArguments.add(option, "--verbose");
         return List.copyOf(verboseArguments);
     }
 
