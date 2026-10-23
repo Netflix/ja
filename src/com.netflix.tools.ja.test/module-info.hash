@@ -1,4 +1,4 @@
-com.netflix.tools.jig@0.21.1=module:sha256:00edb2e55bd697901974a8e1e1522357a4a0e5f1d55bd7e0439b5fda0470dc5e
+com.netflix.tools.jig@0.21.2=module:sha256:38b3888020c221b17899d466bbee6b788a2af48e85d109a60a1cc9e234c7326d
 org.apiguardian.api@1.1.2=module:sha256:8fe700256df67fb279c0734898bf7c25c199ef407ae18b918947b38dfdf0af2a
 org.jspecify=module:sha256:db02318646febd4e03fc69910df454696d58b2be88e7232a0262c3fe0141bd03
 org.junit.jupiter.api@6.1.3=module:sha256:20c0d83d6f2882d9e5d49353c0f2c51acaa1b35d96ec7f3c242530ad0179b89a
