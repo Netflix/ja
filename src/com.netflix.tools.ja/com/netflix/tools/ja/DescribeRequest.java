@@ -19,13 +19,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** A subject whose declaration or API should be described in the selected context. */
+/** A subject whose declarations, API, or resolved types should be described in the selected context. */
 public record DescribeRequest(Subject subject, String target) {
     public enum Subject {
         MODULE("module", "Describe a Java module", List.of("--kind", "module")),
         TYPE("type", "Describe a Java type and its API", List.of("--kind", "type", "--kind", "method", "--kind", "field")),
         MEMBER("member", "Describe a method or field", List.of("--kind", "method", "--kind", "field")),
-        FILE("file", "Describe declarations in a source or class file", List.of("--kind", "type", "--kind", "method", "--kind", "field"));
+        FILE("file", "Describe declarations in a source or class file", List.of("--kind", "type", "--kind", "method", "--kind", "field")),
+        TYPES("types", "List resolved types for a Java type or source file", List.of("--referenced-types"));
 
         private final String command;
         private final String description;
@@ -46,7 +47,7 @@ public record DescribeRequest(Subject subject, String target) {
         }
 
         List<String> completionArguments() {
-            return this == TYPE ? List.of("--kind", "type") : kinds;
+            return this == TYPE || this == TYPES ? List.of("--kind", "type") : kinds;
         }
 
         static Subject parse(String value) {
@@ -63,19 +64,29 @@ public record DescribeRequest(Subject subject, String target) {
 
     static DescribeRequest parse(List<String> arguments) {
         if (arguments.size() != 2) {
-            throw new IllegalArgumentException("Usage: ja describe <module|type|member|file> <subject>");
+            throw new IllegalArgumentException("Usage: ja describe <module|type|member|file|types> <subject>");
         }
         return new DescribeRequest(Subject.parse(arguments.getFirst()), arguments.getLast());
     }
 
     List<String> arguments(Path workingDirectory) {
+        String resolvedTarget = subject == Subject.FILE || subject == Subject.TYPES && isFile(target)
+                ? workingDirectory.resolve(target).normalize().toString()
+                : target;
+        if (subject == Subject.TYPES) {
+            return List.of("--referenced-types", resolvedTarget);
+        }
         var arguments = new ArrayList<>(subject.kinds);
         arguments.addAll(List.of("--source", switch (subject) {
             case MODULE -> "definition";
             case MEMBER -> "doc";
-            case TYPE, FILE -> "signature";
+            case TYPE, FILE, TYPES -> "signature";
         }));
-        arguments.add(subject == Subject.FILE ? workingDirectory.resolve(target).normalize().toString() : target);
+        arguments.add(resolvedTarget);
         return List.copyOf(arguments);
+    }
+
+    private static boolean isFile(String target) {
+        return target.endsWith(".java") || target.endsWith(".class");
     }
 }

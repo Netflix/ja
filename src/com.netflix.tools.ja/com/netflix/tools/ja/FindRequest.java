@@ -23,7 +23,9 @@ public record FindRequest(Question question, String target) {
     public enum Question {
         USAGES("usages", "Find references to a type or member", List.of("--usages")),
         CALLERS("callers", "Find calls to a method or constructor", List.of("--callers")),
-        IMPL("impl", "Find subtypes or overriding methods", List.of("--kind", "type", "--kind", "method"));
+        CALLEES("callees", "Find methods or constructors called by a member", List.of("--callees")),
+        IMPL("impl", "Find subtypes or overriding methods", List.of("--kind", "type", "--kind", "method")),
+        SUPERTYPES("supertypes", "Find parent types", List.of("--supertypes"));
 
         private final String command;
         private final String description;
@@ -61,7 +63,7 @@ public record FindRequest(Question question, String target) {
 
     static FindRequest parse(List<String> arguments) {
         if (arguments.size() != 2) {
-            throw new IllegalArgumentException("Usage: ja find <usages|callers|impl> <subject>");
+            throw new IllegalArgumentException("Usage: ja find <usages|callers|callees|impl|supertypes> <subject>");
         }
         return new FindRequest(Question.parse(arguments.getFirst()), arguments.getLast());
     }

@@ -238,8 +238,10 @@ class BuildToolTest {
             for (var query : List.of(
                     List.of("describe", "module", "java.base"), List.of("describe", "type", "example.Example"),
                     List.of("describe", "member", "example.Example.run"), List.of("describe", "file", "Example.java"),
-                    List.of("find", "usages", "example.Example"), List.of("find", "callers", "example.Example.run"),
-                    List.of("find", "impl", "example.Example"), List.of("find", "impl", "example.Example.run"))) {
+                    List.of("describe", "types", "example.Example"), List.of("find", "usages", "example.Example"),
+                    List.of("find", "callers", "example.Example.run"), List.of("find", "callees", "example.Example.run"),
+                    List.of("find", "impl", "example.Example"), List.of("find", "impl", "example.Example.run"),
+                    List.of("find", "supertypes", "example.Example"))) {
                 fixture.received.clear();
                 fixture.queries.clear();
                 fixture.toolQueries.clear();

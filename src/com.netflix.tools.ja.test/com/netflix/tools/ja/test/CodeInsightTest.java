@@ -44,7 +44,8 @@ class CodeInsightTest {
     @Test
     void describesExplicitSubjectKindsAndFindsExplicitRelationships() throws Exception {
         for (var command : List.of("describe", "find")) {
-            var subjects = command.equals("describe") ? List.of("module", "type", "member", "file") : List.of("usages", "callers", "impl");
+            var subjects = command.equals("describe") ? List.of("module", "type", "member", "file", "types")
+                    : List.of("usages", "callers", "callees", "impl", "supertypes");
             for (var subject : subjects) {
                 var invocation = JaInvocation.parse(Path.of(""), new String[] {"-p", ":client", command, subject, "example.Store"});
                 assertEquals(command, invocation.command().commandName());
@@ -66,8 +67,8 @@ class CodeInsightTest {
 
     @Test
     void completesSubjectKindsAndQuestions() {
-        assertEquals(List.of("file", "member", "module", "type"), complete(List.of("describe"), ""));
-        assertEquals(List.of("callers", "impl", "usages"), complete(List.of("find"), ""));
+        assertEquals(List.of("file", "member", "module", "type", "types"), complete(List.of("describe"), ""));
+        assertEquals(List.of("callees", "callers", "impl", "supertypes", "usages"), complete(List.of("find"), ""));
         assertEquals(List.of("impl"), complete(List.of("find"), "im"));
     }
 
@@ -91,8 +92,9 @@ class CodeInsightTest {
         for (var query : List.of(
                 List.of("describe", "module", "java.base"), List.of("describe", "type", "java.lang.String"),
                 List.of("describe", "member", "java.lang.String.repeat"), List.of("describe", "file", "Example.java"),
-                List.of("find", "usages", "java.lang.String"), List.of("find", "callers", "java.lang.String.repeat"),
-                List.of("find", "impl", "java.lang.Runnable"))) {
+                List.of("describe", "types", "Example.java"), List.of("find", "usages", "java.lang.String"),
+                List.of("find", "callers", "java.lang.String.repeat"), List.of("find", "callees", "java.lang.String.repeat"),
+                List.of("find", "impl", "java.lang.Runnable"), List.of("find", "supertypes", "java.lang.String"))) {
             var jist = new Probe("jist");
             var jig = new Probe("jig");
             var tools = ToolRuntime.of(jig, jist);
@@ -103,16 +105,20 @@ class CodeInsightTest {
             assertEquals(0, result, errors.toString());
             var expected = new ArrayList<>(List.of("--module-source-path", "example.app=" + directory, "--module", "example.app"));
             if (query.getFirst().equals("describe")) {
-                if (query.get(1).equals("module")) expected.addAll(List.of("--kind", "module"));
-                else if (query.get(1).equals("member")) expected.addAll(List.of("--kind", "method", "--kind", "field"));
-                else expected.addAll(List.of("--kind", "type", "--kind", "method", "--kind", "field"));
-                expected.addAll(List.of("--source", switch (query.get(1)) {
-                    case "module" -> "definition";
-                    case "member" -> "doc";
-                    default -> "signature";
-                }));
+                if (query.get(1).equals("types")) expected.add("--referenced-types");
+                else {
+                    if (query.get(1).equals("module")) expected.addAll(List.of("--kind", "module"));
+                    else if (query.get(1).equals("member")) expected.addAll(List.of("--kind", "method", "--kind", "field"));
+                    else expected.addAll(List.of("--kind", "type", "--kind", "method", "--kind", "field"));
+                    expected.addAll(List.of("--source", switch (query.get(1)) {
+                        case "module" -> "definition";
+                        case "member" -> "doc";
+                        default -> "signature";
+                    }));
+                }
             } else expected.add(query.get(1).equals("impl") ? "--subtypes" : "--" + query.get(1));
-            expected.add(query.get(1).equals("file") ? directory.resolve("Example.java").toString() : query.getLast());
+            boolean sourceFile = query.get(1).equals("file") || query.get(1).equals("types") && query.getLast().endsWith(".java");
+            expected.add(sourceFile ? directory.resolve("Example.java").toString() : query.getLast());
             assertEquals(expected, jist.arguments, query.toString());
         }
     }
@@ -126,8 +132,10 @@ class CodeInsightTest {
         for (var query : List.of(
                 List.of("describe", "module", "--kind", "module"), List.of("describe", "type", "--kind", "type"),
                 List.of("describe", "member", "--kind", "method", "--kind", "field"),
-                List.of("find", "usages", "--usages"), List.of("find", "callers", "--callers"),
-                List.of("find", "impl", "--kind", "type", "--kind", "method"))) {
+                List.of("describe", "types", "--kind", "type"), List.of("find", "usages", "--usages"),
+                List.of("find", "callers", "--callers"), List.of("find", "callees", "--callees"),
+                List.of("find", "impl", "--kind", "type", "--kind", "method"),
+                List.of("find", "supertypes", "--supertypes"))) {
             var arguments = new ArrayList<>(List.of("-p", "app"));
             arguments.addAll(query.subList(0, 2));
             var request = new CompletionRequest(new ToolInvocation(directory, arguments), "java.lang.Str");
