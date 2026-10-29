@@ -22,8 +22,8 @@ import java.util.Set;
 public record FindRequest(Question question, String target) {
     public enum Question {
         USAGES("usages", "Find references to a type or member", List.of("--usages")),
-        CALLERS("callers", "Find calls to a method or constructor", List.of("--callers")),
-        CALLEES("callees", "Find methods or constructors called by a member", List.of("--callees")),
+        CALLERS("callers", "Find calls to a member or a type's declared executables", List.of("--callers")),
+        CALLEES("callees", "Find calls from a member or a type's declared executables", List.of("--callees")),
         IMPL("impl", "Find subtypes or overriding methods", List.of("--kind", "type", "--kind", "method")),
         SUPERTYPES("supertypes", "Find parent types", List.of("--supertypes"));
 

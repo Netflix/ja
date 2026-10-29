@@ -419,6 +419,14 @@ class JaToolTest {
     }
 
     @Test
+    void documentsTypeTargetsForCallRelationships() {
+        var result = run("find", "--help");
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output().contains("Find calls to a member or a type's declared executables"), result.output());
+        assertTrue(result.output().contains("Find calls from a member or a type's declared executables"), result.output());
+    }
+
+    @Test
     void printsHelpWithVerboseBeforeTheCommand() {
         Result result = run("--verbose", "compile", "--help");
 
