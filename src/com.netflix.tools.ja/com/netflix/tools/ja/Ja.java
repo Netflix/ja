@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -73,11 +74,13 @@ public final class Ja {
             }
             if (args.length == commandIndex || args[commandIndex].equals("-h") || args[commandIndex].equals("--help")) {
                 var layer = Ja.class.getModule().getLayer();
-                help(out, ToolRuntime.load(layer), ToolCatalog.load(layer));
+                help(out, ToolRuntime.load(layer), ToolCatalog.load(layer), ModuleFinder.ofSystem());
                 return 0;
             }
             var commandHelp = commandHelp(args, commandIndex);
             if (commandHelp.isPresent()) {
+                BuiltinCommand.find(args[commandIndex])
+                        .ifPresent(command -> CommandAvailability.requireRuntime(command, ModuleFinder.ofSystem()));
                 var command = commandHelp.orElseThrow();
                 out.print(command.commandLine()
                                  .help("ja " + command.name()));
@@ -104,12 +107,21 @@ public final class Ja {
     }
 
     public static void help(PrintStream out, ToolRuntime tools, ToolCatalog catalog) {
+        help(out, tools, catalog, ModuleFinder.ofSystem());
+    }
+
+    public static void help(PrintStream out, ToolRuntime tools, ToolCatalog catalog,
+                            ModuleFinder systemModules) {
         out.println("Usage: ja [OPTIONS] <command> [command-arguments]");
         out.println("       ja [OPTIONS] tool [<name> [tool-arguments]]");
         out.println();
 
+        boolean moduleDevelopmentAvailable = CommandAvailability.moduleDevelopmentAvailable(systemModules);
         var unavailable = new ArrayList<BuiltinCommand>();
         for (Category category : Category.values()) {
+            if (category == Category.MODULE && !moduleDevelopmentAvailable) {
+                continue;
+            }
             var available = new ArrayList<BuiltinCommand>();
             for (BuiltinCommand command : BuiltinCommand.values()) {
                 if (command.category() != category) {
@@ -132,6 +144,10 @@ public final class Ja {
                 out.printf("  %-12s %s%n", "tool", "List or run tools");
                 out.printf("  %-12s %s%n", "completion", "Print completion shims for all completion-aware tools");
             }
+            out.println();
+        }
+        if (!moduleDevelopmentAvailable) {
+            out.println("Module commands are unavailable; java.se is not present in this runtime.");
             out.println();
         }
         if (!unavailable.isEmpty()) {
@@ -192,10 +208,15 @@ public final class Ja {
     static List<Completion> complete(CompletionRequest request) {
         return complete(request, ToolRuntime.load(Ja.class
                 .getModule()
-                .getLayer()));
+                .getLayer()), ModuleFinder.ofSystem());
     }
 
     public static List<Completion> complete(CompletionRequest request, ToolRuntime tools) {
+        return complete(request, tools, ModuleFinder.ofSystem());
+    }
+
+    public static List<Completion> complete(CompletionRequest request, ToolRuntime tools,
+                                            ModuleFinder systemModules) {
         var prepared = COMMAND_LINE.prepare(request.invocation());
         var arguments = prepared.arguments();
         if (!arguments.isEmpty() && (arguments.getLast().equals("-p") || arguments.getLast().equals("--project"))) {
@@ -209,6 +230,12 @@ public final class Ja {
                     .toList();
         }
         int commandIndex = JaInvocation.commandIndex(arguments);
+        if (arguments.size() > commandIndex) {
+            var command = BuiltinCommand.find(arguments.get(commandIndex));
+            if (command.isPresent() && !CommandAvailability.available(command.orElseThrow(), systemModules)) {
+                return List.of();
+            }
+        }
         if (arguments.size() > commandIndex && arguments.get(commandIndex).equals("tool")) {
             if (arguments.size() == commandIndex + 1) {
                 return tools.names().stream()
@@ -262,6 +289,9 @@ public final class Ja {
         }
         return COMMAND_LINE.complete(new CompletionRequest(prepared, request.current())).stream()
                 .filter(completion -> !completion.value().equals("completion"))
+                .filter(completion -> BuiltinCommand.find(completion.value())
+                        .map(command -> CommandAvailability.available(command, systemModules))
+                        .orElse(true))
                 .toList();
     }
 

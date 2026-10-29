@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 
 /** Warms Ja's startup paths without invoking delegated tool warmups. */
@@ -28,6 +29,8 @@ final class AotWarmup {
         var layer = AotWarmup.class.getModule().getLayer();
         var tools = ToolRuntime.load(layer);
         var catalog = ToolCatalog.load(layer).withDiscovered(tools);
+        var systemModules = ModuleFinder.ofSystem();
+        boolean moduleDevelopmentAvailable = CommandAvailability.moduleDevelopmentAvailable(systemModules);
         try (var work = TemporaryDirectory.create();
              var out = new PrintStream(OutputStream.nullOutputStream())) {
             int result = invoke(work, out, err, "--help");
@@ -36,25 +39,32 @@ final class AotWarmup {
             }
 
             for (var command : Ja.commandLine().commands()) {
+                var builtin = BuiltinCommand.find(command.name());
+                if (builtin.isPresent() && !CommandAvailability.available(builtin.orElseThrow(), systemModules)) {
+                    continue;
+                }
                 result = invoke(work, out, err, command.name(), "--help");
                 if (result != 0) {
                     return result;
                 }
             }
 
-            result = invoke(work, out, err, "__complete", "co");
+            result = invoke(work, out, err, "__complete", moduleDevelopmentAvailable ? "co" : "de");
             if (result != 0) {
                 return result;
             }
-            result = invoke(work, out, err, "__complete", "compile", "--r");
-            if (result != 0) {
-                return result;
-            }
-
-            result = invoke(work, out, err, "init", "--main-class", "com.netflix.tools.ja.warmup.Main",
-                    "com.netflix.tools.ja.warmup");
-            if (result != 0) {
-                return result;
+            if (moduleDevelopmentAvailable) {
+                result = invoke(work, out, err, "__complete", "compile", "--r");
+                if (result != 0) {
+                    return result;
+                }
+                result = invoke(work, out, err, "init", "--main-class", "com.netflix.tools.ja.warmup.Main",
+                        "com.netflix.tools.ja.warmup");
+                if (result != 0) {
+                    return result;
+                }
+            } else {
+                Files.writeString(work.root().resolve("module-info.java"), "module com.netflix.tools.ja.warmup {}\n");
             }
             var main = work.root().resolve("com/netflix/tools/ja/warmup/Main.java");
             Files.createDirectories(main.getParent());
@@ -72,13 +82,15 @@ final class AotWarmup {
                     return result;
                 }
             }
-            result = invoke(work, out, err, "compile");
-            if (result != 0) {
-                return result;
-            }
-            result = invoke(work, out, err, "compile");
-            if (result != 0) {
-                return result;
+            if (moduleDevelopmentAvailable) {
+                result = invoke(work, out, err, "compile");
+                if (result != 0) {
+                    return result;
+                }
+                result = invoke(work, out, err, "compile");
+                if (result != 0) {
+                    return result;
+                }
             }
             if (available(BuiltinCommand.SOURCE, tools, catalog)) {
                 result = invoke(work, out, err, "source", "java.lang.String.isEmpty");
@@ -92,25 +104,27 @@ final class AotWarmup {
                     return result;
                 }
             }
-            result = invoke(
-                    work,
-                    out,
-                    err,
-                    "tool",
-                    "jar",
-                    "--create",
-                    "--file",
-                    work.root()
-                        .resolve("warmup.jar")
-                        .toString(),
-                    "-C",
-                    work.root().toString(),
-                    "module-info.java",
-                    "-C",
-                    work.root().toString(),
-                    "com");
-            if (result != 0) {
-                return result;
+            if (tools.contains("jar")) {
+                result = invoke(
+                        work,
+                        out,
+                        err,
+                        "tool",
+                        "jar",
+                        "--create",
+                        "--file",
+                        work.root()
+                            .resolve("warmup.jar")
+                            .toString(),
+                        "-C",
+                        work.root().toString(),
+                        "module-info.java",
+                        "-C",
+                        work.root().toString(),
+                        "com");
+                if (result != 0) {
+                    return result;
+                }
             }
             result = invoke(work, out, err, "tool");
             if (result != 0) {

@@ -121,6 +121,7 @@ public final class CommandRunner {
     public int run(JaInvocation commandLine, InputStream in, PrintStream out,
                    PrintStream err)
             throws IOException {
+        CommandAvailability.requireRuntime(commandLine);
         if (commandLine.verbose() && !tools.verbose()) {
             var catalog = usesToolCatalog(commandLine) ? catalogProvider.load() : new ToolCatalog(List.of());
             return new CommandRunner(layer, tools.withVerbose(catalog.definitions(), err), () -> catalog, temporaryDirectoryProvider, verbose(javaLauncher, err), installer)

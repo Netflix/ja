@@ -14,6 +14,7 @@
 
 package com.netflix.tools.ja.test;
 
+import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +38,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CommandAvailabilityTest {
+    @Test
+    void moduleCommandsRequireJavaSe() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> CommandAvailability.require(commandLine(BuiltinCommand.COMPILE), ToolRuntime.of(),
+                        new ToolCatalog(List.of()), ModuleFinder.of()));
+
+        assertEquals("compile is unavailable; java.se is not present in this runtime", failure.getMessage());
+    }
+
+    @Test
+    void developmentCommandsDoNotRequireJavaSe() {
+        CommandAvailability.require(commandLine(BuiltinCommand.PROJECTS), ToolRuntime.of(),
+                new ToolCatalog(List.of()), ModuleFinder.of());
+    }
+
     @Test
     void reportsTheUpstreamToolForAnUnavailableTypedCommand() {
         var commandLine = commandLine(BuiltinCommand.FMT);

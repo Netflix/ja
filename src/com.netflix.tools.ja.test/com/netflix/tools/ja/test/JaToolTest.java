@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,6 +39,7 @@ import com.netflix.tools.cli.CommandLine.ToolInvocation;
 import com.netflix.tools.cli.CommandLine.ToolOption;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.JaTool;
+import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -173,6 +175,32 @@ class JaToolTest {
     }
 
     @Test
+    void reducedRuntimesExposeOnlyDevelopmentCommands() {
+        var output = new ByteArrayOutputStream();
+        Ja.help(new java.io.PrintStream(output), ToolRuntime.of(), new ToolCatalog(List.of()), ModuleFinder.of());
+
+        String help = output.toString(StandardCharsets.UTF_8);
+        assertTrue(help.contains("Development commands:"), help);
+        assertTrue(help.contains("projects"), help);
+        assertFalse(help.contains("Module commands:"), help);
+        assertFalse(help.contains("  compile     "), help);
+        assertTrue(help.contains("Module commands are unavailable; java.se is not present in this runtime."), help);
+
+        assertEquals(List.of(),
+                Ja.complete(new CompletionRequest(ToolInvocation.of(), "co"), ToolRuntime.of(), ModuleFinder.of()).stream()
+                        .map(Completion::value)
+                        .toList());
+        assertEquals(List.of("projects"),
+                Ja.complete(new CompletionRequest(ToolInvocation.of(), "pro"), ToolRuntime.of(), ModuleFinder.of()).stream()
+                        .map(Completion::value)
+                        .toList());
+        assertEquals(List.of(),
+                Ja.complete(new CompletionRequest(ToolInvocation.of("compile"), "--r"), ToolRuntime.of(), ModuleFinder.of()).stream()
+                        .map(Completion::value)
+                        .toList());
+    }
+
+    @Test
     void builtInCommandsExposeExplicitInterfacesWhileToolDelegates() {
         var described = assertInstanceOf(JaTool.class, ja);
 
@@ -259,6 +287,12 @@ class JaToolTest {
         assertTrue(result.output().contains("-CommandName 'ja'"),
                 result.output());
         assertEquals("", result.error());
+    }
+
+    @Test
+    void doesNotRequireJavaSe() {
+        assertFalse(Ja.class.getModule().getDescriptor().requires().stream()
+                .anyMatch(candidate -> candidate.name().equals("java.se")));
     }
 
     @Test

@@ -14,10 +14,12 @@
 
 package com.netflix.tools.ja;
 
+import java.lang.module.ModuleFinder;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.netflix.tools.ja.BuiltinCommand.ToolRequirement;
+import com.netflix.tools.ja.Command.Category;
 import com.netflix.tools.ja.BuiltinCommand.ToolRequirement.Provider;
 
 /**
@@ -25,14 +27,48 @@ import com.netflix.tools.ja.BuiltinCommand.ToolRequirement.Provider;
  * catalog.
  */
 public final class CommandAvailability {
+    private static final String JAVA_SE = "java.se";
+
     private CommandAvailability() {}
 
     public static void require(JaInvocation commandLine, ToolRuntime tools, ToolCatalog catalog) {
+        require(commandLine, tools, catalog, ModuleFinder.ofSystem());
+    }
+
+    public static void require(JaInvocation commandLine, ToolRuntime tools, ToolCatalog catalog,
+                               ModuleFinder systemModules) {
+        requireRuntime(commandLine, systemModules);
         var missing = missingTools(commandLine, tools, catalog);
         if (missing.isEmpty()) {
             return;
         }
         throw new IllegalArgumentException(message(commandLine.command().commandName(), missing));
+    }
+
+    public static void requireRuntime(JaInvocation commandLine) {
+        requireRuntime(commandLine, ModuleFinder.ofSystem());
+    }
+
+    public static void requireRuntime(JaInvocation commandLine, ModuleFinder systemModules) {
+        BuiltinCommand.from(commandLine.command()).ifPresent(command -> requireRuntime(command, systemModules));
+    }
+
+    public static void requireRuntime(BuiltinCommand command, ModuleFinder systemModules) {
+        if (!available(command, systemModules)) {
+            throw new IllegalArgumentException(moduleDevelopmentMessage(command.commandName()));
+        }
+    }
+
+    public static boolean available(BuiltinCommand command, ModuleFinder systemModules) {
+        return command.category() != Category.MODULE || moduleDevelopmentAvailable(systemModules);
+    }
+
+    public static boolean moduleDevelopmentAvailable(ModuleFinder systemModules) {
+        return systemModules.find(JAVA_SE).isPresent();
+    }
+
+    public static String moduleDevelopmentMessage(String command) {
+        return command + " is unavailable; java.se is not present in this runtime";
     }
 
     public static List<String> missingTools(BuiltinCommand command, ToolRuntime tools, ToolCatalog catalog) {
