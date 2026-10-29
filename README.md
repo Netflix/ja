@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
   -Installation Standalone
 ```
 
-The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK. Use a plain JDK: the launcher rejects system modules whose names overlap the bundled application modules, rather than silently using the JDK's copies. When the selected runtime does not contain `java.se`, Ja keeps its development and code-insight commands available and reports module development commands as unavailable.
+The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK. Use a plain JDK: the launcher rejects system modules whose names overlap the bundled application modules, rather than silently using the JDK's copies. When the selected runtime does not contain `java.se`, Ja keeps development commands available subject to the modules in that runtime and reports module development commands as unavailable.
 
 Neither installation modifies shell configuration. The installer prints the activation and completion commands to add to your shell profile. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, custom locations, version pinning, shell setup, and environment-manager guidance.
 
