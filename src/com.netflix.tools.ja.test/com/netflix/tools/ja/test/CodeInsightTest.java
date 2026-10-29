@@ -104,6 +104,7 @@ class CodeInsightTest {
                     JaInvocation.parse(directory, query.toArray(String[]::new)), InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
             assertEquals(0, result, errors.toString());
             var expected = new ArrayList<>(List.of("--module-source-path", "example.app=" + directory, "--module", "example.app"));
+            expected.add("--qualified-path");
             if (query.getFirst().equals("describe")) {
                 if (query.get(1).equals("types")) expected.add("--referenced-types");
                 else {
@@ -164,7 +165,7 @@ class CodeInsightTest {
             var lookup = new ArrayList<>(context);
             lookup.addAll(List.of("-l", "--kind", "type", "--source", "none", "--visibility", "all", "example.Root"));
             var query = new ArrayList<>(context);
-            query.addAll(List.of("--subtypes", "example.Root"));
+            query.addAll(List.of("--qualified-path", "--subtypes", "example.Root"));
             assertEquals(List.of(lookup, query), jist.invocations, kind);
             assertEquals(1, jig.invocations.size());
             assertEquals("", output.toString());

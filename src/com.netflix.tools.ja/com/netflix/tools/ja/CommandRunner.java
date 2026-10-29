@@ -370,7 +370,8 @@ public final class CommandRunner {
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Command.Describe(var request)) {
-            return toolRunner.run(toolInvocation(commandLine, "jist", request.arguments(commandLine.workingDirectory())), resolutionArguments,
+            var arguments = insightArguments(request.arguments(commandLine.workingDirectory()));
+            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Command.Find(var request)) {
@@ -384,7 +385,7 @@ public final class CommandRunner {
                 }
                 arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
             }
-            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
+            return toolRunner.run(toolInvocation(commandLine, "jist", insightArguments(arguments)), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Source(var symbol)) {
@@ -407,6 +408,16 @@ public final class CommandRunner {
                     out, err);
         }
         throw new IllegalArgumentException("Command " + commandLine.command() + " is not implemented");
+    }
+
+    private static List<String> insightArguments(List<String> arguments) {
+        if (System.console() != null) {
+            return arguments;
+        }
+        var qualified = new ArrayList<String>();
+        qualified.add("--qualified-path");
+        qualified.addAll(arguments);
+        return List.copyOf(qualified);
     }
 
     private static JaInvocation toolInvocation(JaInvocation invocation, String tool, List<String> arguments) {
