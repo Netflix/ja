@@ -238,7 +238,8 @@ class BuildToolTest {
             for (var query : List.of(
                     List.of("describe", "module", "java.base"), List.of("describe", "type", "example.Example"),
                     List.of("describe", "member", "example.Example.run"), List.of("describe", "file", "Example.java"),
-                    List.of("describe", "types", "example.Example"), List.of("find", "usages", "example.Example"),
+                    List.of("describe", "types", "example.Example"), List.of("describe", "origin", "example.Example"),
+                    List.of("find", "usages", "example.Example"),
                     List.of("find", "callers", "example.Example.run"), List.of("find", "callees", "example.Example.run"),
                     List.of("find", "impl", "example.Example"), List.of("find", "impl", "example.Example.run"),
                     List.of("find", "supertypes", "example.Example"))) {
@@ -248,15 +249,15 @@ class BuildToolTest {
                 var arguments = new ArrayList<>(List.of("-p", selector));
                 arguments.addAll(query);
                 assertEquals(0, fixture.run(arguments.toArray(String[]::new)), query.toString());
-                assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources"), fixture.received.subList(0, 4));
-                assertEquals("--qualified-path", fixture.received.get(4));
-                assertEquals(query.get(1).equals("file") ? directory.resolve("Example.java").toString() : query.getLast(), fixture.received.getLast());
+                var received = query.get(1).equals("origin") ? fixture.toolQueries.getLast() : fixture.received;
+                assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources"), received.subList(0, 4));
+                assertEquals(query.get(1).equals("file") ? directory.resolve("Example.java").toString() : query.getLast(), received.getLast());
                 assertEquals("test", value(fixture.resolution(), type.equals("maven") ? "--scope" : "--source-set"));
                 if (type.equals("gradle")) assertEquals("runtime", value(fixture.resolution(), "--classpath"));
                 if (query.get(1).equals("impl")) {
                     assertEquals(2, fixture.toolQueries.size());
                     assertEquals(fixture.received.subList(0, 4), fixture.toolQueries.getFirst().subList(0, 4));
-                    assertEquals(query.getLast().equals("example.Example") ? "--subtypes" : "--overrides", fixture.received.get(5));
+                    assertEquals(query.getLast().equals("example.Example") ? "--subtypes" : "--overrides", fixture.received.get(4));
                     assertEquals(1, fixture.queries.stream().filter(argumentsForJig -> argumentsForJig.contains("--resolve-options")).count());
                 }
             }

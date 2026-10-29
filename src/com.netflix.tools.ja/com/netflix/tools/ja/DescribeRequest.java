@@ -26,7 +26,8 @@ public record DescribeRequest(Subject subject, String target) {
         TYPE("type", "Describe a Java type and its API", List.of("--kind", "type", "--kind", "method", "--kind", "field")),
         MEMBER("member", "Describe a method or field", List.of("--kind", "method", "--kind", "field")),
         FILE("file", "Describe declarations in a source or class file", List.of("--kind", "type", "--kind", "method", "--kind", "field")),
-        TYPES("types", "List resolved types for a Java type or source file", List.of("--referenced-types"));
+        TYPES("types", "List resolved types for a Java type or source file", List.of("--referenced-types")),
+        ORIGIN("origin", "Show where a Java symbol is resolved", List.of());
 
         private final String command;
         private final String description;
@@ -64,7 +65,7 @@ public record DescribeRequest(Subject subject, String target) {
 
     static DescribeRequest parse(List<String> arguments) {
         if (arguments.size() != 2) {
-            throw new IllegalArgumentException("Usage: ja describe <module|type|member|file|types> <subject>");
+            throw new IllegalArgumentException("Usage: ja describe <module|type|member|file|types|origin> <subject>");
         }
         return new DescribeRequest(Subject.parse(arguments.getFirst()), arguments.getLast());
     }
@@ -76,11 +77,15 @@ public record DescribeRequest(Subject subject, String target) {
         if (subject == Subject.TYPES) {
             return List.of("--referenced-types", resolvedTarget);
         }
+        if (subject == Subject.ORIGIN) {
+            return List.of("-l", "--source", "none", "--qualified-path", "--visibility", "all", resolvedTarget);
+        }
         var arguments = new ArrayList<>(subject.kinds);
         arguments.addAll(List.of("--source", switch (subject) {
             case MODULE -> "definition";
             case MEMBER -> "doc";
             case TYPE, FILE, TYPES -> "signature";
+            case ORIGIN -> throw new AssertionError();
         }));
         arguments.add(resolvedTarget);
         return List.copyOf(arguments);

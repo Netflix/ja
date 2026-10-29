@@ -370,9 +370,17 @@ public final class CommandRunner {
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Command.Describe(var request)) {
-            var arguments = insightArguments(request.arguments(commandLine.workingDirectory()));
-            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
-                    resolved, in, out, err);
+            var invocation = toolInvocation(commandLine, "jist", request.arguments(commandLine.workingDirectory()));
+            if (request.subject() != DescribeRequest.Subject.ORIGIN) {
+                return toolRunner.run(invocation, resolutionArguments, resolved, in, out, err);
+            }
+            var origins = new ByteArrayOutputStream();
+            int result = toolRunner.run(invocation, resolutionArguments, resolved, in,
+                    new PrintStream(origins, true, StandardCharsets.UTF_8), err);
+            if (result == 0) {
+                printExactOrigins(origins.toString(StandardCharsets.UTF_8), request.target(), out);
+            }
+            return result;
         }
         if (commandLine.command() instanceof Command.Find(var request)) {
             var arguments = request.arguments();
@@ -385,7 +393,7 @@ public final class CommandRunner {
                 }
                 arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
             }
-            return toolRunner.run(toolInvocation(commandLine, "jist", insightArguments(arguments)), resolutionArguments,
+            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Source(var symbol)) {
@@ -410,14 +418,17 @@ public final class CommandRunner {
         throw new IllegalArgumentException("Command " + commandLine.command() + " is not implemented");
     }
 
-    private static List<String> insightArguments(List<String> arguments) {
-        if (System.console() != null) {
-            return arguments;
+    private static void printExactOrigins(String origins, String target, PrintStream out) {
+        origins.lines().filter(line -> originSymbol(line).equals(target)).forEach(out::println);
+    }
+
+    private static String originSymbol(String line) {
+        int separator = line.indexOf(' ');
+        if (separator < 0) {
+            return "";
         }
-        var qualified = new ArrayList<String>();
-        qualified.add("--qualified-path");
-        qualified.addAll(arguments);
-        return List.copyOf(qualified);
+        int signature = line.indexOf('(', separator + 1);
+        return signature < 0 ? "" : line.substring(separator + 1, signature);
     }
 
     private static JaInvocation toolInvocation(JaInvocation invocation, String tool, List<String> arguments) {
