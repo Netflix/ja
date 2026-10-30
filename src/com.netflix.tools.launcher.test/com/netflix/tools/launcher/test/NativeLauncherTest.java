@@ -84,12 +84,15 @@ class NativeLauncherTest {
                 const char *configuration = NULL;
                 const char *cache_output = NULL;
                 const char *log = NULL;
+                char aot_error_log[4096] = {0};
                 const char *phase = "run";
                 int recording = 0;
                 int assembling = 0;
                 const char *training_phase = getenv("_JMOD_LAUNCHER_AOT_PHASE");
                 int openj9 = training_phase && strcmp(training_phase, "openj9") == 0;
+                int validating = training_phase && strcmp(training_phase, "validate") == 0;
                 if (openj9) phase = "openj9";
+                if (validating) phase = "validate";
                 char shared_cache_directory[4096] = {0};
                 for (int i = 0; i < jargc; i++) {
                     if (strcmp(jargv[i], "-J-XX:AOTMode=record") == 0) {
@@ -106,6 +109,14 @@ class NativeLauncherTest {
                         cache_output = jargv[i] + 21;
                     if (strncmp(jargv[i], "-J-XX:LogFile=", 14) == 0)
                         log = jargv[i] + 14;
+                    const char *aot_errors = strstr(jargv[i], "-J-Xlog:aot=error:file=");
+                    if (aot_errors) {
+                        aot_errors += strlen("-J-Xlog:aot=error:file=");
+                        size_t length = strcspn(aot_errors, ":");
+                        if (length >= sizeof(aot_error_log)) return 96;
+                        memcpy(aot_error_log, aot_errors, length);
+                        aot_error_log[length] = '\0';
+                    }
                     const char *cache_dir = strstr(jargv[i], "cacheDir=");
                     if (cache_dir) {
                         cache_dir += strlen("cacheDir=");
@@ -117,7 +128,7 @@ class NativeLauncherTest {
                 }
 
                 const char *phase_trace = getenv("TEST_PHASE_TRACE");
-                if (phase_trace) {
+                if (phase_trace && !validating) {
                     char value[32];
                     snprintf(value, sizeof(value), "%s\\n", phase);
                     append(phase_trace, value);
@@ -172,6 +183,12 @@ class NativeLauncherTest {
                     fprintf(file, "%s log\\n", phase);
                     fclose(file);
                 }
+                if (validating && aot_error_log[0] && getenv("TEST_AOT_VALIDATION_ERROR")) {
+                    FILE *file = fopen(aot_error_log, "a");
+                    if (!file) return 97;
+                    fprintf(file, "[0.001s][error][aot] simulated cache load error\\n");
+                    fclose(file);
+                }
                 if (recording && getenv("TEST_MUTATE_IDENTITY")) {
                     FILE *file = fopen(getenv("TEST_MUTATE_IDENTITY"), "a");
                     fputs("changed", file);
@@ -179,6 +196,10 @@ class NativeLauncherTest {
                 }
                 if (assembling) {
                     const char *result = getenv("TEST_ASSEMBLY_RESULT");
+                    return result ? atoi(result) : 0;
+                }
+                if (validating) {
+                    const char *result = getenv("TEST_VALIDATION_RESULT");
                     return result ? atoi(result) : 0;
                 }
                 if (recording) {
@@ -505,6 +526,28 @@ class NativeLauncherTest {
                 Map.of("TEST_PHASE_TRACE", phases.toString(), "TEST_ASSEMBLY_RESULT", "9"),
                 List.of("-L-aot=create"));
         assertEquals(9, create.exitCode(), create.output());
+        assertEquals(List.of("record", "create"), Files.readAllLines(phases));
+    }
+
+    @Test
+    void autoFallsBackWhenCacheValidationReportsAotErrorsAndCreateIsStrict() throws Exception {
+        Path phases = temporaryDirectory.resolve("phases");
+        Result automatic = run(
+                Map.of("TEST_PHASE_TRACE", phases.toString(), "TEST_AOT_VALIDATION_ERROR", "1"),
+                List.of());
+
+        assertEquals(0, automatic.exitCode(), automatic.output());
+        assertEquals(List.of("record", "create", "run"), Files.readAllLines(phases));
+        assertTrue(automatic.output().contains("AOT cache validation reported VM errors"), automatic.output());
+        Path directory = cacheDirectory(automatic.output());
+        assertFalse(Files.exists(directory.resolve("aot")));
+        assertTrue(Files.isRegularFile(directory.resolve("attempted")));
+
+        Files.delete(phases);
+        Result create = run(
+                Map.of("TEST_PHASE_TRACE", phases.toString(), "TEST_AOT_VALIDATION_ERROR", "1"),
+                List.of("-L-aot=create"));
+        assertEquals(1, create.exitCode(), create.output());
         assertEquals(List.of("record", "create"), Files.readAllLines(phases));
     }
 

@@ -116,6 +116,20 @@ static int is_regular_file(const char *path) {
 #endif
 }
 
+static int file_has_content(const char *path) {
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA attributes;
+    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &attributes) ||
+            (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        return 0;
+    }
+    return attributes.nFileSizeHigh != 0 || attributes.nFileSizeLow != 0;
+#else
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0;
+#endif
+}
+
 static int create_file_exclusively(const char *path) {
 #ifdef _WIN32
     HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_NEW,
@@ -716,6 +730,7 @@ enum aot_phase {
     AOT_PHASE_NONE,
     AOT_PHASE_RECORD,
     AOT_PHASE_CREATE,
+    AOT_PHASE_VALIDATE,
     AOT_PHASE_OPENJ9,
     AOT_PHASE_INVALID
 };
@@ -725,6 +740,7 @@ static enum aot_phase get_aot_phase(void) {
     if (!value) return AOT_PHASE_NONE;
     if (strcmp(value, "record") == 0) return AOT_PHASE_RECORD;
     if (strcmp(value, "create") == 0) return AOT_PHASE_CREATE;
+    if (strcmp(value, "validate") == 0) return AOT_PHASE_VALIDATE;
     if (strcmp(value, "openj9") == 0) return AOT_PHASE_OPENJ9;
     return AOT_PHASE_INVALID;
 }
@@ -993,16 +1009,19 @@ static int launcher_main(int argc, char **argv) {
     static char configuration_flag[4200];
     static char log_flag[4200];
     static char xlog_flag[4200];
+    static char aot_error_flag[4200];
     static char temporary_cache[4096];
     static char temporary_configuration[4096];
     static char log[4096];
     static char temporary_log[4096];
     static char temporary_error[4096];
     static char temporary_xlog[4096];
+    static char temporary_aot_errors[4096];
     int warming = 0;
     int hotspot_warming = 0;
     int openj9_warming = 0;
     int recording = 0;
+    int validating = 0;
     const char *phase_flag = NULL;
     const char *training_id = getenv("_JMOD_LAUNCHER_AOT_TRAINING");
     enum aot_phase phase = get_aot_phase();
@@ -1132,7 +1151,8 @@ static int launcher_main(int argc, char **argv) {
             fprintf(stderr, "%s: invalid internal AOT training identifier\n", tool);
             return 1;
         }
-        if (phase != AOT_PHASE_RECORD && phase != AOT_PHASE_CREATE) {
+        if (phase != AOT_PHASE_RECORD && phase != AOT_PHASE_CREATE
+                && phase != AOT_PHASE_VALIDATE) {
             fprintf(stderr, "%s: invalid internal AOT phase\n", tool);
             return 1;
         }
@@ -1146,21 +1166,33 @@ static int launcher_main(int argc, char **argv) {
                 "%s/.%lu.out.tmp", cache_dir, id);
         snprintf(temporary_xlog, sizeof(temporary_xlog),
                 "%s/.%lu.xlog.tmp", cache_dir, id);
-        snprintf(configuration_flag, sizeof(configuration_flag),
-                "-J-XX:AOTConfiguration=%s", temporary_configuration);
+        snprintf(temporary_aot_errors, sizeof(temporary_aot_errors),
+                "%s/.%lu.aot-errors.tmp", cache_dir, id);
         if (phase == AOT_PHASE_RECORD) {
+            snprintf(configuration_flag, sizeof(configuration_flag),
+                    "-J-XX:AOTConfiguration=%s", temporary_configuration);
             phase_flag = "-J-XX:AOTMode=record";
             recording = 1;
-        } else {
+        } else if (phase == AOT_PHASE_CREATE) {
+            snprintf(configuration_flag, sizeof(configuration_flag),
+                    "-J-XX:AOTConfiguration=%s", temporary_configuration);
             snprintf(aot_flag, sizeof(aot_flag),
                     "-J-XX:AOTCacheOutput=%s", temporary_cache);
             phase_flag = "-J-XX:AOTMode=create";
+        } else {
+            snprintf(aot_flag, sizeof(aot_flag),
+                    "-J-XX:AOTCache=%s", temporary_cache);
+            snprintf(aot_error_flag, sizeof(aot_error_flag),
+                    "-J-Xlog:aot=error:file=%s::filecount=0", temporary_aot_errors);
+            validating = 1;
         }
-        snprintf(log_flag, sizeof(log_flag), "-J-XX:LogFile=%s", temporary_log);
-        snprintf(xlog_flag, sizeof(xlog_flag),
-                "-J-Xlog:aot=info:file=%s::filecount=0", temporary_xlog);
+        if (!validating) {
+            snprintf(log_flag, sizeof(log_flag), "-J-XX:LogFile=%s", temporary_log);
+            snprintf(xlog_flag, sizeof(xlog_flag),
+                    "-J-Xlog:aot=info:file=%s::filecount=0", temporary_xlog);
+            hotspot_warming = 1;
+        }
         warming = 1;
-        hotspot_warming = 1;
     } else if (use_aot && mode == AOT_AUTO && access(cache, F_OK) == 0) {
         snprintf(aot_flag, sizeof(aot_flag), "-J-XX:AOTCache=%s", cache);
     } else if (use_aot && mode == AOT_AUTO &&
@@ -1192,16 +1224,20 @@ static int launcher_main(int argc, char **argv) {
                 "%s/.%lu.out.tmp", cache_dir, pid);
         snprintf(temporary_xlog, sizeof(temporary_xlog),
                 "%s/.%lu.xlog.tmp", cache_dir, pid);
+        snprintf(temporary_aot_errors, sizeof(temporary_aot_errors),
+                "%s/.%lu.aot-errors.tmp", cache_dir, pid);
         unlink(temporary_cache);
         unlink(temporary_configuration);
         unlink(temporary_log);
         unlink(temporary_error);
         unlink(temporary_xlog);
+        unlink(temporary_aot_errors);
         fprintf(stderr,
                 "%s: AOT training run, cache will be created at %s (log: %s, out: %s)\n",
                 tool, cache, log, output);
         int result = run_aot_process(argc, argv, training_id_buffer, "record");
         int assembly_result = 0;
+        int validation_result = 0;
         unsigned long current_hash;
         int image_changed = !launcher_identity_hash(
                 &current_hash, tool, release_path, modules_path,
@@ -1232,13 +1268,26 @@ static int launcher_main(int argc, char **argv) {
                         "%s: AOT assembly failed; configuration retained at %s\n",
                         tool, temporary_configuration);
             }
+            if (assembly_result == 0 && is_regular_file(temporary_cache)) {
+                unlink(temporary_aot_errors);
+                validation_result = run_aot_process(
+                        argc, argv, training_id_buffer, "validate");
+                if (validation_result == 0 && file_has_content(temporary_aot_errors)) {
+                    fprintf(stderr, "%s: AOT cache validation reported VM errors\n", tool);
+                    validation_result = 1;
+                } else if (validation_result != 0) {
+                    fprintf(stderr, "%s: AOT cache validation failed with exit code %d\n",
+                            tool, validation_result);
+                }
+            }
         } else {
             fprintf(stderr, "%s: AOT training did not create configuration: %s\n",
                     tool, temporary_configuration);
             result = 1;
         }
         append_file(temporary_xlog, temporary_log);
-        int created = result == 0 && assembly_result == 0 && !image_changed
+        unlink(temporary_aot_errors);
+        int created = result == 0 && assembly_result == 0 && validation_result == 0 && !image_changed
                 && is_regular_file(temporary_cache);
         if (created) {
             publish_file(temporary_cache, cache, "AOT cache", tool);
@@ -1254,7 +1303,8 @@ static int launcher_main(int argc, char **argv) {
             fprintf(stderr, "%s: AOT cache creation failed; remove %s to retry\n",
                     tool, attempted);
             if (mode == AOT_CREATE)
-                return assembly_result != 0 ? assembly_result : result != 0 ? result : 1;
+                return validation_result != 0 ? validation_result
+                        : assembly_result != 0 ? assembly_result : result != 0 ? result : 1;
         }
     }
 
@@ -1266,7 +1316,7 @@ static int launcher_main(int argc, char **argv) {
     };
     enum {
         base_argc = sizeof(base_args) / sizeof(base_args[0]),
-        max_extra = 15 /* managed image, AOT, VM logging, launcher properties */
+        max_extra = 16 /* managed image, AOT, VM logging, launcher properties */
     };
     /* The argument array must survive libjli's main-thread handoff. */
     static const char *jargs[base_argc + max_extra + MAX_RUNTIME_OPTIONS];
@@ -1286,7 +1336,8 @@ static int launcher_main(int argc, char **argv) {
         jargs[jargc++] = "-J-Xlog:aot=off";
         jargs[jargc++] = xlog_flag;
     }
-    if (recording || openj9_warming)
+    if (validating) jargs[jargc++] = aot_error_flag;
+    if (recording || validating || openj9_warming)
         jargs[jargc++] = "-J-Dcom.netflix.tools.launcher.aot.training=true";
     if (managed) {
         jargs[jargc++] = "--module-path";
