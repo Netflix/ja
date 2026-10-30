@@ -199,6 +199,29 @@ class CodeInsightTest {
     }
 
     @Test
+    void originRetainsJistSimpleNameMatching(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        var jist = new Probe("jist");
+        jist.symbols = """
+                class example.first.Root(/classes/example/first/Root.class)
+                class example.first.Root.Nested(/classes/example/first/Root$Nested.class)
+                class example.second.Root(/classes/example/second/Root.class)
+                """;
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist), new ToolCatalog(List.of()), () -> null).run(
+                JaInvocation.parse(directory, new String[] {"describe", "origin", "Root"}), InputStream.nullInputStream(),
+                new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("""
+                class example.first.Root(/classes/example/first/Root.class)
+                class example.second.Root(/classes/example/second/Root.class)
+                """, output.toString());
+    }
+
+    @Test
     void implementationSearchLeavesMethodValidationAndInheritanceToJist(@TempDir Path directory) throws Exception {
         Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
         for (var symbols : List.of("", "class example.Root.run.Nested\n")) {
