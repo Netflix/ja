@@ -419,7 +419,15 @@ public final class CommandRunner {
     }
 
     private static void printExactOrigins(String origins, String target, PrintStream out) {
-        origins.lines().filter(line -> originSymbol(line).equals(target)).forEach(out::println);
+        origins.lines().filter(line -> matchesOriginTarget(originSymbol(line), target)).forEach(out::println);
+    }
+
+    private static boolean matchesOriginTarget(String symbol, String target) {
+        if (target.indexOf('.') >= 0) {
+            return symbol.equals(target);
+        }
+        int separator = symbol.lastIndexOf('.');
+        return symbol.substring(separator + 1).equals(target);
     }
 
     private static String originSymbol(String line) {
