@@ -379,6 +379,25 @@ class CommandLineTest {
     }
 
     @Test
+    void skillContentUsesAHiddenOptInProtocol() {
+        var commandLine = CommandLine.builder()
+                .skill()
+                .build();
+        var output = new StringWriter();
+        String skill = "---\nname: probe\ndescription: Probe the skill protocol\n---\n";
+
+        var result = commandLine.runSkill(new PrintWriter(output, true), skill, "__skill");
+
+        assertEquals(0, result.orElseThrow());
+        assertEquals(skill, output.toString());
+        assertEquals(0, commandLine.isSupportedOption("__skill"));
+        assertTrue(commandLine.options().stream()
+                .anyMatch(option -> option.names().contains("__skill") && option.hidden()));
+        assertFalse(commandLine.help("probe")
+                               .contains("__skill"));
+    }
+
+    @Test
     void hiddenCompletionCommandIsAnOptInOption() {
         var plain = CommandLine.builder()
                 .option(CHECK)

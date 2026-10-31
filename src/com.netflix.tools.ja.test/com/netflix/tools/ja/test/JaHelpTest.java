@@ -57,6 +57,7 @@ class JaHelpTest {
                 """
                 Usage: ja [OPTIONS] <command> [command-arguments]
                        ja [OPTIONS] tool [<name> [tool-arguments]]
+                       ja [OPTIONS] skill [<name>]
 
                 Development commands:
                   projects     List discovered projects
@@ -66,6 +67,7 @@ class JaHelpTest {
                   describe     Describe Java modules, types, members, and files
                   find         Find related Java code
                   tool         List or run tools
+                  skill        List or print tool skills
                   completion   Print completion shims for all completion-aware tools
 
                 Module commands:

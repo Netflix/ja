@@ -44,7 +44,9 @@ import javax.tools.OptionChecker;
  */
 public final class CommandLine implements OptionChecker {
     private static final String COMPLETION_COMMAND = "__complete";
+    private static final String SKILL_COMMAND = "__skill";
     private static final ToolOption COMPLETION = ToolOption.flag(COMPLETION_COMMAND, "");
+    private static final ToolOption SKILL = ToolOption.flag(SKILL_COMMAND, "");
     private static final ToolOption VERSION = ToolOption.flag("--version", "Print version information");
 
     public enum Cardinality {
@@ -442,6 +444,23 @@ public final class CommandLine implements OptionChecker {
                 .rawVersion()
                 .orElse(null);
         out.println(invocationName + " " + (version == null ? "dev" : version));
+        out.flush();
+        return OptionalInt.of(0);
+    }
+
+    /**
+     * Writes the supplied Agent Skill when invoked as {@code __skill}.
+     *
+     * @return zero, or empty when this is an ordinary invocation
+     */
+    public OptionalInt runSkill(PrintWriter out, String skill, String... arguments) {
+        Objects.requireNonNull(out);
+        Objects.requireNonNull(skill);
+        Objects.requireNonNull(arguments);
+        if (!optionsByName.containsKey(SKILL_COMMAND) || !Arrays.asList(arguments).equals(List.of(SKILL_COMMAND))) {
+            return OptionalInt.empty();
+        }
+        out.print(skill);
         out.flush();
         return OptionalInt.of(0);
     }
@@ -1307,6 +1326,15 @@ public final class CommandLine implements OptionChecker {
                 throw new IllegalStateException("Completion is already enabled");
             }
             return option(COMPLETION);
+        }
+
+        public Builder skill() {
+            if (options.stream()
+                    .flatMap(option -> option.names().stream())
+                    .anyMatch(SKILL_COMMAND::equals)) {
+                throw new IllegalStateException("Skill publication is already enabled");
+            }
+            return option(SKILL);
         }
 
         public Builder version(Module module) {

@@ -89,6 +89,10 @@ public final class Ja {
             if (args[commandIndex].equals("completion")) {
                 return printCompletions(out, args, commandIndex);
             }
+            if (args[commandIndex].equals("skill")) {
+                return skill(out, err, ToolRuntime.load(Ja.class.getModule().getLayer()),
+                        Arrays.copyOfRange(args, commandIndex + 1, args.length));
+            }
             var commandLine = JaInvocation.parse(workingDirectory, args);
             COMMAND_LINE.parse(new ToolInvocation(workingDirectory, Arrays.asList(args)));
             return new CommandRunner(Ja.class
@@ -114,6 +118,7 @@ public final class Ja {
                             ModuleFinder systemModules) {
         out.println("Usage: ja [OPTIONS] <command> [command-arguments]");
         out.println("       ja [OPTIONS] tool [<name> [tool-arguments]]");
+        out.println("       ja [OPTIONS] skill [<name>]");
         out.println();
 
         boolean moduleDevelopmentAvailable = CommandAvailability.moduleDevelopmentAvailable(systemModules);
@@ -142,6 +147,7 @@ public final class Ja {
             }
             if (category == Category.DEVELOPMENT) {
                 out.printf("  %-12s %s%n", "tool", "List or run tools");
+                out.printf("  %-12s %s%n", "skill", "List or print tool skills");
                 out.printf("  %-12s %s%n", "completion", "Print completion shims for all completion-aware tools");
             }
             out.println();
@@ -201,6 +207,17 @@ public final class Ja {
         return 0;
     }
 
+    public static int skill(PrintStream out, PrintStream err, ToolRuntime tools, String... arguments) {
+        if (arguments.length > 1) {
+            throw new IllegalArgumentException("Usage: ja skill [<name>]");
+        }
+        if (arguments.length == 0) {
+            tools.skillNames().stream().sorted().forEach(out::println);
+            return 0;
+        }
+        return tools.runSkill(arguments[0], out, err);
+    }
+
     static CommandLine commandLine() {
         return COMMAND_LINE;
     }
@@ -248,6 +265,13 @@ public final class Ja {
             var toolArguments = new ToolInvocation(prepared.workingDirectory(),
                     arguments.subList(commandIndex + 2, arguments.size()));
             return tools.complete(name, new CompletionRequest(toolArguments, request.current()));
+        }
+        if (arguments.size() == commandIndex + 1 && arguments.get(commandIndex).equals("skill")) {
+            return tools.skillNames().stream()
+                    .filter(name -> name.startsWith(request.current()))
+                    .sorted()
+                    .map(name -> new Completion(name, "Tool skill"))
+                    .toList();
         }
         if (!request.current().startsWith("-") && arguments.size() > commandIndex) {
             String command = arguments.get(commandIndex);
@@ -331,6 +355,11 @@ public final class Ja {
                 CommandLine.builder()
                         .option(JaOptions.help())
                         .remainder("TOOL-ARGUMENTS", "A tool name followed by its arguments")
+                        .build());
+        commandLine.command("skill", "List or print tool skills",
+                CommandLine.builder()
+                        .option(JaOptions.help())
+                        .operand("TOOL", "Tool whose skill to print", Cardinality.ZERO_OR_ONE)
                         .build());
         commandLine.command("completion", "Print completion shims for all completion-aware tools",
                 CommandLine.builder()
