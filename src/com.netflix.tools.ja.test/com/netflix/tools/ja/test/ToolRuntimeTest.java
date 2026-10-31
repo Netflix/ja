@@ -14,7 +14,10 @@
 
 package com.netflix.tools.ja.test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -112,6 +115,20 @@ class ToolRuntimeTest {
     }
 
     @Test
+    void discoversAndPrintsToolSkills() {
+        var tools = ToolRuntime.of(new SkilledProbe(), new CheckingTool());
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = tools.runSkill("skilled", new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result);
+        assertEquals(Set.of("skilled"), tools.skillNames());
+        assertEquals(SkilledProbe.SKILL, output.toString(StandardCharsets.UTF_8));
+        assertEquals("", errors.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
     void usesThePlatformOptionCheckerBeforeManifestFallback() {
         var tools = ToolRuntime.load(ModuleLayer.boot());
         var checker = tools.optionChecker("javac", option -> option.equals("--module-path") ? 1 : -1);
@@ -139,6 +156,28 @@ class ToolRuntimeTest {
         @Override
         public int run(PrintWriter out, PrintWriter err, String... arguments) {
             return COMMAND_LINE.runCompletion(out, err, arguments).orElse(0);
+        }
+
+        @Override
+        public int isSupportedOption(String option) {
+            return COMMAND_LINE.isSupportedOption(option);
+        }
+    }
+
+    private record SkilledProbe() implements ToolProvider, OptionChecker {
+        private static final String SKILL = "---\nname: skilled\ndescription: Exercise tool skills\n---\n";
+        private static final CommandLine COMMAND_LINE = CommandLine.builder()
+                .skill()
+                .build();
+
+        @Override
+        public String name() {
+            return "skilled";
+        }
+
+        @Override
+        public int run(PrintWriter out, PrintWriter err, String... arguments) {
+            return COMMAND_LINE.runSkill(out, SKILL, arguments).orElse(2);
         }
 
         @Override

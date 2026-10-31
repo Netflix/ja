@@ -168,7 +168,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(19,
+        assertEquals(20,
                 described.commandLine()
                          .commands()
                          .size());
@@ -227,6 +227,25 @@ class JaToolTest {
                 commandLine(described, "run").parse("--application-option").operands());
         assertEquals(List.of("jfmt", "--unknown"),
                 commandLine(described, "tool").parse("jfmt", "--unknown").operands());
+    }
+
+    @Test
+    void listsPrintsAndCompletesToolSkills() {
+        var tools = ToolRuntime.of(new SkilledProbe(), new CompletingJist());
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        assertEquals(0, Ja.skill(new java.io.PrintStream(output), new java.io.PrintStream(errors), tools));
+        assertEquals("skilled\n", output.toString(StandardCharsets.UTF_8));
+        assertEquals("", errors.toString(StandardCharsets.UTF_8));
+
+        output.reset();
+        assertEquals(0, Ja.skill(new java.io.PrintStream(output), new java.io.PrintStream(errors), tools, "skilled"));
+        assertEquals(SkilledProbe.SKILL, output.toString(StandardCharsets.UTF_8));
+        assertEquals(List.of("skilled"),
+                Ja.complete(new CompletionRequest(ToolInvocation.of("skill"), "ski"), tools).stream()
+                        .map(Completion::value)
+                        .toList());
     }
 
     @Test
@@ -519,6 +538,16 @@ class JaToolTest {
         assertEquals("", result.error());
     }
 
+    @Test
+    void printsSkillCommandHelp() {
+        Result result = run("skill", "--help");
+
+        assertEquals(0, result.exitCode(), result.error());
+        var described = assertInstanceOf(JaTool.class, ja);
+        assertEquals(commandLine(described, "skill").help("ja skill"), result.output());
+        assertEquals("", result.error());
+    }
+
     private static ToolOption option(CommandLine commandLine, String name) {
         return commandLine.options().stream()
                 .filter(candidate -> candidate.names().contains(name))
@@ -543,6 +572,28 @@ class JaToolTest {
         var errors = new ByteArrayOutputStream();
         int exitCode = ja.run(InputStream.nullInputStream(), output, errors, arguments);
         return new Result(exitCode, output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
+    }
+
+    private static final class SkilledProbe implements ToolProvider, OptionChecker {
+        private static final String SKILL = "---\nname: skilled\ndescription: Exercise tool skills\n---\n";
+        private static final CommandLine COMMAND_LINE = CommandLine.builder()
+                .skill()
+                .build();
+
+        @Override
+        public String name() {
+            return "skilled";
+        }
+
+        @Override
+        public int isSupportedOption(String option) {
+            return COMMAND_LINE.isSupportedOption(option);
+        }
+
+        @Override
+        public int run(PrintWriter out, PrintWriter err, String... args) {
+            return COMMAND_LINE.runSkill(out, SKILL, args).orElse(2);
+        }
     }
 
     private static final class CompletingJist implements ToolProvider, OptionChecker {

@@ -216,6 +216,7 @@ public final class ToolRuntime {
     private static Set<String> inspectionOptions() {
         var options = new LinkedHashSet<>(ModuleOptions.optionNames());
         options.add("__complete");
+        options.add("__skill");
         return options;
     }
 
@@ -310,6 +311,27 @@ public final class ToolRuntime {
 
     public Set<String> names() {
         return Set.copyOf(new TreeSet<>(tools.keySet()));
+    }
+
+    public Set<String> skillNames() {
+        return names().stream()
+                .filter(name -> {
+                    var checker = optionChecker(name);
+                    return checker != null && checker.isSupportedOption("__skill") == 0;
+                })
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    public int runSkill(String name, PrintStream out, PrintStream err) {
+        Objects.requireNonNull(name);
+        Objects.requireNonNull(out);
+        Objects.requireNonNull(err);
+        tool(name);
+        var checker = optionChecker(name);
+        if (checker == null || checker.isSupportedOption("__skill") != 0) {
+            throw new IllegalArgumentException("Tool " + name + " does not provide a skill");
+        }
+        return run(name, InputStream.nullInputStream(), out, err, "__skill");
     }
 
     public List<Completion> complete(String name, CompletionRequest request) {
