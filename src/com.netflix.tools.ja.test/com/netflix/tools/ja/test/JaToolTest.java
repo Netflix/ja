@@ -80,6 +80,7 @@ class JaToolTest {
         assertEquals(1, described.isSupportedOption("-p"));
         assertEquals(1, described.isSupportedOption("--project"));
         assertEquals(0, described.isSupportedOption("__complete"));
+        assertEquals(0, described.isSupportedOption("__skill"));
         assertEquals(-1, described.isSupportedOption("--completion"));
         assertEquals(-1, described.isSupportedOption("--module-path"));
         assertEquals(
@@ -100,6 +101,31 @@ class JaToolTest {
                         .filter(option -> option.names().contains("--recompile"))
                         .findFirst()
                         .orElseThrow()));
+    }
+
+    @Test
+    void publishesItsSkillThroughTheProtocolAndJaCommand() throws Exception {
+        String resource = "META-INF/com.netflix.tools/skills/ja/SKILL.md";
+        String expected;
+        try (var input = Ja.class.getModule().getResourceAsStream(resource)) {
+            assertTrue(input != null, resource);
+            expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        Result direct = run("__skill");
+        Result selected = run("skill", "ja");
+        Result listed = run("skill");
+
+        assertEquals(0, direct.exitCode(), direct.error());
+        assertEquals(expected, direct.output());
+        assertEquals("", direct.error());
+        assertEquals(0, selected.exitCode(), selected.error());
+        assertEquals(expected, selected.output());
+        assertTrue(listed.output().lines().anyMatch("ja"::equals), listed.output());
+        assertTrue(expected.startsWith("---\nname: ja\n"), expected);
+        assertTrue(expected.contains("ja projects"), expected);
+        assertTrue(expected.contains("`find callers`"), expected);
+        assertTrue(expected.lines().count() < 500, "skill is too long");
     }
 
     @Test

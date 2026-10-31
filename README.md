@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/Netflix/ja/main/install.sh |
   -Installation Standalone
 ```
 
-The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK. Use a plain JDK: the launcher rejects system modules whose names overlap the bundled application modules, rather than silently using the JDK's copies. When the selected runtime does not contain `java.se`, Ja keeps development commands available subject to the modules in that runtime and reports module development commands as unavailable.
+The installer selects the correct platform archive, installs it alongside applications managed by `ja install`, and activates `ja` through the same user command directory. The launcher uses `JAVA_HOME` when set, then falls back to `java` on `PATH`. The archive contains the development tools, but not a JDK. Use a plain JDK: the launcher rejects system modules whose names overlap the bundled application modules, rather than silently using the JDK's copies. When the selected runtime does not contain `java.se`, `ja` keeps development commands available subject to the modules in that runtime and reports module development commands as unavailable.
 
 Neither installation modifies shell configuration. The installer prints the activation and completion commands to add to your shell profile. See the [installation guide](https://github.com/Netflix/ja/wiki/Installation) for default locations, custom locations, version pinning, shell setup, and environment-manager guidance.
 
@@ -137,6 +137,15 @@ Several bundled tools underpin the command implementation:
 - [jfmt](https://github.com/Netflix/jfmt) formats source using the Code Conventions for the Java Programming Language, adapted for the modern Java language. Avoids the very common whitespace, indentation, import ordering and qualified class references introduced in agent written code
 - [jist](https://github.com/Netflix/jist) provides source aware symbol search, providing a grep style interface for understanding class files and their associated sources. Gives coding agents access to symbols and sources without indexing, LSPs or MCPs while interoperating with other build tools via an argument file contract
 - [jdocserver](https://github.com/Netflix/jdocserver) serves locally browsable API documentation
+
+## Agent Skills
+
+`ja skill` lists tools in the current installation that publish an [Agent Skill](https://agentskills.io/). `ja skill <tool>` prints the version-matched `SKILL.md` supplied by that tool:
+
+```sh
+ja skill
+ja skill ja
+```
 
 ## Documentation
 
