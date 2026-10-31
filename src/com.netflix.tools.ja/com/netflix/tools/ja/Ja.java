@@ -21,6 +21,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.lang.module.ModuleFinder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,6 +41,7 @@ import com.netflix.tools.launcher.CompletionShell;
 
 /** Provides the {@code ja} command-line entry point and top-level help. */
 public final class Ja {
+    private static final String SKILL_RESOURCE = "META-INF/com.netflix.tools/skills/ja/SKILL.md";
     private static final CommandLine COMMAND_LINE = createCommandLine();
 
     private Ja() {}
@@ -53,6 +55,9 @@ public final class Ja {
                    Path workingDirectory, String... args)
             throws IOException {
         try {
+            if (Arrays.asList(args).equals(List.of("__skill"))) {
+                return COMMAND_LINE.runSkill(new PrintWriter(out, true), skill(), args).orElseThrow();
+            }
             var completion = COMMAND_LINE.runCompletion(new PrintWriter(out, true), new PrintWriter(err, true), Ja::complete,
                     new ToolInvocation(workingDirectory, Arrays.asList(args)));
             if (completion.isPresent()) {
@@ -190,6 +195,17 @@ public final class Ja {
             if (arguments[index].equals("-h") || arguments[index].equals("--help")) return Optional.of(selected);
         }
         return Optional.empty();
+    }
+
+    private static String skill() {
+        try (var input = Ja.class.getModule().getResourceAsStream(SKILL_RESOURCE)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing Ja skill resource: " + SKILL_RESOURCE);
+            }
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Cannot read Ja skill resource: " + SKILL_RESOURCE, failure);
+        }
     }
 
     private static int printCompletions(PrintStream out, String[] arguments, int commandIndex) {
@@ -347,6 +363,7 @@ public final class Ja {
                 .options(JaOptions.verbose(), JaOptions.project(), JaOptions.help())
                 .version(Ja.class.getModule())
                 .completion()
+                .skill()
                 .workingDirectory();
         for (BuiltinCommand command : BuiltinCommand.values()) {
             commandLine.command(command.commandName(), command.description(), commandLine(command));
