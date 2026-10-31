@@ -1,2 +1,10 @@
 ja
 Copyright 2026 Netflix, Inc.
+
+This product includes the OpenJDK Simple JSON API and implementation.
+Copyright (c) 2025, 2026, Oracle and/or its affiliates.
+
+The OpenJDK JSON sources and their backport modifications are licensed under
+GPL version 2 only with the Classpath exception, not the Apache License.
+See src/com.netflix.tools.json/META-INF/LICENSES/openjdk-json.txt for the
+applicable license text and openjdk-json-source.md for provenance.

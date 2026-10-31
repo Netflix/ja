@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <name>ja JSON support</name>
+  <description>A JDK 25-compatible backport of the OpenJDK Simple JSON API preview.</description>
+  <url>https://github.com/Netflix/ja</url>
+  <licenses>
+    <license>
+      <name>GNU General Public License, version 2, with the Classpath Exception</name>
+      <url>https://openjdk.org/legal/gplv2+ce.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>DanielThomas</id>
+      <name>Danny Thomas</name>
+      <url>https://github.com/DanielThomas</url>
+      <organization>Netflix, Inc.</organization>
+      <organizationUrl>https://netflix.github.io/</organizationUrl>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/Netflix/ja.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Netflix/ja.git</developerConnection>
+    <url>https://github.com/Netflix/ja</url>
+  </scm>
+</project>
