@@ -276,7 +276,8 @@ public final class Installer {
             applications.find(module).ifPresent(reference -> {
                 for (var requirement : reference.descriptor().requires()) {
                     String dependency = requirement.name();
-                    if (requirement.modifiers().contains(Modifier.STATIC)) {
+                    if (requirement.modifiers().contains(Modifier.STATIC)
+                            && (applications.find(dependency).isPresent() || system.find(dependency).isPresent())) {
                         roots.add(dependency);
                     }
                     if (applications.find(dependency).isPresent()) {
