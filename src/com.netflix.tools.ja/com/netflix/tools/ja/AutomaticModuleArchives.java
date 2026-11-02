@@ -17,6 +17,7 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleDescriptor.Provides;
+import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -36,16 +37,10 @@ final class AutomaticModuleArchives {
     private AutomaticModuleArchives() {}
 
     static void rewrite(Path archive, String moduleName) throws IOException {
+        var descriptor = ModuleFinder.of(archive).find(moduleName).orElseThrow().descriptor();
         try (var fileSystem = FileSystems.newFileSystem(archive, Map.of())) {
-            Path descriptorPath = fileSystem.getPath("/module-info.class");
-            if (Files.isRegularFile(descriptorPath)) {
-                ModuleDescriptor descriptor;
-                try (var input = Files.newInputStream(descriptorPath)) {
-                    descriptor = ModuleDescriptor.read(input);
-                }
-                writeServices(fileSystem.getPath("/META-INF/services"), descriptor);
-            }
-            Files.deleteIfExists(descriptorPath);
+            writeServices(fileSystem.getPath("/META-INF/services"), descriptor);
+            Files.deleteIfExists(fileSystem.getPath("/module-info.class"));
             deleteVersionedDescriptors(fileSystem.getPath("/META-INF/versions"));
 
             Path manifestPath = fileSystem.getPath("/META-INF/MANIFEST.MF");

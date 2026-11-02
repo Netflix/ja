@@ -33,7 +33,7 @@ public record InitRequest(String moduleName, Optional<Integer> release, Optional
         mainClass = Objects.requireNonNull(mainClass, "mainClass");
         runtimeAccess = List.copyOf(runtimeAccess);
         release.ifPresent(value -> {
-            if (value <= 0) {
+            if (value < 8) {
                 throw new IllegalArgumentException("Invalid release: " + value);
             }
         });

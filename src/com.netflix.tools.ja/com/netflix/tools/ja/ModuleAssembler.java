@@ -341,6 +341,19 @@ final class ModuleAssembler {
         arguments.add("-d");
         arguments.add(plan.javadocOutput()
                           .toString());
+        var resolvedArguments = ArgumentFiles.parse(Files.readString(plan.javadocArguments()));
+        int release = resolvedArguments.indexOf("--release");
+        if (release >= 0 && resolvedArguments.get(release + 1).equals("8")) {
+            // --release 8 cannot select sources with --module.
+            try (var sources = Files.walk(plan.moduleSource())) {
+                sources.filter(Files::isRegularFile)
+                        .filter(source -> source.toString().endsWith(".java"))
+                        .filter(source -> !source.startsWith(plan.moduleSource().resolve("META-INF")))
+                        .sorted()
+                        .map(Path::toString)
+                        .forEach(arguments::add);
+            }
+        }
         return tools.run("javadoc", in, out, err, arguments.toArray(String[]::new));
     }
 

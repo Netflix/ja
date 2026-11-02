@@ -14,6 +14,7 @@
 
 package com.netflix.tools.ja;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -23,15 +24,15 @@ final class ModuleMetadata {
 
     private ModuleMetadata() {}
 
-    static Path deploymentPom(Path moduleSource) {
+    static Path deploymentPom(Path moduleSource) throws IOException {
         return moduleRoot(moduleSource).resolve(DEPLOYMENT_POM);
     }
 
-    private static Path moduleRoot(Path moduleSource) {
+    private static Path moduleRoot(Path moduleSource) throws IOException {
         if (moduleSource.getFileName() != null && moduleSource.getFileName()
                 .toString()
                 .equals("classes")
-                && Files.isRegularFile(moduleSource.resolve("module-info.java"))) {
+                && Files.isRegularFile(ModuleInfo.descriptorPath(moduleSource))) {
             return moduleSource.getParent();
         }
         return moduleSource;

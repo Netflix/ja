@@ -53,8 +53,7 @@ final class ResolvedModules {
 
         var sourceModules = new LinkedHashSet<String>();
         for (var entry : ToolArguments.moduleSourcePath(arguments).entrySet()) {
-            var descriptor = ModuleInfo.descriptor(entry.getValue()
-                    .resolve("module-info.java"));
+            var descriptor = ModuleInfo.descriptor(ModuleInfo.descriptorPath(entry.getValue()));
             applicationModules.put(descriptor.name(), descriptor);
             sourceModules.add(descriptor.name());
         }

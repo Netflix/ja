@@ -55,20 +55,28 @@ final class JarPackager {
         Path staged = Files.createTempFile(parent, ".ja-jar-", ".jar");
         try {
             Files.delete(staged);
+            boolean packed = Files.isRegularFile(moduleContent);
             var arguments = new ArrayList<String>();
-            arguments.add("--create");
+            arguments.add(packed ? "--update" : "--create");
             arguments.add("--file");
             arguments.add(staged.toString());
-            Path manifest = moduleContent.resolve("META-INF/MANIFEST.MF");
-            if (Files.isRegularFile(manifest)) {
-                arguments.add("--manifest");
-                arguments.add(manifest.toString());
+            if (packed) {
+                Files.copy(moduleContent, staged);
+            } else {
+                Path manifest = moduleContent.resolve("META-INF/MANIFEST.MF");
+                if (Files.isRegularFile(manifest)) {
+                    arguments.add("--manifest");
+                    arguments.add(manifest.toString());
+                }
             }
             arguments.addAll(moduleArguments);
-            arguments.add("-C");
-            arguments.add(moduleContent.toString());
-            arguments.add(".");
-            int result = tools.run("jar", in, out, err, arguments.toArray(String[]::new));
+            if (!packed) {
+                arguments.add("-C");
+                arguments.add(moduleContent.toString());
+                arguments.add(".");
+            }
+            int result = packed && moduleArguments.isEmpty() ? 0
+                    : tools.run("jar", in, out, err, arguments.toArray(String[]::new));
             if (result != 0) {
                 return new Result(result, false);
             }

@@ -24,9 +24,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 /**
- * Filters compile-only tool content from a complete exploded module.
+ * Filters compile-only tool content from a complete module directory or JAR.
  *
  * <p>Closing the instance removes any temporary filtered copy; a module with
  * no excluded content is returned directly.
@@ -63,11 +66,14 @@ final class FilteredModuleContent implements AutoCloseable {
             List<String> runtimeArguments, List<ToolDefinition> tools)
             throws IOException {
         var source = ToolArguments.moduleLocation(moduleName, runtimeArguments).orElseThrow(() -> new IllegalArgumentException("Resolved arguments do not contain complete module " + moduleName));
+        var excluded = exclusions(compileArguments, runtimeArguments, tools);
+        if (Files.isRegularFile(source)) {
+            return prepareArchive(moduleName, source, deploymentPom, excluded);
+        }
         if (!Files.isDirectory(source)) {
-            throw new IllegalArgumentException("Complete module is not an exploded directory: " + source);
+            throw new IllegalArgumentException("Complete module does not exist: " + source);
         }
 
-        var excluded = exclusions(compileArguments, runtimeArguments, tools);
         boolean addDeploymentPom = Files.isRegularFile(deploymentPom) && !Files.isRegularFile(source.resolve(ModuleMetadata.DEPLOYMENT_POM));
         boolean removeMavenExportPom = Files.isRegularFile(source.resolve(ModuleMetadata.MAVEN_EXPORT_POM));
         if (!addDeploymentPom
@@ -92,6 +98,52 @@ final class FilteredModuleContent implements AutoCloseable {
             throw failure;
         }
         return new FilteredModuleContent(destination, staging);
+    }
+
+    private static FilteredModuleContent prepareArchive(String moduleName, Path source, Path deploymentPom,
+            List<Suffixes> excluded) throws IOException {
+        String deploymentPomEntry = ModuleMetadata.DEPLOYMENT_POM.toString().replace('\\', '/');
+        String exportPomEntry = ModuleMetadata.MAVEN_EXPORT_POM.toString().replace('\\', '/');
+        try (var archive = new ZipFile(source.toFile())) {
+            boolean addDeploymentPom = Files.isRegularFile(deploymentPom)
+                    && archive.getEntry(deploymentPomEntry) == null;
+            boolean removeMavenExportPom = archive.getEntry(exportPomEntry) != null;
+            boolean removeExcluded = archive.stream().anyMatch(entry -> excludes(Path.of(entry.getName()), excluded));
+            if (!addDeploymentPom && !removeMavenExportPom && !removeExcluded) {
+                return new FilteredModuleContent(source, null);
+            }
+
+            Path staging = Files.createTempDirectory("ja-filter-");
+            Path destination = staging.resolve(moduleName + ".jar");
+            try {
+                try (var output = new ZipOutputStream(Files.newOutputStream(destination))) {
+                    for (var entry : archive.stream().toList()) {
+                        if (entry.getName().equals(exportPomEntry)
+                                || excludes(Path.of(entry.getName()), excluded)) {
+                            continue;
+                        }
+                        var retained = new ZipEntry(entry.getName());
+                        retained.setTime(entry.getTime());
+                        output.putNextEntry(retained);
+                        if (!entry.isDirectory()) {
+                            try (var input = archive.getInputStream(entry)) {
+                                input.transferTo(output);
+                            }
+                        }
+                        output.closeEntry();
+                    }
+                    if (addDeploymentPom) {
+                        output.putNextEntry(new ZipEntry(deploymentPomEntry));
+                        Files.copy(deploymentPom, output);
+                        output.closeEntry();
+                    }
+                }
+                return new FilteredModuleContent(destination, staging);
+            } catch (IOException | RuntimeException | Error failure) {
+                deleteTree(staging);
+                throw failure;
+            }
+        }
     }
 
     private static void copy(Path source, Path destination) throws IOException {

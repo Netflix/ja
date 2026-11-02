@@ -98,19 +98,20 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
         for (Path current = directory;
              current != null;
              current = current.getParent()) {
-            Path descriptor = current.resolve("module-info.java");
+            Path sourceDirectory = ModuleInfo.sourceDirectory(current);
+            Path descriptor = ModuleInfo.descriptorPath(sourceDirectory);
             if (Files.isRegularFile(descriptor)) {
-                Path moduleDirectory = current.getFileName() != null && current.getFileName()
+                Path moduleDirectory = sourceDirectory.getFileName() != null && sourceDirectory.getFileName()
                                 .toString()
                                 .equals("classes")
-                        ? current.getParent()
-                        : current;
-                return Optional.of(module(current, moduleDirectory, descriptor, parseDescriptors));
+                        ? sourceDirectory.getParent()
+                        : sourceDirectory;
+                return Optional.of(module(sourceDirectory, moduleDirectory, descriptor, parseDescriptors));
             }
 
             if (current.equals(directory)) {
                 Path classes = current.resolve("classes");
-                Path classesDescriptor = classes.resolve("module-info.java");
+                Path classesDescriptor = ModuleInfo.descriptorPath(classes);
                 if (Files.isRegularFile(classesDescriptor)) {
                     return Optional.of(module(classes, current, classesDescriptor, parseDescriptors));
                 }
@@ -143,13 +144,6 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
         return entries.stream()
                 .map(Entry::argument)
                 .toList();
-    }
-
-    private static boolean isJmodLayoutSource(Path sourceDirectory) {
-        return sourceDirectory.getFileName() != null && sourceDirectory.getFileName()
-                .toString()
-                .equals("classes")
-                && Files.isRegularFile(sourceDirectory.resolve("module-info.java"));
     }
 
     private static ModuleSourcePath module(Path moduleSource, Path moduleDirectory, Path descriptor,
@@ -192,8 +186,8 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
 
     private static ModuleSourcePath sourcePath(Path sourcePath, Map<String, Path> modules, Optional<String> enclosingModule) {
         List<Entry> entries;
-        if (modules.values().stream()
-                .noneMatch(ModuleSourcePath::isJmodLayoutSource)) {
+        if (modules.entrySet().stream()
+                .allMatch(entry -> sourcePath.resolve(entry.getKey()).equals(entry.getValue()))) {
             entries = List.of(new Directory(sourcePath));
         } else {
             entries = modules.entrySet().stream()
@@ -229,7 +223,7 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
         try (var children = Files.list(sourcePath)) {
             for (Path child : children.filter(Files::isDirectory).toList()) {
                 Path moduleSource = moduleSource(child);
-                Path descriptor = moduleSource.resolve("module-info.java");
+                Path descriptor = ModuleInfo.descriptorPath(moduleSource);
                 if (!Files.isRegularFile(descriptor)) {
                     continue;
                 }
@@ -247,11 +241,11 @@ public record ModuleSourcePath(List<Entry> entries, Map<String, Path> modules, O
         return modules;
     }
 
-    private static Path moduleSource(Path moduleDirectory) {
-        if (Files.isRegularFile(moduleDirectory.resolve("module-info.java"))) {
+    private static Path moduleSource(Path moduleDirectory) throws IOException {
+        if (Files.isRegularFile(ModuleInfo.descriptorPath(moduleDirectory))) {
             return moduleDirectory;
         }
         Path classes = moduleDirectory.resolve("classes");
-        return Files.isRegularFile(classes.resolve("module-info.java")) ? classes : moduleDirectory;
+        return Files.isRegularFile(ModuleInfo.descriptorPath(classes)) ? classes : moduleDirectory;
     }
 }

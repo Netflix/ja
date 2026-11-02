@@ -21,6 +21,8 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.jar.Attributes.Name;
+import java.util.jar.Manifest;
 
 import com.netflix.tools.ja.CommandRunner;
 import com.netflix.tools.ja.JaInvocation;
@@ -47,6 +49,79 @@ class ModuleInitializerTest {
 
         assertEquals("module com.example.application {\n}\n", Files.readString(temporaryDirectory.resolve("module-info.java")));
         assertTrue(Files.exists(existingSource));
+    }
+
+    @Test
+    void initializesReleaseEightWithAnExplicitMultiReleaseLayout() throws Exception {
+        assertEquals(0, initialize(temporaryDirectory, "--release", "8", "--main-class", "com.example.Main",
+                "com.example.application"));
+
+        Path descriptor = temporaryDirectory.resolve("META-INF/versions/9/module-info.java");
+        assertEquals("""
+                /**
+                 * @release 8
+                 * @mainClass com.example.Main
+                 */
+                module com.example.application {
+                }
+                """, Files.readString(descriptor));
+        assertFalse(Files.exists(temporaryDirectory.resolve("module-info.java")));
+        try (var input = Files.newInputStream(temporaryDirectory.resolve("META-INF/MANIFEST.MF"))) {
+            assertEquals("true", new Manifest(input).getMainAttributes().getValue(Name.MULTI_RELEASE));
+        }
+        assertEquals(List.of("com.example.application"),
+                ModuleSourcePath.discover(temporaryDirectory).orElseThrow().moduleNames());
+    }
+
+    @Test
+    void releaseEightPreservesExistingManifestAttributes() throws Exception {
+        Path manifest = temporaryDirectory.resolve("META-INF/MANIFEST.MF");
+        Files.createDirectories(manifest.getParent());
+        Files.writeString(manifest, "Manifest-Version: 1.0\nImplementation-Title: Example\n\n");
+
+        assertEquals(0, initialize(temporaryDirectory, "--release", "8", "com.example.application"));
+
+        try (var input = Files.newInputStream(manifest)) {
+            var attributes = new Manifest(input).getMainAttributes();
+            assertEquals("Example", attributes.getValue("Implementation-Title"));
+            assertEquals("true", attributes.getValue(Name.MULTI_RELEASE));
+        }
+    }
+
+    @Test
+    void rejectsReleasesBeforeEightWithoutWritingSource() {
+        assertThrows(IllegalArgumentException.class,
+                () -> initialize(temporaryDirectory, "--release", "7", "com.example.application"));
+        assertFalse(Files.exists(temporaryDirectory.resolve("module-info.java")));
+        assertFalse(Files.exists(temporaryDirectory.resolve("META-INF")));
+    }
+
+    @Test
+    void refusesToReplaceAnExistingMultiReleaseDescriptor() throws Exception {
+        Path descriptor = temporaryDirectory.resolve("META-INF/versions/9/module-info.java");
+        Files.createDirectories(descriptor.getParent());
+        Files.writeString(descriptor, "/** @release 8 */ module com.example.existing {}\n");
+
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> initialize(temporaryDirectory, "--release", "8", "com.example.replacement"));
+
+        assertTrue(failure.getMessage().contains(descriptor.toString()));
+        assertEquals("/** @release 8 */ module com.example.existing {}\n", Files.readString(descriptor));
+        assertFalse(Files.exists(temporaryDirectory.resolve("module-info.java")));
+    }
+
+    @Test
+    void rejectsInitializationBeneathAMultiReleaseModule() throws Exception {
+        Path descriptor = temporaryDirectory.resolve("META-INF/versions/9/module-info.java");
+        Files.createDirectories(descriptor.getParent());
+        Files.writeString(descriptor, "/** @release 8 */ module com.example.parent {}\n");
+        Path nested = Files.createDirectories(temporaryDirectory.resolve("nested/source"));
+
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> initialize(nested, "com.example.child"));
+
+        assertTrue(failure.getMessage().contains(descriptor.toString()));
+        assertFalse(Files.exists(nested.resolve("module-info.java")));
     }
 
     @Test
