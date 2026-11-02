@@ -7,7 +7,7 @@ description: Develop and understand Java projects with the `ja` command-line env
 
 `ja` is a terminal development environment for Java. It discovers Java module, Gradle, and Maven projects and supplies commands and tools with the sources, dependencies, class paths, module paths, and Java options for the selected project context.
 
-The working directory of each `ja` invocation selects the project and its default context. Run from the project or source directory being investigated. Use `-C <directory>` to change the working directory before project discovery, or `-p <selector>` to explicitly select another project context. Run `ja <command> --help` for complete command syntax.
+The working directory selects the build and provides a useful focus. Java insight commands search every discovered Java context when run at the build root, narrow to an enclosing project or source file when possible, and merge duplicate results. Use `-C <directory>` to change the working directory before project discovery, or `-p <selector>` to focus a command on an explicit project context. Run `ja <command> --help` for complete command syntax.
 
 ## Select the project context
 
@@ -17,7 +17,7 @@ When the automatic selection is not obvious, start with:
 ja projects
 ```
 
-The output lists every discovered project context and marks the current selection. Use the selector from the first column with `-p`.
+The output lists every discovered project context and marks the current working-directory or requested selection. Use the selector from the first column with `-p` when a question should be restricted to one context.
 
 Gradle selectors can identify a project, source set, and class path:
 
@@ -42,19 +42,19 @@ Do not construct class paths or module paths by hand when `ja` has discovered th
 Use `ja` semantic commands for questions about Java declarations, resolved types, origins, and relationships:
 
 ```bash
-ja -p <context> describe module <module>
-ja -p <context> describe file <source-file>
-ja -p <context> describe type <type>
-ja -p <context> describe member <member>
-ja -p <context> describe types <type-or-source-file>
-ja -p <context> describe origin <symbol>
-ja -p <context> source <symbol>
-ja -p <context> doc <symbol>
-ja -p <context> find usages <type-or-member>
-ja -p <context> find callers <type-or-method>
-ja -p <context> find callees <type-or-method>
-ja -p <context> find impl <type-or-method>
-ja -p <context> find supertypes <type>
+ja describe module <module>
+ja describe file <source-file>
+ja describe type <type>
+ja describe member <member>
+ja describe types <type-or-source-file>
+ja describe origin <symbol>
+ja source <symbol>
+ja doc <symbol>
+ja find usages <type-or-member>
+ja find callers <type-or-method>
+ja find callees <type-or-method>
+ja find impl <type-or-method>
+ja find supertypes <type>
 ```
 
 Choose the command according to the question:
@@ -75,7 +75,7 @@ Choose the command according to the question:
 
 Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
 
-These queries use the selected project's resolved Java inputs. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
+These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
 
 ## Use packaged Java tools
 

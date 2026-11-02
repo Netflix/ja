@@ -21,11 +21,18 @@ import java.io.PrintStream;
 import java.lang.ModuleLayer.Controller;
 import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import com.netflix.tools.ja.BuiltinCommand.Execution.LaunchJava;
@@ -45,6 +52,15 @@ import com.netflix.tools.ja.DocRequest.Terminal;
 import com.netflix.tools.ja.ToolDefinition.Launch;
 import com.netflix.tools.ja.ToolRunner.PreparedInvocation;
 import com.netflix.tools.ja.ToolRunner.ResolutionRequest;
+import com.netflix.tools.ja.project.Project;
+import com.netflix.tools.ja.project.ProjectContext;
+import com.netflix.tools.ja.project.ProjectSelection.BuildScope;
+import com.netflix.tools.ja.project.ProjectSelection.Origin;
+import com.netflix.tools.ja.project.ProjectSelection.SelectedProjects;
+import com.netflix.tools.ja.project.ProjectTarget;
+import com.netflix.tools.json.Json;
+import com.netflix.tools.json.JsonParseException;
+import com.netflix.tools.json.JsonValueException;
 
 /**
  * Coordinates module resolution, source-tool discovery, and execution of one
@@ -160,6 +176,11 @@ public final class CommandRunner {
         }
         var selectedToolRunner = scopedTools == null ? new ToolRunner(layer, tools, catalog, javaLauncher) : new ToolRunner(scopedTools.layer(), scopedTools.controller(), selectedTools, tools, selectedCatalog, javaLauncher);
         CommandAvailability.require(commandLine, selectedTools, selectedCatalog);
+        var globalInsight = runGlobalInsight(commandLine, out, err, selectedCatalog, scopedTools,
+                moduleHashesAlreadyVerified);
+        if (globalInsight.isPresent()) {
+            return globalInsight.orElseThrow();
+        }
         if (commandLine.command() instanceof Tools) {
             selectedCatalog.definitions().forEach(definition -> out.println(definition.name()));
             return 0;
@@ -301,6 +322,246 @@ public final class CommandRunner {
             if (temporaryDirectory.isPresent()) {
                 temporaryDirectory.get().close();
             }
+        }
+    }
+
+    private OptionalInt runGlobalInsight(
+            JaInvocation commandLine,
+            PrintStream out,
+            PrintStream err,
+            ToolCatalog catalog,
+            ScopedTools scopedTools,
+            boolean moduleHashesAlreadyVerified) {
+        if (!globalInsight(commandLine)) {
+            return OptionalInt.empty();
+        }
+        var targets = insightTargets(commandLine);
+        boolean buildScope = commandLine.projectContext().orElseThrow().selection() instanceof BuildScope;
+        if (targets.isEmpty() || !buildScope && targets.size() < 2) {
+            return OptionalInt.empty();
+        }
+        boolean progress = System.console() != null && err == System.err;
+        if (progress) {
+            err.print("ja: searching " + targets.size() + " project contexts...\r");
+            err.flush();
+        }
+        var results = new ArrayList<InsightResult>();
+        int processors = Runtime.getRuntime().availableProcessors();
+        int parallelism = Math.min(targets.size(), Math.max(2, Math.min(8, processors)));
+        try (var executor = Executors.newFixedThreadPool(
+                parallelism,
+                Thread.ofVirtual().name("ja-insight-", 0).factory())) {
+            var futures = targets.stream()
+                    .map(target -> executor.submit(() -> runInsightContext(
+                            commandLine,
+                            target,
+                            catalog,
+                            scopedTools,
+                            moduleHashesAlreadyVerified)))
+                    .toList();
+            for (var future : futures) {
+                try {
+                    results.add(future.get());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while searching project contexts", e);
+                } catch (ExecutionException e) {
+                    throw new IllegalStateException("Unable to search project context", e.getCause());
+                }
+            }
+        } finally {
+            if (progress) {
+                err.print("\r\033[2K");
+                err.flush();
+            }
+        }
+
+        boolean successful = results.stream().anyMatch(result -> result.status() == 0);
+        if (!successful) {
+            results.forEach(result -> printInsightError(result, err));
+            return OptionalInt.of(results.stream()
+                    .mapToInt(InsightResult::status)
+                    .filter(status -> status != 0)
+                    .findFirst()
+                    .orElse(2));
+        }
+        if (commandLine.verbose()) {
+            results.stream().filter(result -> result.status() != 0)
+                    .forEach(result -> printInsightError(result, err));
+        }
+        var originTarget = commandLine.command() instanceof Command.Describe(var request)
+                && request.subject() == DescribeRequest.Subject.ORIGIN
+                        ? Optional.of(request.target())
+                        : Optional.<String>empty();
+        var rows = new LinkedHashSet<String>();
+        results.stream().filter(result -> result.status() == 0)
+                .flatMap(result -> result.rows().stream())
+                .filter(row -> originTarget.isEmpty()
+                        || matchesOriginTarget(originSymbol(row), originTarget.orElseThrow()))
+                .forEach(rows::add);
+        rows.forEach(out::println);
+        return OptionalInt.of(0);
+    }
+
+    private InsightResult runInsightContext(
+            JaInvocation commandLine,
+            ProjectTarget target,
+            ToolCatalog catalog,
+            ScopedTools scopedTools,
+            boolean moduleHashesAlreadyVerified) {
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+        try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
+                var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
+            var focused = focus(commandLine, target);
+            List<String> arguments;
+            if (commandLine.command() instanceof Command.Find(var request)
+                    && request.question() == FindRequest.Question.IMPL) {
+                var symbols = new ByteArrayOutputStream();
+                int lookup;
+                try (var symbolOutput = new PrintStream(symbols, true, StandardCharsets.UTF_8)) {
+                    lookup = run(
+                            toolInvocation(focused, "jist", request.arguments()),
+                            InputStream.nullInputStream(),
+                            symbolOutput,
+                            err,
+                            catalog,
+                            scopedTools,
+                            moduleHashesAlreadyVerified);
+                }
+                if (lookup != 0) {
+                    return new InsightResult(target, lookup, List.of(), errors.toString(StandardCharsets.UTF_8));
+                }
+                arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
+            } else {
+                arguments = insightArguments(commandLine);
+            }
+            var jsonArguments = new ArrayList<String>();
+            jsonArguments.add("--format");
+            jsonArguments.add("json");
+            jsonArguments.addAll(arguments);
+            int status = run(
+                    toolInvocation(focused, "jist", jsonArguments),
+                    InputStream.nullInputStream(),
+                    out,
+                    err,
+                    catalog,
+                    scopedTools,
+                    moduleHashesAlreadyVerified);
+            if (status != 0) {
+                return new InsightResult(target, status, List.of(), errors.toString(StandardCharsets.UTF_8));
+            }
+            try {
+                var document = Json.parse(output.toString(StandardCharsets.UTF_8));
+                if (!document.get("format").asString().equals("jist") || document.get("version").asInt() != 1) {
+                    throw new IllegalArgumentException("Unsupported jist JSON output");
+                }
+                var rows = document.get("results").asList().stream()
+                        .map(result -> result.get("text").asString())
+                        .toList();
+                return new InsightResult(target, 0, rows, errors.toString(StandardCharsets.UTF_8));
+            } catch (JsonParseException | JsonValueException | IllegalArgumentException e) {
+                return new InsightResult(target, 2, List.of(), "Invalid jist JSON output: " + e.getMessage());
+            }
+        } catch (Exception e) {
+            int status = e instanceof ToolExecutionException failure ? failure.exitCode() : 2;
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new InsightResult(target, status, List.of(), message);
+        }
+    }
+
+    private static boolean globalInsight(JaInvocation commandLine) {
+        if (!ProjectResolver.external(commandLine)) {
+            return false;
+        }
+        return switch (commandLine.command()) {
+            case Doc(Terminal _) -> true;
+            case Source _ -> true;
+            case Command.Describe _ -> true;
+            case Command.Find _ -> true;
+            default -> false;
+        };
+    }
+
+    private static List<ProjectTarget> insightTargets(JaInvocation commandLine) {
+        var context = commandLine.projectContext().orElseThrow();
+        return switch (context.selection()) {
+            case BuildScope _ -> insightPath(commandLine)
+                    .flatMap(path -> enclosingProject(context, path))
+                    .map(Project::targets)
+                    .orElseGet(() -> context.catalog().projects().stream()
+                            .flatMap(project -> project.targets().stream())
+                            .toList())
+                    .stream()
+                    .filter(target -> target.scope().isPresent())
+                    .toList();
+            case SelectedProjects selected -> selected.targets();
+        };
+    }
+
+    private static Optional<Path> insightPath(JaInvocation commandLine) {
+        if (!(commandLine.command() instanceof Command.Describe(var request))) {
+            return Optional.empty();
+        }
+        try {
+            var path = Path.of(request.target());
+            if (!path.isAbsolute()) {
+                path = commandLine.workingDirectory().resolve(path);
+            }
+            path = path.toAbsolutePath().normalize();
+            return Files.exists(path) ? Optional.of(path) : Optional.empty();
+        } catch (InvalidPathException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<Project> enclosingProject(ProjectContext context, Path path) {
+        Project selected = null;
+        for (var project : context.catalog().projects()) {
+            if (path.startsWith(project.directory())
+                    && (selected == null || project.directory().getNameCount() > selected.directory().getNameCount())) {
+                selected = project;
+            }
+        }
+        return Optional.ofNullable(selected);
+    }
+
+    private static JaInvocation focus(JaInvocation invocation, ProjectTarget target) {
+        var context = invocation.projectContext().orElseThrow();
+        var focused = new ProjectContext(
+                context.catalog(),
+                new SelectedProjects(List.of(target), Origin.REQUESTED));
+        return new JaInvocation(
+                invocation.workingDirectory(),
+                invocation.verbose(),
+                invocation.command(),
+                invocation.moduleSourcePath(),
+                invocation.rootModules(),
+                invocation.resolutionArguments(),
+                invocation.toolArguments(),
+                invocation.requestedProjects(),
+                Optional.of(focused));
+    }
+
+    private static List<String> insightArguments(JaInvocation commandLine) {
+        return switch (commandLine.command()) {
+            case Doc(Terminal(var symbol)) -> List.of("--source", "doc", "--break", "--no-line-number", symbol);
+            case Source(var symbol) -> List.of("--source", "symbol", symbol);
+            case Command.Describe(var request) -> request.arguments(commandLine.workingDirectory());
+            case Command.Find(var request) -> request.arguments();
+            default -> throw new IllegalArgumentException("Command does not provide Java insight: " + commandLine.command());
+        };
+    }
+
+    private static void printInsightError(InsightResult result, PrintStream err) {
+        var diagnostic = result.error().strip();
+        err.println("ja: " + result.target().selector() + ": "
+                + (diagnostic.isEmpty() ? "query failed with status " + result.status() : diagnostic));
+    }
+
+    private record InsightResult(ProjectTarget target, int status, List<String> rows, String error) {
+        InsightResult {
+            rows = List.copyOf(rows);
         }
     }
 

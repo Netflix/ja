@@ -21,7 +21,11 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.spi.ToolProvider;
 import javax.tools.OptionChecker;
 
@@ -34,6 +38,13 @@ import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.Ja;
 import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ToolRuntime;
+import com.netflix.tools.ja.project.Project;
+import com.netflix.tools.ja.project.ProjectAnchor;
+import com.netflix.tools.ja.project.ProjectCatalog;
+import com.netflix.tools.ja.project.ProjectContext;
+import com.netflix.tools.ja.project.ProjectScope;
+import com.netflix.tools.ja.project.ProjectSelection.BuildScope;
+import com.netflix.tools.ja.project.ProjectType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -151,6 +162,106 @@ class CodeInsightTest {
     }
 
     @Test
+    void buildInsightQueriesEveryContextConcurrentlyAndMergesResults(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "example.Target.run"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(),
+                parsed.verbose(),
+                parsed.command(),
+                parsed.moduleSourcePath(),
+                parsed.rootModules(),
+                parsed.resolutionArguments(),
+                parsed.toolArguments(),
+                parsed.requestedProjects(),
+                Optional.of(context));
+        var jist = new ConcurrentJist(2);
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new GlobalJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("shared result\nresult :first\nresult :second\n", output.toString());
+        assertEquals(2, jist.invocations.size());
+        for (var arguments : jist.invocations) {
+            assertEquals(List.of("--format", "json"), arguments.subList(arguments.size() - 4, arguments.size() - 2));
+            assertEquals(List.of("--callers", "example.Target.run"), arguments.subList(arguments.size() - 2, arguments.size()));
+        }
+    }
+
+    @Test
+    void globalImplementationSearchResolvesTheQuestionInEachContext(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "impl", "example.Root"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new ImplementationJist();
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new GlobalJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("implementation :first\nimplementation :second\n", output.toString());
+        assertEquals(4, jist.invocations.size());
+        assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--subtypes")).count());
+    }
+
+    @Test
+    void fileInsightNarrowsBuildScopeToItsProject(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var source = first.resolve("Example.java");
+        Files.writeString(source, "class Example {}");
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"describe", "file", source.toString()});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new ConcurrentJist(1);
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new GlobalJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("shared result\nresult :first\n", output.toString());
+        assertEquals(1, jist.invocations.size());
+    }
+
+    @Test
     void implementationSearchUsesReportedTypeKinds(@TempDir Path directory) throws Exception {
         Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
         for (var kind : List.of("class", "interface", "enum", "record", "annotation")) {
@@ -251,6 +362,77 @@ class CodeInsightTest {
         assertEquals(1, jist.invocations.size());
         assertEquals("", output.toString());
         assertEquals("lookup failed\n", errors.toString());
+    }
+
+    private static final class GlobalJig implements ToolProvider {
+        @Override public String name() { return "jig"; }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            int project = arguments.indexOf("--project-path");
+            out.println("--class-path");
+            out.println(arguments.get(project + 1));
+            return 0;
+        }
+    }
+
+    private static final class ImplementationJist implements ToolProvider, OptionChecker {
+        private final List<List<String>> invocations = Collections.synchronizedList(new ArrayList<>());
+
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            invocations.add(arguments);
+            if (arguments.contains("-l")) {
+                out.println("class example.Root");
+                return 0;
+            }
+            int classPath = arguments.indexOf("--class-path");
+            out.print("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"implementation "
+                    + arguments.get(classPath + 1) + "\"}]}\n");
+            return 0;
+        }
+    }
+
+    private static final class ConcurrentJist implements ToolProvider, OptionChecker {
+        private final CountDownLatch started;
+        private final List<List<String>> invocations = Collections.synchronizedList(new ArrayList<>());
+
+        ConcurrentJist(int contexts) {
+            started = new CountDownLatch(contexts);
+        }
+
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            invocations.add(arguments);
+            started.countDown();
+            try {
+                if (!started.await(5, TimeUnit.SECONDS)) {
+                    err.println("insight contexts did not run concurrently");
+                    return 2;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return 2;
+            }
+            int classPath = arguments.indexOf("--class-path");
+            out.print("{\"format\":\"jist\",\"version\":1,\"results\":["
+                    + "{\"text\":\"shared result\"},{\"text\":\"result "
+                    + arguments.get(classPath + 1) + "\"}]}\n");
+            return 0;
+        }
     }
 
     private static final class Probe implements ToolProvider, OptionChecker {
