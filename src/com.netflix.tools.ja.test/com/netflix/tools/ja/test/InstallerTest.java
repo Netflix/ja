@@ -560,6 +560,33 @@ class InstallerTest {
     }
 
     @Test
+    void ignoresUnavailableStaticApplicationRequirements() throws Exception {
+        Path application = TestModules.writeJarWithStatic(
+                temporaryDirectory.resolve("foo.jar"), "com.example.foo", "com.example.optional");
+        Path store = temporaryDirectory.resolve("store");
+        Path output = temporaryDirectory.resolve("image");
+        ToolRuntime tools = ToolRuntime.of(tool("jlink",
+                (out, arguments) -> {
+                    Path image = Path.of(arguments.get(arguments.indexOf("--output") + 1));
+                    Files.createDirectories(image.resolve("bin"));
+                    return 0;
+                }));
+        var installer = new Installer(tools, new InstallationDirectories(store, temporaryDirectory.resolve("commands")),
+                false, commandModule(), nativeLauncher(), fixedRuntimeModules());
+
+        installer.install(
+                new ApplicationTarget("com.example.foo", "1.2.3"),
+                new InstallRequest(Optional.of("com.example.foo@1.2.3"), Optional.empty(), false, true,
+                        Optional.of(output)),
+                List.of("--module-path", application.toString(), "--module", "com.example.foo/com.example.Main"),
+                new ByteArrayInputStream(new byte[0]),
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(new ByteArrayOutputStream()));
+
+        assertEquals(-1L, Files.mismatch(application, output.resolve("app/modules/foo.jar")));
+    }
+
+    @Test
     void versionsTheGeneratedCommandModuleFromTheApplication() throws Exception {
         Path application = TestModules.writeAutomaticJar(temporaryDirectory.resolve("com.example.foo-1.2.3.jar"));
         var javacArguments = new ArrayList<String>();
