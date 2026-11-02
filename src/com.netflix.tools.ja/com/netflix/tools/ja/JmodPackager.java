@@ -17,6 +17,7 @@ package com.netflix.tools.ja;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -59,11 +60,11 @@ final class JmodPackager {
         this.tools = tools;
     }
 
-    boolean explicitlyCreates(Artifacts artifacts) {
+    boolean explicitlyCreates(Artifacts artifacts) throws IOException {
         return artifacts.requested() || jmodLayout(artifacts.moduleSource()) != null;
     }
 
-    boolean creates(Artifacts artifacts, Discovery discovery) {
+    boolean creates(Artifacts artifacts, Discovery discovery) throws IOException {
         return explicitlyCreates(artifacts) || !discovery.commands().isEmpty();
     }
 
@@ -116,8 +117,7 @@ final class JmodPackager {
         var arguments = new ArrayList<String>();
         arguments.add("create");
         arguments.add("--class-path");
-        arguments.add(artifacts.moduleContent()
-                               .toString());
+        arguments.add(moduleContent(artifacts).toString());
         arguments.addAll(artifacts.moduleArguments());
         var commandsDirectory = commandsDirectory(artifacts, jmodLayout, commands, platform);
         addSection(arguments, "--cmds", commandsDirectory);
@@ -133,6 +133,34 @@ final class JmodPackager {
                                .resolve(artifacts.baseName() + classifier + ".jmod")
                                .toString());
         return tools.run("jmod", in, out, err, arguments.toArray(String[]::new));
+    }
+
+    private static Path moduleContent(Artifacts artifacts) throws IOException {
+        Path source = artifacts.moduleContent();
+        if (Files.isDirectory(source)) {
+            return source;
+        }
+        Path target = artifacts.workDirectory().resolve("jmod-classes");
+        if (Files.isDirectory(target)) {
+            return target;
+        }
+        Files.createDirectory(target);
+        // JMODs contain one selected module view, not MR sections.
+        var reference = ModuleFinder.of(source).find(artifacts.moduleName()).orElseThrow();
+        try (var reader = reference.open(); var resources = reader.list()) {
+            for (String name : resources.filter(name -> !name.endsWith("/")
+                    && !name.startsWith("META-INF/versions/")).toList()) {
+                Path destination = target.resolve(name).normalize();
+                if (!destination.startsWith(target)) {
+                    throw new IOException("Module resource escapes JMOD classes: " + name);
+                }
+                Files.createDirectories(destination.getParent());
+                try (var input = reader.open(name).orElseThrow()) {
+                    Files.copy(input, destination);
+                }
+            }
+        }
+        return target;
     }
 
     private static Path commandsDirectory(Artifacts artifacts, Path jmodLayout, Set<String> commands,
@@ -172,11 +200,11 @@ final class JmodPackager {
         }
     }
 
-    private static Path jmodLayout(Path moduleSource) {
+    private static Path jmodLayout(Path moduleSource) throws IOException {
         if (moduleSource.getFileName() != null && moduleSource.getFileName()
                 .toString()
                 .equals("classes")
-                && Files.isRegularFile(moduleSource.resolve("module-info.java"))) {
+                && Files.isRegularFile(ModuleInfo.descriptorPath(moduleSource))) {
             return moduleSource.getParent();
         }
         return null;

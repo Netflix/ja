@@ -58,6 +58,33 @@ final class ModuleInfo {
 
     record VersionedRequirement(String moduleName, String version) {}
 
+    static Path descriptorPath(Path sourceDirectory) throws IOException {
+        Path descriptor = sourceDirectory.resolve("module-info.java");
+        if (Files.isRegularFile(descriptor)) {
+            return descriptor;
+        }
+        Path versions = sourceDirectory.resolve("META-INF/versions");
+        if (Files.isDirectory(versions)) {
+            try (var sections = Files.list(versions)) {
+                return sections.map(section -> section.resolve("module-info.java"))
+                        .filter(Files::isRegularFile)
+                        .min(Comparator.comparingInt(path -> Integer.parseInt(path.getParent().getFileName().toString())))
+                        .orElse(descriptor);
+            }
+        }
+        return descriptor;
+    }
+
+    static Path sourceDirectory(Path directory) {
+        Path versions = directory.getParent();
+        Path metadata = versions == null ? null : versions.getParent();
+        if (metadata != null && versions.getFileName().toString().equals("versions")
+                && metadata.getFileName() != null && metadata.getFileName().toString().equals("META-INF")) {
+            return metadata.getParent();
+        }
+        return directory;
+    }
+
     static String name(Path descriptor) throws IOException {
         return parse(descriptor).module()
                                 .getName()

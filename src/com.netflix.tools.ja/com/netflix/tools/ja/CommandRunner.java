@@ -889,7 +889,7 @@ public final class CommandRunner {
             return true;
         }
         for (var path : sourcePath.modules().values()) {
-            var descriptor = ModuleInfo.descriptor(path.resolve("module-info.java"));
+            var descriptor = ModuleInfo.descriptor(ModuleInfo.descriptorPath(path));
             if (descriptor.requires().stream()
                     .anyMatch(require -> require.name().equals(moduleName))) {
                 return true;

@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.lang.classfile.ClassFile;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.jar.Attributes.Name;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -49,6 +51,7 @@ import com.netflix.tools.ja.ToolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -112,6 +115,46 @@ class AssembleTest {
             assertEquals("Example application", manifest.getMainAttributes().getValue("Implementation-Title"));
             assertEquals("com.example.Main", manifest.getMainAttributes().getValue(Name.MAIN_CLASS));
         }
+    }
+
+    @Test
+    void preservesMultiReleaseClassOverrides(@TempDir Path directory) throws Exception {
+        Path source = sourceModule(directory, "com.example.multirelease");
+        Files.writeString(source.resolve("module-info.java"),
+                "/** @release 11 */ module com.example.multirelease { exports p; }\n");
+        String body = """
+                package p;
+                public class Example {
+                    public static int version() { return %d; }
+                    public static void main(String[] arguments) { System.out.println(version()); }
+                }
+                """;
+        Files.createDirectories(source.resolve("p"));
+        Files.writeString(source.resolve("p/Example.java"), body.formatted(11));
+        Files.createDirectories(source.resolve("META-INF/versions/17/p"));
+        Files.writeString(source.resolve("META-INF/versions/17/p/Example.java"), body.formatted(17));
+        Files.writeString(source.resolve("META-INF/MANIFEST.MF"), "Manifest-Version: 1.0\nMulti-Release: true\n\n");
+
+        Result result = run(directory, "assemble", "--jmod", "--module-version", "1.0", "artifacts");
+
+        assertEquals(0, result.exitCode(), result.error());
+        Path binary = artifacts(directory).resolve("com.example.multirelease.jar");
+        try (var archive = new JarFile(binary.toFile())) {
+            assertEquals("true", archive.getManifest().getMainAttributes().getValue(Name.MULTI_RELEASE));
+            assertEquals(55, ClassFile.of().parse(archive.getInputStream(archive.getEntry("p/Example.class"))
+                    .readAllBytes()).majorVersion());
+            assertEquals(61, ClassFile.of().parse(archive.getInputStream(archive.getEntry("META-INF/versions/17/p/Example.class"))
+                    .readAllBytes()).majorVersion());
+        }
+        try (var archive = new ZipFile(artifacts(directory).resolve("com.example.multirelease.jmod").toFile())) {
+            assertEquals(61, ClassFile.of().parse(archive.getInputStream(archive.getEntry("classes/p/Example.class"))
+                    .readAllBytes()).majorVersion());
+            assertNull(archive.getEntry("classes/META-INF/versions/17/p/Example.class"));
+        }
+        Result launched = process(directory, Map.of(), Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "--module-path", binary.toString(), "--module", "com.example.multirelease/p.Example");
+        assertEquals(0, launched.exitCode(), launched.output());
+        assertEquals("17\n", launched.output().replace(System.lineSeparator(), "\n"));
     }
 
     @Test
@@ -234,8 +277,9 @@ class AssembleTest {
         }
     }
 
-    @Test
-    void excludesCompileOnlyToolContentAndRetainsRuntimeToolContent(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void excludesCompileOnlyToolContentAndRetainsRuntimeToolContent(boolean packed, @TempDir Path directory) throws Exception {
         sourceModule(directory, "com.example.application");
         sourceModule(directory, "com.example.application.tests");
         Path activationPath = Files.createDirectories(directory.resolve("activation"));
@@ -274,9 +318,21 @@ class AssembleTest {
                         Files.writeString(support.resolve("fixture.properties"), "fixture=true\n");
                     }
 
+                    Path resolvedModule = module;
+                    if (packed) {
+                        resolvedModule = module.resolveSibling(moduleName + ".jar");
+                        try (var archive = new JarOutputStream(Files.newOutputStream(resolvedModule));
+                             var paths = Files.walk(module)) {
+                            for (Path file : paths.filter(Files::isRegularFile).toList()) {
+                                archive.putNextEntry(new JarEntry(module.relativize(file).toString().replace('\\', '/')));
+                                Files.copy(file, archive);
+                                archive.closeEntry();
+                            }
+                        }
+                    }
                     String separator = System.getProperty("path.separator");
-                    String compilePath = module + separator + activationPath;
-                    String runtimePath = moduleName.endsWith(".tests") ? compilePath : module.toString();
+                    String compilePath = resolvedModule + separator + activationPath;
+                    String runtimePath = moduleName.endsWith(".tests") ? compilePath : resolvedModule.toString();
                     int write = arguments.indexOf("--write-argfile");
                     if (write >= 0) {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
@@ -426,8 +482,9 @@ class AssembleTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void assemblyDowngradesOnlyForFilenameDerivedAutomaticDependencies(boolean explicitName, @TempDir Path directory) throws Exception {
+    @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+    void assemblyDowngradesOnlyForFilenameDerivedAutomaticDependencies(boolean explicitName, boolean multiRelease,
+            @TempDir Path directory) throws Exception {
         Path source = sourceModule(directory, "com.example.app");
         Files.writeString(source.resolve("module-info.java"),
                 """
@@ -462,6 +519,22 @@ class AssembleTest {
                     if (!explicitName) {
                         Files.writeString(packageDirectory.resolve("Provider.class"), "provider");
                     }
+                    Path resolvedModule = module;
+                    if (multiRelease) {
+                        Path section = Files.createDirectories(module.resolve("META-INF/versions/" + Runtime.version().feature()));
+                        Files.move(module.resolve("module-info.class"), section.resolve("module-info.class"),
+                                StandardCopyOption.REPLACE_EXISTING);
+                        Files.writeString(module.resolve("META-INF/MANIFEST.MF"), "Manifest-Version: 1.0\nMulti-Release: true\n\n");
+                        resolvedModule = module.resolveSibling("com.example.app.jar");
+                        try (var archive = new JarOutputStream(Files.newOutputStream(resolvedModule));
+                             var paths = Files.walk(module)) {
+                            for (Path file : paths.filter(Files::isRegularFile).toList()) {
+                                archive.putNextEntry(new JarEntry(module.relativize(file).toString().replace('\\', '/')));
+                                Files.copy(file, archive);
+                                archive.closeEntry();
+                            }
+                        }
+                    }
                     int consumerPom = arguments.indexOf("--generate-consumer-pom");
                     if (consumerPom >= 0) {
                         Path pomOutput = Files.createDirectories(Path.of(arguments.get(consumerPom + 1)).resolve("com.example.app"));
@@ -488,7 +561,7 @@ class AssembleTest {
                     if (write >= 0) {
                         String options = arguments.get(arguments.indexOf("--resolve-options") + 1);
                         Path path = Path.of(arguments.get(write + 1));
-                        Files.writeString(path, options.equals(COMPLETE_RUNTIME_ACCESS_OPTIONS) ? "--module-path\n" + module + System.getProperty("path.separator") + automatic + "\n" : "");
+                        Files.writeString(path, options.equals(COMPLETE_RUNTIME_ACCESS_OPTIONS) ? "--module-path\n" + resolvedModule + System.getProperty("path.separator") + automatic + "\n" : "");
                     }
                     return 0;
                 });

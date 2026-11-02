@@ -62,10 +62,18 @@ final class ModuleRequirements {
         var snapshots = new LinkedHashMap<Path, byte[]>();
         try {
             var stagedModules = new LinkedHashMap<String, Path>();
+            var descriptorPaths = new LinkedHashMap<String, Path>();
             for (var entry : moduleSourcePath.modules().entrySet()) {
                 Path sourceModule = entry.getValue();
                 Path stagedModule = Files.createDirectories(staging.resolve(entry.getKey()));
-                copy(sourceModule.resolve("module-info.java"), stagedModule.resolve("module-info.java"), snapshots);
+                Path descriptor = ModuleInfo.descriptorPath(sourceModule);
+                Path relativeDescriptor = sourceModule.relativize(descriptor);
+                copy(descriptor, stagedModule.resolve(relativeDescriptor), snapshots);
+                descriptorPaths.put(entry.getKey(), relativeDescriptor);
+                Path manifest = sourceModule.resolve("META-INF/MANIFEST.MF");
+                if (Files.isRegularFile(manifest)) {
+                    copy(manifest, stagedModule.resolve("META-INF/MANIFEST.MF"), snapshots);
+                }
                 Path hash = sourceModule.resolve("module-info.hash");
                 if (Files.exists(hash)) {
                     copy(hash, stagedModule.resolve("module-info.hash"), snapshots);
@@ -76,7 +84,7 @@ final class ModuleRequirements {
             }
 
             var stagedDescriptors = targets.stream()
-                    .map(target -> stagedModules.get(target).resolve("module-info.java"))
+                    .map(target -> stagedModules.get(target).resolve(descriptorPaths.get(target)))
                     .toList();
             var versionUpdates = request.updatesVersions() ? versionUpdates(stagedDescriptors, request,
                     moduleSourcePath.modules().keySet(), err)
@@ -107,10 +115,11 @@ final class ModuleRequirements {
 
             var replacements = new LinkedHashMap<Path, Path>();
             for (String target : targets) {
-                Path stagedDescriptor = stagedModules.get(target).resolve("module-info.java");
+                Path relativeDescriptor = descriptorPaths.get(target);
+                Path stagedDescriptor = stagedModules.get(target).resolve(relativeDescriptor);
                 Path sourceDescriptor = moduleSourcePath.modules()
                         .get(target)
-                        .resolve("module-info.java");
+                        .resolve(relativeDescriptor);
                 if (!Arrays.equals(snapshots.get(sourceDescriptor), Files.readAllBytes(stagedDescriptor))) {
                     replacements.put(sourceDescriptor, stagedDescriptor);
                 }
@@ -210,6 +219,7 @@ final class ModuleRequirements {
     private static void copy(Path source, Path target, Map<Path, byte[]> snapshots) throws IOException {
         byte[] content = Files.readAllBytes(source);
         snapshots.put(source, content);
+        Files.createDirectories(target.getParent());
         Files.write(target, content);
     }
 

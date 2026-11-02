@@ -19,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.jar.Attributes.Name;
+import java.util.jar.Manifest;
 
 /**
  * Creates a new source module in the current directory or discovered module
@@ -37,20 +39,38 @@ final class ModuleInitializer {
             throw new IllegalArgumentException("Module directory is not a directory: " + moduleDirectory);
         }
 
-        Path descriptor = moduleDirectory.resolve("module-info.java");
+        Path descriptor = ModuleInfo.descriptorPath(moduleDirectory);
         if (Files.exists(descriptor, LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("Module descriptor already exists: " + descriptor);
         }
         for (Path parent = moduleDirectory.getParent();
              parent != null;
              parent = parent.getParent()) {
-            Path parentDescriptor = parent.resolve("module-info.java");
+            Path parentDescriptor = ModuleInfo.descriptorPath(parent);
             if (Files.exists(parentDescriptor, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalArgumentException("Cannot initialize a module beneath " + parentDescriptor);
             }
         }
 
-        Files.createDirectories(moduleDirectory);
+        if (request.release().filter(release -> release == 8).isPresent()) {
+            descriptor = moduleDirectory.resolve("META-INF/versions/9/module-info.java");
+            Path manifestPath = moduleDirectory.resolve("META-INF/MANIFEST.MF");
+            var manifest = new Manifest();
+            if (Files.exists(manifestPath)) {
+                try (var input = Files.newInputStream(manifestPath)) {
+                    manifest.read(input);
+                }
+            }
+            var attributes = manifest.getMainAttributes();
+            attributes.putIfAbsent(Name.MANIFEST_VERSION, "1.0");
+            attributes.put(Name.MULTI_RELEASE, "true");
+            Files.createDirectories(descriptor.getParent());
+            try (var output = Files.newOutputStream(manifestPath)) {
+                manifest.write(output);
+            }
+        } else {
+            Files.createDirectories(moduleDirectory);
+        }
         Files.writeString(descriptor, descriptor(request), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 

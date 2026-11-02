@@ -577,10 +577,13 @@ class CommandRunnerTest {
         assertTrue(output.toString().startsWith("jig "), output.toString());
     }
 
-    @Test
-    void runsInstalledToolWithoutResolvingModuleScope() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void runsInstalledToolWithoutResolvingModuleScope(boolean multiRelease) throws Exception {
         Path module = Files.createDirectories(temporaryDirectory.resolve("src/com.example.application"));
-        Files.writeString(module.resolve("module-info.java"), "module com.example.application {}\n");
+        Path descriptor = module.resolve(multiRelease ? "META-INF/versions/9/module-info.java" : "module-info.java");
+        Files.createDirectories(descriptor.getParent());
+        Files.writeString(descriptor, "module com.example.application {}\n");
         var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"tool", "discovered-probe", "explicit"});
         var arguments = new ArrayList<String>();
         var jigRuns = new AtomicInteger();
@@ -602,6 +605,27 @@ class CommandRunnerTest {
         assertEquals(0, result);
         assertEquals(0, jigRuns.get());
         assertEquals(List.of("explicit"), arguments);
+    }
+
+    @Test
+    void readsVersionedDescriptorsWhenDiscoveringProjectTools() throws Exception {
+        Path module = Files.createDirectories(temporaryDirectory.resolve("src/com.example.application"));
+        Path descriptor = module.resolve("META-INF/versions/9/module-info.java");
+        Files.createDirectories(descriptor.getParent());
+        Files.writeString(descriptor, "/** @release 8 */ module com.example.application {}\n");
+        var tools = ToolRuntime.of(tool("jig", (output, _) -> {
+            output.print("--module-source-path\ncom.example.application=" + module + "\n");
+            output.print("--add-modules\ncom.example.application\n");
+            return 0;
+        }));
+        var output = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of()), () -> null)
+                .run(JaInvocation.parse(module, new String[] {"tool"}), InputStream.nullInputStream(),
+                        new PrintStream(output), System.err);
+
+        assertEquals(0, result);
+        assertTrue(output.toString().lines().anyMatch("jig"::equals));
     }
 
     @Test
@@ -1437,6 +1461,45 @@ class CommandRunnerTest {
         assertTrue(Files.readString(descriptor)
                 .contains("requires static transitive org.example.library; // @1.2.3"));
         assertEquals("updated\n", Files.readString(hash));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void requirePreservesTheMultiReleaseDescriptorLayout(boolean failResolution) throws Exception {
+        Path module = Files.createDirectories(temporaryDirectory.resolve("src/com.example.app"));
+        Path relativeDescriptor = Path.of("META-INF/versions/9/module-info.java");
+        Path descriptor = module.resolve(relativeDescriptor);
+        Files.createDirectories(descriptor.getParent());
+        String original = "/** @release 8 */ module com.example.app {}\n";
+        Files.writeString(descriptor, original);
+        String manifest = "Manifest-Version: 1.0\nMulti-Release: true\nImplementation-Title: Example\n\n";
+        Files.writeString(module.resolve("META-INF/MANIFEST.MF"), manifest);
+        Path hash = Files.writeString(module.resolve("module-info.hash"), "existing\n");
+        var commandLine = JaInvocation.parse(module, new String[] {"require", "org.example.library@1.2.3"});
+        var tools = ToolRuntime.of(tool("jig", (_, arguments) -> {
+            Path staged = moduleSource(arguments, "com.example.app");
+            assertFalse(Files.exists(staged.resolve("module-info.java")));
+            assertEquals(manifest, Files.readString(staged.resolve("META-INF/MANIFEST.MF")));
+            assertEquals("existing\n", Files.readString(staged.resolve("module-info.hash")));
+            assertTrue(Files.readString(staged.resolve(relativeDescriptor))
+                    .contains("requires org.example.library; // @1.2.3"));
+            Files.writeString(staged.resolve("module-info.hash"), "updated\n");
+            return failResolution ? 1 : 0;
+        }));
+        var runner = new CommandRunner(ModuleLayer.boot(), tools, ToolCatalog.load(ModuleLayer.boot()), () -> null);
+
+        if (failResolution) {
+            assertThrows(ToolExecutionException.class, () -> runner.run(commandLine, InputStream.nullInputStream(),
+                    System.out, System.err));
+            assertEquals(original, Files.readString(descriptor));
+            assertEquals("existing\n", Files.readString(hash));
+        } else {
+            assertEquals(0, runner.run(commandLine, InputStream.nullInputStream(), System.out, System.err));
+            assertTrue(Files.readString(descriptor).contains("requires org.example.library; // @1.2.3"));
+            assertEquals("updated\n", Files.readString(hash));
+        }
+        assertEquals(manifest, Files.readString(module.resolve("META-INF/MANIFEST.MF")));
+        assertFalse(Files.exists(module.resolve("module-info.java")));
     }
 
     @Test

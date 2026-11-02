@@ -51,6 +51,65 @@ class ModuleSourcePathTest {
     }
 
     @Test
+    void discoversAMultiReleaseModuleFromItsBaseAndDescriptorSection() throws IOException {
+        Path root = multiReleaseModule(temporaryDirectory.resolve("standalone"), "com.example.app");
+        Path packageDirectory = Files.createDirectories(root.resolve("com/example/app"));
+        for (Path start : List.of(root, packageDirectory, root.resolve("META-INF/versions/9"),
+                root.resolve("META-INF/versions/9/module-info.java"))) {
+            var sourcePath = ModuleSourcePath.discover(start).orElseThrow();
+
+            assertEquals(List.of("com.example.app=" + root), sourcePath.arguments(), start.toString());
+            assertEquals(root, sourcePath.modules().get("com.example.app"), start.toString());
+            assertEquals(List.of("com.example.app"), sourcePath.defaultRoots(), start.toString());
+        }
+    }
+
+    @Test
+    void discoversMultiReleaseModulesAlongsideConventionalAndJmodLayouts() throws IOException {
+        Path sourceRoot = temporaryDirectory.resolve("multi/src");
+        Path app = multiReleaseModule(sourceRoot.resolve("com.example.app"), "com.example.app");
+        Path classes = multiReleaseModule(sourceRoot.resolve("com.example.jmod/classes"), "com.example.jmod");
+        module(sourceRoot.resolve("com.example.library"), "com.example.library");
+
+        for (Path start : List.of(sourceRoot.getParent(), sourceRoot)) {
+            var sourcePath = ModuleSourcePath.discover(start).orElseThrow();
+            assertEquals(List.of("com.example.app", "com.example.jmod", "com.example.library"), sourcePath.defaultRoots());
+            assertEquals(app, sourcePath.modules().get("com.example.app"));
+            assertEquals(classes, sourcePath.modules().get("com.example.jmod"));
+            assertEquals(List.of("com.example.app=" + app, "com.example.jmod=" + classes,
+                    "com.example.library=" + sourceRoot.resolve("com.example.library")), sourcePath.arguments());
+        }
+        for (Path start : List.of(app, app.resolve("META-INF/versions/9"))) {
+            assertEquals(List.of("com.example.app"), ModuleSourcePath.discover(start).orElseThrow().defaultRoots());
+        }
+        for (Path start : List.of(classes.getParent(), classes, classes.resolve("META-INF/versions/9"))) {
+            assertEquals(List.of("com.example.jmod"), ModuleSourcePath.discover(start).orElseThrow().defaultRoots());
+        }
+    }
+
+    @Test
+    void compileDefersMultiReleaseDescriptorParsingToTheResolver() throws IOException {
+        Path root = multiReleaseModule(temporaryDirectory.resolve("multi/src/com.example.app"), "com.example.app");
+        Files.writeString(root.resolve("META-INF/versions/9/module-info.java"), "not yet a valid descriptor\n");
+
+        var invocation = JaInvocation.parse(temporaryDirectory.resolve("multi"), new String[] {"compile"})
+                .resolveProjects(ToolRuntime.of(), InputStream.nullInputStream(), System.err);
+
+        assertEquals(List.of("com.example.app"), invocation.rootModules());
+    }
+
+    @Test
+    void rejectsMultiReleaseDirectoryAndDeclaredModuleNameMismatch() throws IOException {
+        Path root = multiReleaseModule(temporaryDirectory.resolve("multi/src/wrong.name"), "com.example.app");
+
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> ModuleSourcePath.discover(root.getParent()));
+
+        assertTrue(failure.getMessage().contains("wrong.name"));
+        assertTrue(failure.getMessage().contains("com.example.app"));
+    }
+
+    @Test
     void identifiesTheEnclosingModuleAndKeepsSiblingModulesObservable() throws IOException {
         Path sourceRoot = temporaryDirectory.resolve("multi/src");
         module(sourceRoot.resolve("com.example.app"), "com.example.app");
@@ -188,6 +247,13 @@ class ModuleSourcePathTest {
 
         assertTrue(ModuleSourcePath.discover(workingDirectory)
                 .isEmpty());
+    }
+
+    private static Path multiReleaseModule(Path directory, String name) throws IOException {
+        Path section = Files.createDirectories(directory.resolve("META-INF/versions/9"));
+        Files.writeString(section.resolve("module-info.java"), "/** @release 8 */ module " + name + " {}\n");
+        Files.writeString(directory.resolve("META-INF/MANIFEST.MF"), "Manifest-Version: 1.0\nMulti-Release: true\n\n");
+        return directory.toAbsolutePath().normalize();
     }
 
     private static Path module(Path directory, String name) throws IOException {
