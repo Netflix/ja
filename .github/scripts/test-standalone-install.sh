@@ -64,11 +64,33 @@ grep -Fqx "Ja $ja_version standalone distribution installed in $ja_home" "$work/
 [[ -x "$commands/ja" ]]
 grep -Fqx "$ja_home/bin/ja" "$commands/ja.current"
 
+project="$work/project"
+mkdir -p "$project/src/example.smoke/example"
+cat > "$project/src/example.smoke/module-info.java" <<'EOF'
+/** @mainClass example.Main */
+module example.smoke {}
+EOF
+cat > "$project/src/example.smoke/example/Main.java" <<'EOF'
+package example;
+public final class Main {
+    public static void main(String[] arguments) {
+        System.out.println("standalone compilation passed");
+    }
+}
+EOF
+
 HOME="$work/home" "$commands/ja" --version > "$work/java-home-version"
 grep -Fqx "ja $ja_version" "$work/java-home-version"
+HOME="$work/home" "$commands/ja" -C "$project" compile
+HOME="$work/home" "$commands/ja" -C "$project" run > "$work/java-home-run"
+grep -Fqx "standalone compilation passed" "$work/java-home-run"
+
 env -u JAVA_HOME HOME="$work/home" PATH="$commands:$JAVA_HOME/bin" \
     "$commands/ja" --version > "$work/path-version"
 grep -Fqx "ja $ja_version" "$work/path-version"
+env -u JAVA_HOME HOME="$work/home" PATH="$commands:$JAVA_HOME/bin" \
+    "$commands/ja" -C "$project" run > "$work/path-run"
+grep -Fqx "standalone compilation passed" "$work/path-run"
 
 if find "$applications" -maxdepth 1 -name '.install-*' -print -quit | grep -q .; then
     echo "The standalone installer left a staging directory behind" >&2
