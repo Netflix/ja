@@ -22,6 +22,7 @@ import java.lang.module.ModuleFinder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.jar.JarFile;
 import java.util.spi.ToolProvider;
 import java.util.zip.ZipFile;
 
@@ -127,6 +128,24 @@ class ReleaseEightModulesTest {
     @ValueSource(booleans = {false, true})
     void assemblyPreservesTheMultiReleaseLayout(boolean jmodLayout) throws Exception {
         Path app = application();
+        Files.writeString(app.resolve("META-INF/MANIFEST.MF"),
+                """
+                Manifest-Version: 1.0
+                Multi-Release: true
+                Premain-Class: app.Agent
+                Implementation-Title: Example Agent
+
+                Name: app/
+                Sealed: true
+
+                """);
+        Files.writeString(app.resolve("app/Agent.java"),
+                """
+                package app;
+                public final class Agent {
+                    public static void premain(String arguments) {}
+                }
+                """);
         Path source = app;
         if (jmodLayout) {
             Path relocated = app.resolveSibling("staged-app");
@@ -147,7 +166,11 @@ class ReleaseEightModulesTest {
             assertNotNull(archive.getEntry("app/Main.html"));
         }
         Path binary = output.resolve("example.app.jar");
-        try (var archive = new ZipFile(binary.toFile())) {
+        try (var archive = new JarFile(binary.toFile())) {
+            var manifest = archive.getManifest();
+            assertEquals("app.Agent", manifest.getMainAttributes().getValue("Premain-Class"));
+            assertEquals("Example Agent", manifest.getMainAttributes().getValue("Implementation-Title"));
+            assertEquals("true", manifest.getAttributes("app/").getValue("Sealed"));
             assertNull(archive.getEntry("module-info.class"));
             assertNull(archive.getEntry("module-info.pom"));
             assertEquals(pom, new String(archive.getInputStream(archive.getEntry("META-INF/com.netflix.tools.ja/maven/deploy.pom"))
