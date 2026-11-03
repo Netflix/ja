@@ -1,5 +1,5 @@
 com.netflix.tools.jdocserver@0.4.4=module:sha256:279c9af95be5ec089ebb52e6a9dd1af192b1d82157058e17f8576f765bf49501
 com.netflix.tools.jfmt@0.9.0=module:sha256:fed5bde7d44302f873c6be9cf9c9628740479a1591592bd405bdacc908d4c45f
 com.netflix.tools.jig@0.21.9=module:sha256:b5e5a6c4bb2b485f55e287a166413cc039948c05524d51c3d60c91c6a7efe704
-com.netflix.tools.jist@0.6.9=module:sha256:d75403efbbe955ff64a09421026b885d3d77c833b7ff9bda9c2e8253363b3715
+com.netflix.tools.jist@0.6.10=module:sha256:2462cb6656047afa8b5d4f8afda0061d7744d2d662742787094d09492c4ac5d5
 com.netflix.tools.json=module:sha256:61fb825676e83323561056109efb33ffe66a00eb8fc7a1dde45c848cc286ba03
