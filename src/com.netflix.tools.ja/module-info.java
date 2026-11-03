@@ -30,7 +30,7 @@ module com.netflix.tools.ja {
     requires jdk.compiler;
     requires jdk.zipfs;
     requires static com.netflix.tools.jfmt; // @0.9.0
-    requires static com.netflix.tools.jist; // @0.6.7
+    requires static com.netflix.tools.jist; // @0.6.8
     requires static com.netflix.tools.jdocserver; // @0.4.4
 
     uses java.util.spi.ToolProvider;

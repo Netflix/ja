@@ -78,7 +78,7 @@ public record DescribeRequest(Subject subject, String target) {
             return List.of("--referenced-types", resolvedTarget);
         }
         if (subject == Subject.ORIGIN) {
-            return List.of("-l", "--source", "none", "--qualified-path", "--visibility", "all", resolvedTarget);
+            return List.of("-l", "--source", "none", "--show-origin", "--visibility", "all", resolvedTarget);
         }
         var arguments = new ArrayList<>(subject.kinds);
         arguments.addAll(List.of("--source", switch (subject) {

@@ -118,7 +118,7 @@ class CodeInsightTest {
             var expected = new ArrayList<>(List.of("--module-source-path", "example.app=" + directory, "--module", "example.app"));
             if (query.getFirst().equals("describe")) {
                 if (query.get(1).equals("types")) expected.add("--referenced-types");
-                else if (query.get(1).equals("origin")) expected.addAll(List.of("-l", "--source", "none", "--qualified-path", "--visibility", "all"));
+                else if (query.get(1).equals("origin")) expected.addAll(List.of("-l", "--source", "none", "--show-origin", "--visibility", "all"));
                 else {
                     if (query.get(1).equals("module")) expected.addAll(List.of("--kind", "module"));
                     else if (query.get(1).equals("member")) expected.addAll(List.of("--kind", "method", "--kind", "field"));
@@ -129,7 +129,10 @@ class CodeInsightTest {
                         default -> "signature";
                     }));
                 }
-            } else expected.add(query.get(1).equals("impl") ? "--subtypes" : "--" + query.get(1));
+            } else {
+                expected.add("--exclude-system-modules");
+                expected.add(query.get(1).equals("impl") ? "--subtypes" : "--" + query.get(1));
+            }
             boolean sourceFile = query.get(1).equals("file") || query.get(1).equals("types") && query.getLast().endsWith(".java");
             expected.add(sourceFile ? directory.resolve("Example.java").toString() : query.getLast());
             assertEquals(expected, jist.arguments, query.toString());
@@ -195,7 +198,8 @@ class CodeInsightTest {
         assertEquals("shared result\nresult :first\nresult :second\n", output.toString());
         assertEquals(2, jist.invocations.size());
         for (var arguments : jist.invocations) {
-            assertEquals(List.of("--format", "json"), arguments.subList(arguments.size() - 4, arguments.size() - 2));
+            assertEquals(List.of("--exclude-system-modules", "--format", "json"),
+                    arguments.subList(arguments.size() - 5, arguments.size() - 2));
             assertEquals(List.of("--callers", "example.Target.run"), arguments.subList(arguments.size() - 2, arguments.size()));
         }
     }
@@ -227,6 +231,7 @@ class CodeInsightTest {
         assertEquals(0, result, errors.toString());
         assertEquals("implementation :first\nimplementation :second\n", output.toString());
         assertEquals(4, jist.invocations.size());
+        assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
         assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--subtypes")).count());
     }
 
@@ -278,7 +283,7 @@ class CodeInsightTest {
             var lookup = new ArrayList<>(context);
             lookup.addAll(List.of("-l", "--kind", "type", "--source", "none", "--visibility", "all", "example.Root"));
             var query = new ArrayList<>(context);
-            query.addAll(List.of("--subtypes", "example.Root"));
+            query.addAll(List.of("--exclude-system-modules", "--subtypes", "example.Root"));
             assertEquals(List.of(lookup, query), jist.invocations, kind);
             assertEquals(1, jig.invocations.size());
             assertEquals("", output.toString());
@@ -307,6 +312,26 @@ class CodeInsightTest {
                 method example.Root.run()(/classes/example/Root.class)
                 method example.Root.run(int)(/classes/example/Root.class)
                 """, output.toString());
+    }
+
+    @Test
+    void originMatchesModuleQualifiedSymbols(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        var jist = new Probe("jist");
+        jist.symbols = """
+                class java.base@25/java.lang.String.CaseInsensitiveComparator
+                class java.base@25/java.lang.String
+                field java.base@25/java.lang.String.value
+                """;
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist), new ToolCatalog(List.of()), () -> null).run(
+                JaInvocation.parse(directory, new String[] {"describe", "origin", "java.lang.String"}), InputStream.nullInputStream(),
+                new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("class java.base@25/java.lang.String\n", output.toString());
     }
 
     @Test
