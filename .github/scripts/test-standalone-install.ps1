@@ -70,14 +70,40 @@ try {
     Assert-Condition ((Get-Content -LiteralPath $Current -TotalCount 1).Trim() -eq $Entrypoint) `
         "The standalone command target is incorrect"
 
+    $Project = Join-Path $Work "project"
+    $Source = Join-Path $Project "src\example.smoke"
+    $Package = Join-Path $Source "example"
+    New-Item -ItemType Directory -Path $Package -Force | Out-Null
+    @'
+/** @mainClass example.Main */
+module example.smoke {}
+'@ | Set-Content -LiteralPath (Join-Path $Source "module-info.java") -Encoding utf8
+    @'
+package example;
+public final class Main {
+    public static void main(String[] arguments) {
+        System.out.println("standalone compilation passed");
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $Package "Main.java") -Encoding utf8
+
     $JavaHomeVersion = & $Command --version
     Assert-Condition ($LASTEXITCODE -eq 0 -and ($JavaHomeVersion -join "`n") -eq "ja $JaVersion") `
         "The standalone command failed with JAVA_HOME"
+    & $Command -C $Project compile
+    Assert-Condition ($LASTEXITCODE -eq 0) "Standalone compilation failed with JAVA_HOME"
+    $JavaHomeRun = & $Command -C $Project run
+    Assert-Condition ($LASTEXITCODE -eq 0 -and ($JavaHomeRun -join "`n") -eq "standalone compilation passed") `
+        "The standalone application failed with JAVA_HOME"
+
     Remove-Item Env:JAVA_HOME
     $env:Path = "$Commands$([IO.Path]::PathSeparator)$(Join-Path $SourceJavaHome 'bin')"
     $PathVersion = & $Command --version
     Assert-Condition ($LASTEXITCODE -eq 0 -and ($PathVersion -join "`n") -eq "ja $JaVersion") `
         "The standalone command failed with java on PATH"
+    $PathRun = & $Command -C $Project run
+    Assert-Condition ($LASTEXITCODE -eq 0 -and ($PathRun -join "`n") -eq "standalone compilation passed") `
+        "The standalone application failed with java on PATH"
 } finally {
     Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
 }
