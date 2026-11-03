@@ -437,6 +437,9 @@ public final class CommandRunner {
                 arguments = insightArguments(commandLine);
             }
             var jsonArguments = new ArrayList<String>();
+            if (commandLine.command() instanceof Command.Find) {
+                jsonArguments.add("--exclude-system-modules");
+            }
             jsonArguments.add("--format");
             jsonArguments.add("json");
             jsonArguments.addAll(arguments);
@@ -654,7 +657,10 @@ public final class CommandRunner {
                 }
                 arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
             }
-            return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
+            var sourceArguments = new ArrayList<String>();
+            sourceArguments.add("--exclude-system-modules");
+            sourceArguments.addAll(arguments);
+            return toolRunner.run(toolInvocation(commandLine, "jist", sourceArguments), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Source(var symbol)) {
@@ -696,8 +702,16 @@ public final class CommandRunner {
         if (separator < 0) {
             return "";
         }
-        int signature = line.indexOf('(', separator + 1);
-        return signature < 0 ? "" : line.substring(separator + 1, signature);
+        String symbol = line.substring(separator + 1);
+        int signature = symbol.indexOf('(');
+        if (signature >= 0) {
+            symbol = symbol.substring(0, signature);
+        }
+        int module = symbol.indexOf('/');
+        if (module >= 0 && symbol.substring(0, module).indexOf('@') >= 0) {
+            symbol = symbol.substring(module + 1);
+        }
+        return symbol;
     }
 
     private static JaInvocation toolInvocation(JaInvocation invocation, String tool, List<String> arguments) {
