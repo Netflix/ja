@@ -25,7 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.TreeSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -157,7 +157,7 @@ public final class CommandRunner {
         boolean moduleHashesAlreadyVerified = loadsScopedTools(commandLine, catalog);
         var scopedTools = moduleHashesAlreadyVerified ? toolsOnModulePath(commandLine, catalog, in, out, err).orElse(null) : null;
         return run(commandLine, in, out, err, catalog, scopedTools,
-                moduleHashesAlreadyVerified);
+                moduleHashesAlreadyVerified, null);
     }
 
     private int run(
@@ -167,7 +167,8 @@ public final class CommandRunner {
             PrintStream err,
             ToolCatalog catalog,
             ScopedTools scopedTools,
-            boolean moduleHashesAlreadyVerified)
+            boolean moduleHashesAlreadyVerified,
+            InsightSearchCoordinator insightSearch)
             throws IOException {
         var selectedTools = scopedTools == null ? tools : scopedTools.services();
         var selectedCatalog = scopedTools == null ? catalog : scopedTools.catalog();
@@ -225,6 +226,10 @@ public final class CommandRunner {
             }
             var initialToolResolution = selectedToolRunner.supports(commandLine) ? Optional.of(selectedToolRunner.initialResolution(commandLine)) : Optional.<ResolutionRequest>empty();
             if (commandLine.command() instanceof Tool && (commandLine.moduleSourcePath().isEmpty() && !ProjectResolver.external(commandLine) || !initialToolResolution.orElseThrow().resolvesModules())) {
+                if (insightSearch != null && commandLine.command() instanceof Tool(var name) && name.equals("jist")) {
+                    commandLine = withToolArguments(commandLine, insightSearch.arguments(
+                            commandLine.toolArguments(), List.of(), commandLine.workingDirectory()));
+                }
                 var invocation = selectedToolRunner.prepare(commandLine, Set.of());
                 return selectedToolRunner.run(
                         commandLine,
@@ -293,6 +298,11 @@ public final class CommandRunner {
             }
 
             if (toolInvocation.isPresent()) {
+                if (insightSearch != null && commandLine.command() instanceof Tool(var name) && name.equals("jist")) {
+                    commandLine = withToolArguments(commandLine, insightSearch.arguments(
+                            commandLine.toolArguments(), resolved.arguments(), commandLine.workingDirectory()));
+                    toolInvocation = Optional.of(selectedToolRunner.prepare(commandLine, resolved.modules()));
+                }
                 return selectedToolRunner.run(commandLine, toolInvocation.orElseThrow(), resolutionArguments, resolved, in,
                         out, err);
             }
@@ -346,6 +356,9 @@ public final class CommandRunner {
             err.flush();
         }
         var results = new ArrayList<InsightResult>();
+        var insightSearch = commandLine.command() instanceof Command.Find(var request)
+                ? new InsightSearchCoordinator(request.search())
+                : null;
         int processors = Runtime.getRuntime().availableProcessors();
         int parallelism = Math.min(targets.size(), Math.max(2, Math.min(8, processors)));
         try (var executor = Executors.newFixedThreadPool(
@@ -357,7 +370,8 @@ public final class CommandRunner {
                             target,
                             catalog,
                             scopedTools,
-                            moduleHashesAlreadyVerified)))
+                            moduleHashesAlreadyVerified,
+                            insightSearch)))
                     .toList();
             for (var future : futures) {
                 try {
@@ -393,7 +407,7 @@ public final class CommandRunner {
                 && request.subject() == DescribeRequest.Subject.ORIGIN
                         ? Optional.of(request.target())
                         : Optional.<String>empty();
-        var rows = new LinkedHashSet<String>();
+        var rows = new TreeSet<String>();
         results.stream().filter(result -> result.status() == 0)
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
@@ -408,7 +422,8 @@ public final class CommandRunner {
             ProjectTarget target,
             ToolCatalog catalog,
             ScopedTools scopedTools,
-            boolean moduleHashesAlreadyVerified) {
+            boolean moduleHashesAlreadyVerified,
+            InsightSearchCoordinator insightSearch) {
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
         try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
@@ -427,7 +442,8 @@ public final class CommandRunner {
                             err,
                             catalog,
                             scopedTools,
-                            moduleHashesAlreadyVerified);
+                            moduleHashesAlreadyVerified,
+                            null);
                 }
                 if (lookup != 0) {
                     return new InsightResult(target, lookup, List.of(), errors.toString(StandardCharsets.UTF_8));
@@ -437,9 +453,6 @@ public final class CommandRunner {
                 arguments = insightArguments(commandLine);
             }
             var jsonArguments = new ArrayList<String>();
-            if (commandLine.command() instanceof Command.Find) {
-                jsonArguments.add("--exclude-system-modules");
-            }
             jsonArguments.add("--format");
             jsonArguments.add("json");
             jsonArguments.addAll(arguments);
@@ -450,7 +463,8 @@ public final class CommandRunner {
                     err,
                     catalog,
                     scopedTools,
-                    moduleHashesAlreadyVerified);
+                    moduleHashesAlreadyVerified,
+                    insightSearch);
             if (status != 0) {
                 return new InsightResult(target, status, List.of(), errors.toString(StandardCharsets.UTF_8));
             }
@@ -657,9 +671,7 @@ public final class CommandRunner {
                 }
                 arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
             }
-            var sourceArguments = new ArrayList<String>();
-            sourceArguments.add("--exclude-system-modules");
-            sourceArguments.addAll(arguments);
+            var sourceArguments = InsightSearchCoordinator.arguments(request.search(), arguments);
             return toolRunner.run(toolInvocation(commandLine, "jist", sourceArguments), resolutionArguments,
                     resolved, in, out, err);
         }
@@ -719,6 +731,19 @@ public final class CommandRunner {
                 invocation.workingDirectory(),
                 invocation.verbose(),
                 new Tool(tool),
+                invocation.moduleSourcePath(),
+                invocation.rootModules(),
+                invocation.resolutionArguments(),
+                arguments,
+                invocation.requestedProjects(),
+                invocation.projectContext());
+    }
+
+    private static JaInvocation withToolArguments(JaInvocation invocation, List<String> arguments) {
+        return new JaInvocation(
+                invocation.workingDirectory(),
+                invocation.verbose(),
+                invocation.command(),
                 invocation.moduleSourcePath(),
                 invocation.rootModules(),
                 invocation.resolutionArguments(),

@@ -69,6 +69,12 @@ final class JaOptions {
                 addExports());
     }
 
+    static Group findOptions() {
+        return group(
+                ToolOption.flag("--external", "Also search external code"),
+                ToolOption.flag("--all", "Also search external code and system modules"));
+    }
+
     static Group testOptions() {
         return group(
                 ToolOption.flag("--all", "Run all discovered tests, including successful executions"),

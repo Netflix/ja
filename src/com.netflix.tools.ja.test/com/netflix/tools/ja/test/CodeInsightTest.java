@@ -130,12 +130,34 @@ class CodeInsightTest {
                     }));
                 }
             } else {
-                expected.add("--exclude-system-modules");
+                expected.addAll(List.of("--exclude-application-classes", "--exclude-system-modules"));
                 expected.add(query.get(1).equals("impl") ? "--subtypes" : "--" + query.get(1));
             }
             boolean sourceFile = query.get(1).equals("file") || query.get(1).equals("types") && query.getLast().endsWith(".java");
             expected.add(sourceFile ? directory.resolve("Example.java").toString() : query.getLast());
             assertEquals(expected, jist.arguments, query.toString());
+        }
+    }
+
+    @Test
+    void findSearchOptionsAddExternalAndSystemCode(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        for (var query : List.of(
+                List.of("find", "callers", "example.Target.run"),
+                List.of("find", "callers", "--external", "example.Target.run"),
+                List.of("find", "callers", "--all", "example.Target.run"))) {
+            var jist = new Probe("jist");
+            var errors = new ByteArrayOutputStream();
+
+            int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist),
+                    new ToolCatalog(List.of()), () -> null).run(
+                            JaInvocation.parse(directory, query.toArray(String[]::new)),
+                            InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                            new PrintStream(errors));
+
+            assertEquals(0, result, errors.toString());
+            assertEquals(query.size() == 3, jist.arguments.contains("--exclude-application-classes"), query.toString());
+            assertEquals(!query.contains("--all"), jist.arguments.contains("--exclude-system-modules"), query.toString());
         }
     }
 
@@ -195,13 +217,73 @@ class CodeInsightTest {
                         invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals("shared result\nresult :first\nresult :second\n", output.toString());
+        assertEquals("result :first\nresult :second\nshared result\n", output.toString());
         assertEquals(2, jist.invocations.size());
         for (var arguments : jist.invocations) {
-            assertEquals(List.of("--exclude-system-modules", "--format", "json"),
-                    arguments.subList(arguments.size() - 5, arguments.size() - 2));
+            assertEquals(List.of("--exclude-application-classes", "--exclude-system-modules", "--format", "json"),
+                    arguments.subList(arguments.size() - 6, arguments.size() - 2));
             assertEquals(List.of("--callers", "example.Target.run"), arguments.subList(arguments.size() - 2, arguments.size()));
         }
+    }
+
+    @Test
+    void globalSearchesScanIdenticalExternalAndSystemInputsOnce(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new ConcurrentJist(2);
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new SharedResolutionJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("result shared-classes\nshared result\n", output.toString());
+        assertEquals(2, jist.invocations.size());
+        assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
+        assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
+    }
+
+    @Test
+    void globalSearchesRetainDistinctSystemImages(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new ConcurrentJist(2);
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new DistinctSystemJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
+        assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
     }
 
     @Test
@@ -231,6 +313,7 @@ class CodeInsightTest {
         assertEquals(0, result, errors.toString());
         assertEquals("implementation :first\nimplementation :second\n", output.toString());
         assertEquals(4, jist.invocations.size());
+        assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
         assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
         assertEquals(2, jist.invocations.stream().filter(arguments -> arguments.contains("--subtypes")).count());
     }
@@ -262,7 +345,7 @@ class CodeInsightTest {
                         invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals("shared result\nresult :first\n", output.toString());
+        assertEquals("result :first\nshared result\n", output.toString());
         assertEquals(1, jist.invocations.size());
     }
 
@@ -283,7 +366,7 @@ class CodeInsightTest {
             var lookup = new ArrayList<>(context);
             lookup.addAll(List.of("-l", "--kind", "type", "--source", "none", "--visibility", "all", "example.Root"));
             var query = new ArrayList<>(context);
-            query.addAll(List.of("--exclude-system-modules", "--subtypes", "example.Root"));
+            query.addAll(List.of("--exclude-application-classes", "--exclude-system-modules", "--subtypes", "example.Root"));
             assertEquals(List.of(lookup, query), jist.invocations, kind);
             assertEquals(1, jig.invocations.size());
             assertEquals("", output.toString());
@@ -400,6 +483,30 @@ class CodeInsightTest {
         }
     }
 
+    private static final class SharedResolutionJig implements ToolProvider {
+        @Override public String name() { return "jig"; }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            out.println("--class-path");
+            out.println("shared-classes");
+            out.println("--system");
+            out.println("shared-system");
+            return 0;
+        }
+    }
+
+    private static final class DistinctSystemJig implements ToolProvider {
+        @Override public String name() { return "jig"; }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            int project = arguments.indexOf("--project-path");
+            out.println("--class-path");
+            out.println("shared-classes");
+            out.println("--system");
+            out.println(arguments.get(project + 1) + "-system");
+            return 0;
+        }
+    }
+
     private static final class ImplementationJist implements ToolProvider, OptionChecker {
         private final List<List<String>> invocations = Collections.synchronizedList(new ArrayList<>());
 
@@ -435,7 +542,7 @@ class CodeInsightTest {
         @Override public String name() { return "jist"; }
         @Override public int isSupportedOption(String option) {
             return switch (option) {
-                case "--class-path", "--format" -> 1;
+                case "--class-path", "--format", "--system" -> 1;
                 default -> -1;
             };
         }

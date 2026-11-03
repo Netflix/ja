@@ -75,6 +75,13 @@ Choose the command according to the question:
 
 Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
 
+`find` searches project source by default. Add `--external` to also search external application code, or `--all` to include external code and system modules:
+
+```bash
+ja find callers --external example.Library.run
+ja find callers --all java.lang.String.repeat
+```
+
 These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
 
 ## Use packaged Java tools

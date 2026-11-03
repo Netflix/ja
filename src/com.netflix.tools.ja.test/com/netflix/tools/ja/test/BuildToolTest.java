@@ -255,12 +255,12 @@ class BuildToolTest {
                 assertEquals("test", value(fixture.resolution(), type.equals("maven") ? "--scope" : "--source-set"));
                 if (type.equals("gradle")) assertEquals("runtime", value(fixture.resolution(), "--classpath"));
                 if (query.getFirst().equals("find")) {
-                    assertEquals("--exclude-system-modules", fixture.received.get(4));
+                    assertEquals(List.of("--exclude-application-classes", "--exclude-system-modules"), fixture.received.subList(4, 6));
                 }
                 if (query.get(1).equals("impl")) {
                     assertEquals(2, fixture.toolQueries.size());
                     assertEquals(fixture.received.subList(0, 4), fixture.toolQueries.getFirst().subList(0, 4));
-                    assertEquals(query.getLast().equals("example.Example") ? "--subtypes" : "--overrides", fixture.received.get(5));
+                    assertEquals(query.getLast().equals("example.Example") ? "--subtypes" : "--overrides", fixture.received.get(6));
                     assertEquals(1, fixture.queries.stream().filter(argumentsForJig -> argumentsForJig.contains("--resolve-options")).count());
                 }
             }
