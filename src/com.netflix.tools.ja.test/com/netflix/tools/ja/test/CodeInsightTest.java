@@ -242,7 +242,7 @@ class CodeInsightTest {
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
                 parsed.requestedProjects(), Optional.of(context));
-        var jist = new ConcurrentJist(2);
+        var jist = new ConcurrentJist(2, true);
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
 
@@ -251,7 +251,9 @@ class CodeInsightTest {
                         invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals("result shared-classes\nshared result\n", output.toString());
+        assertEquals(
+                "java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)\n",
+                output.toString());
         assertEquals(2, jist.invocations.size());
         assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
         assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
@@ -273,15 +275,20 @@ class CodeInsightTest {
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
                 parsed.requestedProjects(), Optional.of(context));
-        var jist = new ConcurrentJist(2);
+        var jist = new ConcurrentJist(2, true);
+        var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
 
         int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new DistinctSystemJig(), jist),
                 new ToolCatalog(List.of()), () -> null).run(
-                        invocation, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        invocation, InputStream.nullInputStream(), new PrintStream(output),
                         new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
+        assertEquals("""
+                java.base@21/java.lang.String(String.java:3724): java.lang.String.indent(int) -> java.lang.String.repeat(int)
+                java.base@25/java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)
+                """, output.toString());
         assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
         assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
     }
@@ -533,10 +540,16 @@ class CodeInsightTest {
 
     private static final class ConcurrentJist implements ToolProvider, OptionChecker {
         private final CountDownLatch started;
+        private final boolean systemOrigins;
         private final List<List<String>> invocations = Collections.synchronizedList(new ArrayList<>());
 
         ConcurrentJist(int contexts) {
+            this(contexts, false);
+        }
+
+        ConcurrentJist(int contexts, boolean systemOrigins) {
             started = new CountDownLatch(contexts);
+            this.systemOrigins = systemOrigins;
         }
 
         @Override public String name() { return "jist"; }
@@ -558,6 +571,20 @@ class CodeInsightTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return 2;
+            }
+            if (systemOrigins) {
+                int system = arguments.indexOf("--system");
+                var systemPath = arguments.get(system + 1);
+                var version = systemPath.endsWith("first-system") ? "21" : "25";
+                var line = version.equals("21") ? "3724" : "4034";
+                out.print("{\"format\":\"jist\",\"version\":1,\"results\":["
+                        + "{\"text\":\"java.lang.String(String.java:" + line
+                        + "): java.lang.String.indent(int) -> java.lang.String.repeat(int)\","
+                        + "\"origin\":{\"kind\":\"system\",\"location\":\"jrt:/java.base/java/lang/String.class\","
+                        + "\"system\":\"" + systemPath + "\",\"module\":\"java.base\",\"version\":\""
+                        + version + "\",\"resource\":\"java/lang/String.class\",\"source\":\"String.java\",\"line\":"
+                        + line + "}}]}\n");
+                return 0;
             }
             int classPath = arguments.indexOf("--class-path");
             out.print("{\"format\":\"jist\",\"version\":1,\"results\":["

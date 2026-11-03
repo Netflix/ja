@@ -407,11 +407,26 @@ public final class CommandRunner {
                 && request.subject() == DescribeRequest.Subject.ORIGIN
                         ? Optional.of(request.target())
                         : Optional.<String>empty();
+        boolean qualifySystems = commandLine.command() instanceof Command.Find(var request)
+                && request.search() == FindRequest.Search.ALL
+                && results.stream()
+                        .filter(result -> result.status() == 0)
+                        .flatMap(result -> result.rows().stream())
+                        .map(InsightRow::origin)
+                        .filter(Optional::isPresent)
+                        .map(Optional::orElseThrow)
+                        .filter(InsightOrigin::isSystem)
+                        .map(InsightOrigin::system)
+                        .filter(system -> system != null)
+                        .distinct()
+                        .limit(2)
+                        .count() > 1;
         var rows = new TreeSet<String>();
         results.stream().filter(result -> result.status() == 0)
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
-                        || matchesOriginTarget(originSymbol(row), originTarget.orElseThrow()))
+                        || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()))
+                .map(row -> row.render(qualifySystems))
                 .forEach(rows::add);
         rows.forEach(out::println);
         return OptionalInt.of(0);
@@ -474,7 +489,13 @@ public final class CommandRunner {
                     throw new IllegalArgumentException("Unsupported jist JSON output");
                 }
                 var rows = document.get("results").asList().stream()
-                        .map(result -> result.get("text").asString())
+                        .map(result -> new InsightRow(
+                                result.get("text").asString(),
+                                result.tryGet("origin").map(origin -> new InsightOrigin(
+                                        origin.get("kind").asString(),
+                                        origin.tryGet("system").map(value -> value.asString()).orElse(null),
+                                        origin.tryGet("module").map(value -> value.asString()).orElse(null),
+                                        origin.tryGet("version").map(value -> value.asString()).orElse(null)))))
                         .toList();
                 return new InsightResult(target, 0, rows, errors.toString(StandardCharsets.UTF_8));
             } catch (JsonParseException | JsonValueException | IllegalArgumentException e) {
@@ -576,9 +597,32 @@ public final class CommandRunner {
                 + (diagnostic.isEmpty() ? "query failed with status " + result.status() : diagnostic));
     }
 
-    private record InsightResult(ProjectTarget target, int status, List<String> rows, String error) {
+    private record InsightResult(ProjectTarget target, int status, List<InsightRow> rows, String error) {
         InsightResult {
             rows = List.copyOf(rows);
+        }
+    }
+
+    private record InsightRow(String text, Optional<InsightOrigin> origin) {
+        String render(boolean qualifySystem) {
+            if (!qualifySystem || origin.isEmpty() || !origin.orElseThrow().isSystem()) {
+                return text;
+            }
+            var prefix = origin.orElseThrow().displayName();
+            return prefix == null ? text : prefix + "/" + text;
+        }
+    }
+
+    private record InsightOrigin(String kind, String system, String module, String version) {
+        boolean isSystem() {
+            return kind.equals("system");
+        }
+
+        String displayName() {
+            if (module == null) {
+                return null;
+            }
+            return version == null ? module : module + "@" + version;
         }
     }
 
