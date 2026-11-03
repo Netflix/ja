@@ -19,7 +19,13 @@ import java.util.List;
 import java.util.Set;
 
 /** A question about code related to a subject in the selected context. */
-public record FindRequest(Question question, String target) {
+public record FindRequest(Question question, String target, Search search) {
+    public enum Search {
+        SOURCE,
+        EXTERNAL,
+        ALL
+    }
+
     public enum Question {
         USAGES("usages", "Find references to a type or member", List.of("--usages")),
         CALLERS("callers", "Find calls to a member or a type's declared executables", List.of("--callers")),
@@ -55,6 +61,10 @@ public record FindRequest(Question question, String target) {
         }
     }
 
+    public FindRequest(Question question, String target) {
+        this(question, target, Search.SOURCE);
+    }
+
     public FindRequest {
         if (target.isBlank() || target.startsWith("-")) {
             throw new IllegalArgumentException("find requires a nonempty subject");
@@ -62,10 +72,33 @@ public record FindRequest(Question question, String target) {
     }
 
     static FindRequest parse(List<String> arguments) {
-        if (arguments.size() != 2) {
-            throw new IllegalArgumentException("Usage: ja find <usages|callers|callees|impl|supertypes> <subject>");
+        if (arguments.isEmpty()) {
+            throw usage();
         }
-        return new FindRequest(Question.parse(arguments.getFirst()), arguments.getLast());
+        var question = Question.parse(arguments.getFirst());
+        var search = Search.SOURCE;
+        String target = null;
+        for (String argument : arguments.subList(1, arguments.size())) {
+            if (argument.equals("--external") || argument.equals("--all")) {
+                var selected = argument.equals("--external") ? Search.EXTERNAL : Search.ALL;
+                if (search != Search.SOURCE) {
+                    throw new IllegalArgumentException("--external and --all may not be combined");
+                }
+                search = selected;
+            } else if (argument.startsWith("-") || target != null) {
+                throw usage();
+            } else {
+                target = argument;
+            }
+        }
+        if (target == null) {
+            throw usage();
+        }
+        return new FindRequest(question, target, search);
+    }
+
+    private static IllegalArgumentException usage() {
+        return new IllegalArgumentException("Usage: ja find <usages|callers|callees|impl|supertypes> [--external|--all] <subject>");
     }
 
     List<String> arguments() {

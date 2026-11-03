@@ -7,7 +7,7 @@ Java developers have long been exceptionally well served by IDEs. Formatting sou
 
 `ja` is a terminal development environment for Java, bringing those capabilities to the command line through small, composable tools. The goal is to make common Java development tasks as accessible to terminal users and coding agents as they are to someone working in an IDE.
 
-It works with module, Maven, and Gradle projects. The working directory selects the build and provides a useful focus; Java insight commands search across the applicable project contexts and can be restricted with `-p`. Each tool gets the sources, dependencies, and Java options it needs automatically. That includes standard JDK tools such as `javac`, `jdeps`, `jlink`, and `jshell`.
+It works with module, Maven, and Gradle projects. The working directory selects the build and provides a useful focus; Java insight commands search across the applicable project contexts and can be restricted with `-p`. Relationship searches inspect project source by default, add external application code with `--external`, and include system modules with `--all`. When selected project contexts use distinct system images, system results use module-qualified stack-trace form to preserve their versions. Each tool gets the sources, dependencies, and Java options it needs automatically. That includes standard JDK tools such as `javac`, `jdeps`, `jlink`, and `jshell`.
 
 For module projects, the environment also supports building, testing, and distributing applications directly from `module-info.java`. A simple program can grow into one module with dependencies, then multiple modules, without introducing a separate build configuration.
 

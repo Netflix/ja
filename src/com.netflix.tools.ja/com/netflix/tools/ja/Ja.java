@@ -306,7 +306,9 @@ public final class Ja {
                                         subject.completionArguments(), request.current());
                     }
                 }
-            } else if (commandArguments.size() == 1 && command.equals("find")) {
+            } else if (!commandArguments.isEmpty() && command.equals("find")
+                    && commandArguments.subList(1, commandArguments.size()).stream()
+                            .allMatch(argument -> argument.equals("--external") || argument.equals("--all"))) {
                 for (var question : FindRequest.Question.values()) {
                     if (question.command().equals(commandArguments.getFirst())) {
                         return CodeCompletion.symbols(tools, prepared.workingDirectory(), arguments.subList(0, commandIndex),
@@ -418,7 +420,11 @@ public final class Ja {
             case FIND -> {
                 for (var question : FindRequest.Question.values()) {
                     commandLine.command(question.command(), question.description(),
-                            CommandLine.builder().option(JaOptions.help()).operand("SUBJECT", "Java type or member", Cardinality.EXACTLY_ONE).build());
+                            CommandLine.builder()
+                                    .options(JaOptions.findOptions())
+                                    .option(JaOptions.help())
+                                    .operand("SUBJECT", "Java type or member", Cardinality.EXACTLY_ONE)
+                                    .build());
                 }
                 yield commandLine.build();
             }
