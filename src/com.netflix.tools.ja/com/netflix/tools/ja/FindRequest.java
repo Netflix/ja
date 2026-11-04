@@ -21,7 +21,7 @@ import java.util.Set;
 
 /** A question about code related to a subject in the selected context. */
 public record FindRequest(Question question, String target, Search search, List<String> kinds) {
-    private static final Set<String> DECLARATION_KINDS = Set.of(
+    private static final List<String> DECLARATION_KINDS = List.of(
             "module", "package", "type", "class", "interface", "enum", "record", "annotation", "method", "field");
 
     public enum Search {
@@ -120,7 +120,8 @@ public record FindRequest(Question question, String target, Search search, List<
 
     private static String parseKind(String kind) {
         if (!DECLARATION_KINDS.contains(kind)) {
-            throw new IllegalArgumentException("Unknown declaration kind: " + kind);
+            throw new IllegalArgumentException(
+                    "Unknown declaration kind: " + kind + "; expected one of: " + String.join(", ", DECLARATION_KINDS));
         }
         return kind;
     }

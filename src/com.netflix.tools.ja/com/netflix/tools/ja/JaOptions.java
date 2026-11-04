@@ -83,7 +83,8 @@ final class JaOptions {
                         .argument("KIND")
                         .choices("module", "package", "type", "class", "interface", "enum", "record",
                                 "annotation", "method", "field")
-                        .description("Include declarations of this kind")
+                        .description(
+                                "Include module, package, type, class, interface, enum, record, annotation, method, or field declarations")
                         .build());
     }
 

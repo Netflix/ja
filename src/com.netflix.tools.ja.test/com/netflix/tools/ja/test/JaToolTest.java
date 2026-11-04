@@ -140,6 +140,16 @@ class JaToolTest {
     }
 
     @Test
+    void declarationSearchHelpListsKinds() {
+        var result = run("find", "declarations", "--help");
+
+        assertEquals(0, result.exitCode(), result.error());
+        assertTrue(result.output().contains(
+                "module, package, type, class, interface, enum, record, annotation, method, or field"),
+                result.output());
+    }
+
+    @Test
     void projectSelectionDoesNotRequireDiscoveryForHelp(@TempDir Path directory) {
         var result = run("-C", directory.toString(), "-p", "missing", "projects",
                 "--help");
