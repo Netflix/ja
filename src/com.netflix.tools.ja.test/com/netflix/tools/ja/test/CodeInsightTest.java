@@ -249,6 +249,36 @@ class CodeInsightTest {
     }
 
     @Test
+    void globalDeclarationSearchTreatsNoMatchesAsAnEmptyResult(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "declarations", "Missing"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new NotFoundJist();
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new GlobalJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("", output.toString());
+        assertEquals("", errors.toString());
+        assertEquals(2, jist.invocations.size());
+    }
+
+    @Test
     void globalSearchesScanIdenticalExternalAndSystemInputsOnce(@TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
@@ -533,6 +563,23 @@ class CodeInsightTest {
             out.println("--system");
             out.println(arguments.get(project + 1) + "-system");
             return 0;
+        }
+    }
+
+    private static final class NotFoundJist implements ToolProvider, OptionChecker {
+        private final List<List<String>> invocations = Collections.synchronizedList(new ArrayList<>());
+
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            invocations.add(List.of(args));
+            err.println("Symbol not found: *Missing*");
+            return 1;
         }
     }
 

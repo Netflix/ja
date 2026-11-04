@@ -390,6 +390,11 @@ public final class CommandRunner {
             }
         }
 
+        boolean declarationSearch = commandLine.command() instanceof Command.Find(var request)
+                && request.question() == FindRequest.Question.DECLARATIONS;
+        if (declarationSearch && results.stream().allMatch(result -> result.status() == 1)) {
+            return OptionalInt.of(0);
+        }
         boolean successful = results.stream().anyMatch(result -> result.status() == 0);
         if (!successful) {
             results.forEach(result -> printInsightError(result, err));

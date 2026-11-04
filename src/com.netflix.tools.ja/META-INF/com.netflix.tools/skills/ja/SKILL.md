@@ -68,7 +68,7 @@ Choose the command according to the question:
 - `describe origin` shows the source, module, or dependency artifact from which a symbol resolves.
 - `source` prints the implementation source for a package, type, or member.
 - `doc` finds local API documentation; `doc --browse` opens the documentation browser.
-- `find declarations` searches named type and member declarations; use repeatable `--kind` options to restrict the result.
+- `find declarations` searches named type and member declarations. Use repeatable `--kind` options to restrict results to `module`, `package`, `type`, `class`, `interface`, `enum`, `record`, `annotation`, `method`, or `field`; `type` includes all type declarations.
 - `find usages` finds semantic references to a type or member.
 - `find callers` finds calls to a method, or calls to executables declared by a type.
 - `find callees` finds calls made by a method, or by executables declared by a type.
