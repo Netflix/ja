@@ -15,6 +15,8 @@
 package com.netflix.tools.ja.test;
 
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassFile.ClassHierarchyResolverOption;
+import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.module.Configuration;
@@ -36,6 +38,8 @@ import com.netflix.tools.ja.ResolvedClassModels.ModuleInputs;
 import com.netflix.tools.ja.ResolvedClassModels.ModuleState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static java.lang.constant.ConstantDescs.CD_void;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -503,6 +507,66 @@ class ResolvedClassModelsTest {
                 .method());
         assertSame(type, hits.getFirst()
                              .receiver());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resolvesJarDependencyHierarchyWhenInstrumentingMultiCatch(boolean automatic, @TempDir Path directory) throws Exception {
+        var dependency = directory.resolve("example.dependency.jar");
+        var exceptionType = ClassDesc.of("dependency.Failure");
+        var exception = ClassFile.of().build(exceptionType,
+                builder -> builder.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                                  .withSuperclass(ClassDesc.of("java.io.IOException")));
+        if (automatic) {
+            TestModules.writeAutomaticJar(dependency);
+        } else {
+            TestModules.writeJar(dependency, "example.dependency");
+        }
+        try (var archive = FileSystems.newFileSystem(dependency)) {
+            Files.createDirectories(archive.getPath("dependency"));
+            Files.write(archive.getPath("dependency/Failure.class"), exception);
+        }
+        var root = Files.createDirectories(directory.resolve("example.root"));
+        TestModules.writeModuleInfo(root, "example.root", "example.dependency");
+        var hierarchy = ClassHierarchyResolver.of(Set.of(), Map.of(exceptionType, ClassDesc.of("java.io.IOException")))
+                .orElse(ClassHierarchyResolver.defaultResolver());
+        var content = ClassFile.of(ClassHierarchyResolverOption.of(hierarchy)).build(ClassDesc.of("root.Root"),
+                builder -> builder.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                                  .withMethodBody("test", VOID_METHOD, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC,
+                                          code -> {
+                                              var start = code.newLabel();
+                                              var end = code.newLabel();
+                                              var handler = code.newLabel();
+                                              code.exceptionCatch(start, end, handler, exceptionType)
+                                                  .exceptionCatch(start, end, handler, ClassDesc.of("java.lang.IllegalArgumentException"))
+                                                  .labelBinding(start)
+                                                  .nop()
+                                                  .labelBinding(end)
+                                                  .return_()
+                                                  .labelBinding(handler)
+                                                  .pop()
+                                                  .return_();
+                                          }));
+        var packageDirectory = Files.createDirectories(root.resolve("root"));
+        Files.write(packageDirectory.resolve("Root.class"), content);
+        var currentLayer = ResolvedClassModelsTest.class.getModule().getLayer();
+        var parent = currentLayer.parents().stream()
+                .filter(candidate -> candidate.configuration().findModule("java.base").isPresent())
+                .findFirst()
+                .orElse(currentLayer);
+        var classes = resolve(parent.configuration(), List.of("example.root"), List.of("--module-path", directory.toString()));
+        var controller = classes.instrumentedLayer(parent, Set.of(), List.of());
+        var layer = controller.layer();
+        var rootModule = layer.findModule("example.root").orElseThrow();
+        controller.addExports(layer.findModule("example.dependency").orElseThrow(), "dependency", rootModule);
+        controller.addExports(rootModule, "root", ResolvedClassModelsTest.class.getModule());
+        var type = layer.findLoader("example.root").loadClass("root.Root");
+
+        var hits = new ArrayList<String>();
+        try (var recording = ExecutionTraceInstrumentation.recordWith((method, _) -> hits.add(method))) {
+            type.getMethod("test").invoke(null);
+        }
+        assertEquals(List.of("root/Root.test()V"), hits);
     }
 
     private static ResolvedClassModels resolve(Configuration parent, List<String> roots, List<String> arguments) {
