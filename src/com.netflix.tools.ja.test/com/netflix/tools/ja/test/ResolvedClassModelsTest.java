@@ -549,7 +549,11 @@ class ResolvedClassModelsTest {
                                           }));
         var packageDirectory = Files.createDirectories(root.resolve("root"));
         Files.write(packageDirectory.resolve("Root.class"), content);
-        var parent = ResolvedClassModelsTest.class.getModule().getLayer();
+        var currentLayer = ResolvedClassModelsTest.class.getModule().getLayer();
+        var parent = currentLayer.parents().stream()
+                .filter(candidate -> candidate.configuration().findModule("java.base").isPresent())
+                .findFirst()
+                .orElse(currentLayer);
         var classes = resolve(parent.configuration(), List.of("example.root"), List.of("--module-path", directory.toString()));
         var controller = classes.instrumentedLayer(parent, Set.of(), List.of());
         var layer = controller.layer();
