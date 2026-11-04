@@ -124,6 +124,7 @@ class JaToolTest {
         assertTrue(listed.output().lines().anyMatch("ja"::equals), listed.output());
         assertTrue(expected.startsWith("---\nname: ja\n"), expected);
         assertTrue(expected.contains("ja projects"), expected);
+        assertTrue(expected.contains("`find declarations`"), expected);
         assertTrue(expected.contains("`find callers`"), expected);
         assertTrue(expected.lines().count() < 500, "skill is too long");
     }

@@ -14,12 +14,16 @@
 
 package com.netflix.tools.ja;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 /** A question about code related to a subject in the selected context. */
-public record FindRequest(Question question, String target, Search search) {
+public record FindRequest(Question question, String target, Search search, List<String> kinds) {
+    private static final Set<String> DECLARATION_KINDS = Set.of(
+            "module", "package", "type", "class", "interface", "enum", "record", "annotation", "method", "field");
+
     public enum Search {
         SOURCE,
         EXTERNAL,
@@ -30,6 +34,7 @@ public record FindRequest(Question question, String target, Search search) {
         USAGES("usages", "Find references to a type or member", List.of("--usages")),
         CALLERS("callers", "Find calls to a member or a type's declared executables", List.of("--callers")),
         CALLEES("callees", "Find calls from a member or a type's declared executables", List.of("--callees")),
+        DECLARATIONS("declarations", "Find declarations whose names contain a query", List.of()),
         IMPL("impl", "Find subtypes or overriding methods", List.of("--kind", "type", "--kind", "method")),
         SUPERTYPES("supertypes", "Find parent types", List.of("--supertypes"));
 
@@ -62,12 +67,16 @@ public record FindRequest(Question question, String target, Search search) {
     }
 
     public FindRequest(Question question, String target) {
-        this(question, target, Search.SOURCE);
+        this(question, target, Search.SOURCE, List.of());
     }
 
     public FindRequest {
         if (target.isBlank() || target.startsWith("-")) {
             throw new IllegalArgumentException("find requires a nonempty subject");
+        }
+        kinds = List.copyOf(kinds);
+        if (question != Question.DECLARATIONS && !kinds.isEmpty()) {
+            throw new IllegalArgumentException("--kind is supported only by find declarations");
         }
     }
 
@@ -77,14 +86,26 @@ public record FindRequest(Question question, String target, Search search) {
         }
         var question = Question.parse(arguments.getFirst());
         var search = Search.SOURCE;
+        var kinds = new ArrayList<String>();
         String target = null;
-        for (String argument : arguments.subList(1, arguments.size())) {
+        for (int index = 1; index < arguments.size(); index++) {
+            String argument = arguments.get(index);
             if (argument.equals("--external") || argument.equals("--all")) {
                 var selected = argument.equals("--external") ? Search.EXTERNAL : Search.ALL;
                 if (search != Search.SOURCE) {
                     throw new IllegalArgumentException("--external and --all may not be combined");
                 }
                 search = selected;
+            } else if (argument.equals("--kind")) {
+                if (question != Question.DECLARATIONS || ++index >= arguments.size()) {
+                    throw usage();
+                }
+                kinds.add(parseKind(arguments.get(index)));
+            } else if (argument.startsWith("--kind=")) {
+                if (question != Question.DECLARATIONS) {
+                    throw usage();
+                }
+                kinds.add(parseKind(argument.substring("--kind=".length())));
             } else if (argument.startsWith("-") || target != null) {
                 throw usage();
             } else {
@@ -94,14 +115,28 @@ public record FindRequest(Question question, String target, Search search) {
         if (target == null) {
             throw usage();
         }
-        return new FindRequest(question, target, search);
+        return new FindRequest(question, target, search, kinds);
+    }
+
+    private static String parseKind(String kind) {
+        if (!DECLARATION_KINDS.contains(kind)) {
+            throw new IllegalArgumentException("Unknown declaration kind: " + kind);
+        }
+        return kind;
     }
 
     private static IllegalArgumentException usage() {
-        return new IllegalArgumentException("Usage: ja find <usages|callers|callees|impl|supertypes> [--external|--all] <subject>");
+        return new IllegalArgumentException(
+                "Usage: ja find <declarations|usages|callers|callees|impl|supertypes> [--external|--all] [--kind <kind>] <subject>");
     }
 
     List<String> arguments() {
+        if (question == Question.DECLARATIONS) {
+            var arguments = new ArrayList<>(List.of("-l", "--source", "none", "--visibility", "all"));
+            kinds.forEach(kind -> arguments.addAll(List.of("--kind", kind)));
+            arguments.add("*" + target + "*");
+            return List.copyOf(arguments);
+        }
         return question == Question.IMPL
                 ? List.of("-l", "--kind", "type", "--source", "none", "--visibility", "all", target)
                 : List.of(question.options.getFirst(), target);

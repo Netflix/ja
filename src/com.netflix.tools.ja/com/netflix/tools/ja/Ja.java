@@ -311,8 +311,11 @@ public final class Ja {
                             .allMatch(argument -> argument.equals("--external") || argument.equals("--all"))) {
                 for (var question : FindRequest.Question.values()) {
                     if (question.command().equals(commandArguments.getFirst())) {
-                        return CodeCompletion.symbols(tools, prepared.workingDirectory(), arguments.subList(0, commandIndex),
-                                question.completionArguments(), request.current());
+                        return question == FindRequest.Question.DECLARATIONS
+                                ? List.of()
+                                : CodeCompletion.symbols(tools, prepared.workingDirectory(),
+                                        arguments.subList(0, commandIndex), question.completionArguments(),
+                                        request.current());
                     }
                 }
             }
@@ -419,11 +422,18 @@ public final class Ja {
             }
             case FIND -> {
                 for (var question : FindRequest.Question.values()) {
+                    var questionLine = CommandLine.builder()
+                            .options(question == FindRequest.Question.DECLARATIONS
+                                    ? JaOptions.declarationFindOptions()
+                                    : JaOptions.findOptions())
+                            .option(JaOptions.help());
                     commandLine.command(question.command(), question.description(),
-                            CommandLine.builder()
-                                    .options(JaOptions.findOptions())
-                                    .option(JaOptions.help())
-                                    .operand("SUBJECT", "Java type or member", Cardinality.EXACTLY_ONE)
+                            questionLine.operand(
+                                    question == FindRequest.Question.DECLARATIONS ? "QUERY" : "SUBJECT",
+                                    question == FindRequest.Question.DECLARATIONS
+                                            ? "Declaration name query"
+                                            : "Java type or member",
+                                    Cardinality.EXACTLY_ONE)
                                     .build());
                 }
                 yield commandLine.build();
