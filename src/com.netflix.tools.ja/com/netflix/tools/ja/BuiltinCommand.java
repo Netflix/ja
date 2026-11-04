@@ -36,7 +36,7 @@ import com.netflix.tools.ja.Command.Tools;
 
 /** A stable, ergonomic command in ja's base surface. */
 public enum BuiltinCommand {
-    PROJECTS("projects", Category.DEVELOPMENT, "List discovered projects",
+    PROJECTS("projects", Category.DEVELOPMENT, "Show discovered projects and source sets",
             workflow(), ResolutionOptions.EMPTY),
     FMT("fmt", Category.DEVELOPMENT, "Format source", new ToolBacked("jfmt"),
             sourceTool()),

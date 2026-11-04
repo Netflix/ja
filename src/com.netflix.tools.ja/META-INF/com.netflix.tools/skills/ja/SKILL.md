@@ -17,12 +17,12 @@ When the automatic selection is not obvious, start with:
 ja projects
 ```
 
-The output lists every discovered project context and marks the current working-directory or requested selection. Use the selector from the first column with `-p` when a question should be restricted to one context.
+The output groups discovered projects by directory and marks the current working-directory or requested selection. Each Gradle project lists its source sets and compile or runtime class paths; each Maven project lists its available scopes. Use the logical project selector with `-p`, followed by a source set and optional class path for Gradle or a scope for Maven, when a question should be restricted to one context.
 
-Gradle selectors can identify a project, source set, and class path:
+Gradle selectors can identify a project, source set, and class path. Compile is the default class path, so the source-set form is shorthand for its compile context:
 
 ```bash
-ja -p :app/main/compile describe file src/main/java/example/App.java
+ja -p :app/main describe file src/main/java/example/App.java
 ja -p :app/test/runtime find callers example.App.start
 ```
 
@@ -77,7 +77,7 @@ Choose the command according to the question:
 
 Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
 
-`find` searches every discovered project-source context by default. This is the complete project-source search, not a single source set. Do not add a wider option merely to confirm its results. Add `--external` only when dependency or other external application declarations are part of the question, or `--all` when JDK system-module declarations are also required:
+At the build root, `find` searches the project-source contexts reported by `ja projects`, not just one source set. From within a project or with `-p`, it searches the marked current or requested context. Do not add a wider option merely to confirm results within that coverage. Add `--external` only when dependency or other external application declarations are part of the question, or `--all` when JDK system-module declarations are also required:
 
 ```bash
 ja find declarations --kind type Queue
@@ -85,7 +85,7 @@ ja find callers --external example.Library.run
 ja find callers --all java.lang.String.repeat
 ```
 
-These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start with the reported range for a bounded read, expanding or reading the whole file only when the surrounding context and file size justify it. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
+These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start with the reported range for a bounded read, expanding or reading the whole file only when the surrounding context and file size justify it. A successful semantic query is sufficient evidence for the declarations or relationships it reports within the selected contexts. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
 
 ## Use packaged Java tools
 

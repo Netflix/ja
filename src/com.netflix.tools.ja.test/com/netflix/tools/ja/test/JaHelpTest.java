@@ -60,7 +60,7 @@ class JaHelpTest {
                        ja [OPTIONS] skill [<name>]
 
                 Development commands:
-                  projects     List discovered projects
+                  projects     Show discovered projects and source sets
                   fmt          Format source
                   doc          Find or browse Java APIs
                   source       Show Java source

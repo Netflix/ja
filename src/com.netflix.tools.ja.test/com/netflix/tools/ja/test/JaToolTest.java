@@ -184,11 +184,11 @@ class JaToolTest {
         assertEquals(0, result.exitCode(), result.error());
         assertTrue(result.output()
                          .lines()
-                         .anyMatch(value -> value.startsWith("com.example.client ") && value.endsWith("(current - requested)")),
+                         .anyMatch(value -> value.contains("  com.example.client") && value.endsWith("(requested)")),
                 result.output());
         assertFalse(result.output()
                           .lines()
-                          .anyMatch(value -> value.startsWith("com.example.server ") && value.contains("current")),
+                          .anyMatch(value -> value.contains("  com.example.server") && value.contains("current")),
                 result.output());
     }
 
