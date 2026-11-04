@@ -85,7 +85,7 @@ ja find callers --external example.Library.run
 ja find callers --all java.lang.String.repeat
 ```
 
-These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
+These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start with the reported range for a bounded read, expanding or reading the whole file only when the surrounding context and file size justify it. A successful semantic query is sufficient evidence for the declarations or relationships it reports. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
 
 ## Use packaged Java tools
 
