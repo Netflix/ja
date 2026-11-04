@@ -68,10 +68,8 @@ class ProjectCommandsTest {
         module("com.example.client");
         var result = run(server, ToolRuntime.of(), "projects");
         assertEquals(0, result.status(), result.error());
-        assertTrue(result.output().contains("[module]"),
-                result.output());
-        assertTrue(line(result, "com.example.tools.server").endsWith("(current - working directory)"),
-                result.output());
+        assertTrue(result.output().startsWith("module "), result.output());
+        assertTrue(line(result, "com.example.tools.server").endsWith("(current)"), result.output());
         assertFalse(line(result, "com.example.client").contains("current"),
                 result.output());
         assertFalse(result.output().contains("SELECTED"),
@@ -85,8 +83,7 @@ class ProjectCommandsTest {
         for (String selector : List.of("client", "example.client", "com.example.client")) {
             var result = run(server, ToolRuntime.of(), "-p", selector, "projects");
             assertEquals(0, result.status(), result.error());
-            assertTrue(line(result, "com.example.client").endsWith("(current - requested)"),
-                    result.output());
+            assertTrue(line(result, "com.example.client").endsWith("(requested)"), result.output());
             assertFalse(line(result, "com.example.tools.server").contains("current"),
                     result.output());
         }
@@ -100,8 +97,7 @@ class ProjectCommandsTest {
         Path link = Files.createSymbolicLink(directory.resolve("server-link"), server);
         var result = run(link, ToolRuntime.of(), "-p", "client", "projects");
         assertEquals(0, result.status(), result.error());
-        assertTrue(line(result, "com.example.client").endsWith("(current - requested)"),
-                result.output());
+        assertTrue(line(result, "com.example.client").endsWith("(requested)"), result.output());
         var calls = new ArrayList<List<String>>();
         Path sourcePath = server.getParent().toRealPath();
         var tools = ToolRuntime.of(jig((out, arguments) -> {
@@ -124,7 +120,7 @@ class ProjectCommandsTest {
         assertEquals(2,
                 result.output()
                       .lines()
-                      .filter(value -> value.endsWith("(current - requested)"))
+                      .filter(value -> value.endsWith("(requested)"))
                       .count());
     }
 
@@ -158,7 +154,7 @@ class ProjectCommandsTest {
                       .lines()
                       .findFirst()
                       .orElseThrow()
-                      .contains("(current - working directory)"),
+                      .contains("(current)"),
                 result.output());
         assertEquals(1,
                 result.output()
@@ -204,12 +200,9 @@ class ProjectCommandsTest {
         var calls = new ArrayList<List<String>>();
         var result = run(source, buildTools(Map.of(root, mavenRows(root, "example:root") + mavenRows(app, "example:app")), calls), "projects");
         assertEquals(0, result.status(), result.error());
-        assertTrue(result.output().contains("[maven]"),
-                result.output());
-        assertTrue(line(result, "example:app").endsWith("(current - working directory)"),
-                result.output());
-        assertFalse(result.output().contains("[module]"),
-                result.output());
+        assertTrue(result.output().startsWith("maven "), result.output());
+        assertTrue(line(result, "example:app").endsWith("(current: compile)"), result.output());
+        assertFalse(result.output().startsWith("module "), result.output());
         assertEquals(1, calls.size());
     }
 
@@ -242,14 +235,34 @@ class ProjectCommandsTest {
                 new ArrayList<>());
         var current = run(app, tools, "projects");
         assertEquals(0, current.status(), current.error());
-        assertTrue(line(current, ":app").endsWith("(current - working directory)"),
-                current.output());
+        assertTrue(line(current, ":app").endsWith("(current: main/compile)"), current.output());
         var requested = run(app, tools, "--project", ":tools:plugin", "projects");
         assertEquals(0, requested.status(), requested.error());
-        assertTrue(line(requested, ":tools:plugin").endsWith("(current - requested)"),
-                requested.output());
+        assertTrue(line(requested, ":tools:plugin").endsWith("(requested: main/compile)"), requested.output());
         assertTrue(requested.output().contains(included.toString()),
                 requested.output());
+    }
+
+    @Test
+    void listsGradleProjectsByDirectoryAndSourceSet() throws Exception {
+        Path root = gradle(directory.resolve("build"));
+        Path app = Files.createDirectories(root.resolve("app"));
+        String listing = gradleRows(root, ":") + gradleRows(app, ":app")
+                + app + "\t:app\tintegrationTest\tcompile\n"
+                + app + "\t:app\tintegrationTest\truntime\n";
+        var result = run(root, buildTools(Map.of(root, listing), new ArrayList<>()), "projects");
+        assertEquals("""
+                gradle %s (current)
+
+                ./  :
+                  main  compile runtime
+                  test  compile runtime
+
+                ./app/  :app
+                  integrationTest  compile runtime
+                  main  compile runtime
+                  test  compile runtime
+                """.formatted(root), result.output());
     }
 
     @Test
@@ -290,8 +303,8 @@ class ProjectCommandsTest {
         var runtime = buildTools(Map.of(), calls);
         var current = run(source, runtime, "projects");
         assertTrue(current.output().contains("com.example.tools"), current.output());
-        assertFalse(current.output().contains("[maven]"), current.output());
-        assertFalse(current.output().contains("[gradle]"), current.output());
+        assertFalse(current.output().startsWith("maven "), current.output());
+        assertFalse(current.output().startsWith("gradle "), current.output());
         for (String selector : List.of("example:service", ":client")) {
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> run(source, runtime, "-p", selector, "projects"));
@@ -319,8 +332,8 @@ class ProjectCommandsTest {
                     inner, mavenOuter ? gradleRows(inner, ":") : mavenRows(inner, "example:inner")), calls);
             var result = run(Files.createDirectories(inner.resolve("nested/directory")), runtime, "projects");
             assertEquals(0, result.status(), result.error());
-            assertTrue(result.output().contains("[" + (mavenOuter ? "gradle" : "maven") + "]"), result.output());
-            assertFalse(result.output().contains("[" + (mavenOuter ? "maven" : "gradle") + "]"), result.output());
+            assertTrue(result.output().startsWith((mavenOuter ? "gradle" : "maven") + " "), result.output());
+            assertFalse(result.output().startsWith((mavenOuter ? "maven" : "gradle") + " "), result.output());
             assertEquals(2, calls.size());
         }
     }
@@ -334,8 +347,8 @@ class ProjectCommandsTest {
             var runtime = buildTools(Map.of(root, maven ? mavenRows(root, "example:service") : gradleRows(root, ":")), calls);
             var result = run(Files.createDirectories(root.resolve("nested/directory")), runtime, "projects");
             assertEquals(0, result.status(), result.error());
-            assertTrue(result.output().contains("[" + (maven ? "maven" : "gradle") + "]"), result.output());
-            assertFalse(result.output().contains("[module]"), result.output());
+            assertTrue(result.output().startsWith((maven ? "maven" : "gradle") + " "), result.output());
+            assertFalse(result.output().startsWith("module "), result.output());
             assertEquals(1, calls.size());
         }
     }
@@ -506,9 +519,9 @@ class ProjectCommandsTest {
         String listing = gradleRows(root, ":app") + root + "\t:app\tintegrationTest\tcompile\n";
         var result = run(root, buildTools(Map.of(root, listing), new ArrayList<>()),
                 "-p", ":app/integrationTest", "projects");
-        assertTrue(line(result, ":app/integrationTest/compile").endsWith("(current - requested)"), result.output());
-        assertFalse(line(result, ":app/main/compile").contains("current"), result.output());
-        assertFalse(line(result, ":app/main/runtime").contains("current"), result.output());
+        assertTrue(line(result, ":app").endsWith("(requested: integrationTest/compile)"), result.output());
+        assertEquals(1, result.output().lines().filter(value -> value.contains("requested")).count(), result.output());
+        assertTrue(result.output().contains("  main  compile runtime"), result.output());
     }
 
     @Test
@@ -516,11 +529,11 @@ class ProjectCommandsTest {
         Path maven = maven(directory.resolve("maven"));
         var result = run(maven, buildTools(Map.of(maven, mavenRows(maven, "example:app")), new ArrayList<>()),
                 "-p", "example:app", "projects");
-        assertTrue(line(result, "example:app/compile").endsWith("(current - requested)"), result.output());
+        assertTrue(line(result, "example:app").endsWith("(requested: compile)"), result.output());
         Path gradle = gradle(directory.resolve("gradle"));
         result = run(gradle, buildTools(Map.of(gradle, gradleRows(gradle, ":app")), new ArrayList<>()),
                 "-p", ":app", "projects");
-        assertTrue(line(result, ":app/main/compile").endsWith("(current - requested)"), result.output());
+        assertTrue(line(result, ":app").endsWith("(requested: main/compile)"), result.output());
     }
 
     @Test
@@ -537,7 +550,7 @@ class ProjectCommandsTest {
         Path root = gradle(directory.resolve("build"));
         var runtime = buildTools(Map.of(root, root + "\t:\t\t\n"), new ArrayList<>());
         var result = run(root, runtime, "-p", ":", "projects");
-        assertTrue(line(result, ":").endsWith("(current - requested)"), result.output());
+        assertTrue(line(result, ":").endsWith("(requested)"), result.output());
         assertFalse(result.output().contains("/main"), result.output());
         assertThrows(IllegalArgumentException.class, () -> run(root, runtime, "-p", ":/main", "projects"));
     }
@@ -634,9 +647,17 @@ class ProjectCommandsTest {
     }
 
     private static String line(Result result, String selector) {
+        String marker = "  " + selector;
         return result.output()
                      .lines()
-                     .filter(value -> value.startsWith(selector + " ") || value.startsWith(selector + "/"))
+                     .filter(value -> {
+                         int index = value.indexOf(marker);
+                         if (index < 0) {
+                             return false;
+                         }
+                         int end = index + marker.length();
+                         return end == value.length() || value.charAt(end) == ' ';
+                     })
                      .findFirst()
                      .orElseThrow();
     }
