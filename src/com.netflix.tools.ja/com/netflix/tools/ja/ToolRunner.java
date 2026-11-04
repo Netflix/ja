@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 import javax.lang.model.SourceVersion;
 import javax.tools.OptionChecker;
 
@@ -239,7 +238,10 @@ public final class ToolRunner {
         var arguments = invocation.arguments();
         boolean listSelectors = arguments.equals(List.of(SelectorCompletion.REQUEST));
         if (commandLine.command().equals(new Builtin(BuiltinCommand.BENCH))) {
-            arguments = listSelectors ? List.of("-l") : benchmarkArguments(arguments);
+            var benchmarkArguments = new ArrayList<String>();
+            benchmarkArguments.add("--ja-bench");
+            benchmarkArguments.addAll(arguments);
+            arguments = List.copyOf(benchmarkArguments);
         }
         if (commandLine.command().equals(new Builtin(BuiltinCommand.TEST))) {
             if (listSelectors) {
@@ -261,12 +263,6 @@ public final class ToolRunner {
         }
         return runSelected(commandLine, resolved, definition, resolution, runtimeArguments, arguments,
                 in, out, err);
-    }
-
-    private static List<String> benchmarkArguments(List<String> selectors) {
-        return selectors.stream()
-                .map(selector -> "^" + Pattern.quote(selector) + "(?:\\..+)?$")
-                .toList();
     }
 
     private static List<String> moduleSelectors(List<String> modules) {
