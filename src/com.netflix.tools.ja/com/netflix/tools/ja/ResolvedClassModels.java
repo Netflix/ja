@@ -431,8 +431,16 @@ public final class ResolvedClassModels {
         }
         var descriptor = type.descriptorString();
         var resource = descriptor.substring(1, descriptor.length() - 1) + ".class";
+        int separator = resource.lastIndexOf('/');
+        var packageName = separator < 0 ? "" : resource.substring(0, separator).replace('/', '.');
+        // Stack-map merges also need types from uninstrumented dependency jars.
+        var candidates = modules.keySet().stream()
+                .filter(name -> module(name).descriptor().packages().contains(packageName)
+                        || !patches.getOrDefault(name, List.of()).isEmpty())
+                .sorted()
+                .toList();
         try {
-            for (var moduleName : candidateModules(resource.substring(0, resource.length() - ".class".length()))) {
+            for (var moduleName : candidates) {
                 var input = openClassResource(moduleName, resource);
                 if (input.isPresent()) {
                     return input.orElseThrow();
