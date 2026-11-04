@@ -28,6 +28,7 @@ import java.util.spi.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,6 +77,50 @@ public class JmhToolProviderTest {
         assertEquals(0, benchmarkResult, benchmarkError::toString);
         assertTrue(benchmarkOutput.toString()
                 .contains(BENCHMARK));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "AddedBenchmark, -l",
+            "ExampleBenchmark, -l",
+            "AddedBenchmark, --ja-bench --ja-list-selectors",
+            "ExampleBenchmark, --ja-bench --ja-list-selectors",
+            "AddedBenchmark, --ja-bench --check AddedBenchmark",
+            "ExampleBenchmark, --ja-bench --check ExampleBenchmark"
+    })
+    public void discoversAndRunsBenchmarksFromModulePatches(String benchmarkClass, String options, @TempDir Path temporaryDirectory) throws Exception {
+        Path modules = compileBenchmark(temporaryDirectory);
+        Path source = temporaryDirectory.resolve("patch-source/com/example/benchmark/" + benchmarkClass + ".java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source,
+                """
+                package com.example.benchmark;
+
+                public class %s {
+                    @org.openjdk.jmh.annotations.Benchmark
+                    public int addedAnswer() {
+                        return 42;
+                    }
+                }
+                """.formatted(benchmarkClass));
+        Path patch = temporaryDirectory.resolve("patch");
+        compilePatch(source, patch, "com.example.benchmark", modules);
+        var output = new StringWriter();
+        var error = new StringWriter();
+        var arguments = new ArrayList<>(List.of(
+                "--module-path", modules + System.getProperty("path.separator") + runtimeModulePath(),
+                "--add-modules", "com.example.benchmark,com.netflix.tools.jmh",
+                "--patch-module", "com.example.benchmark=" + patch));
+        arguments.addAll(List.of(options.split(" ")));
+
+        int result = new JmhToolProvider().run(new PrintWriter(output, true), new PrintWriter(error, true), arguments.toArray(String[]::new));
+
+        assertEquals(0, result, () -> output + "\n" + error);
+        String benchmark = "com.example.benchmark." + benchmarkClass + ".addedAnswer";
+        assertTrue(output.toString().contains(benchmark), output::toString);
+        if (options.contains("--check")) {
+            assertTrue(output.toString().contains("Checked " + benchmark), output::toString);
+        }
     }
 
     @Test
@@ -317,6 +362,18 @@ public class JmhToolProviderTest {
                 "com.example.benchmark");
         assertEquals(0, result, output::toString);
         return modules;
+    }
+
+    private static void compilePatch(Path source, Path output, String module, Path modules) {
+        var diagnostics = new StringWriter();
+        int result = ToolProvider.findFirst("javac").orElseThrow().run(
+                new PrintWriter(diagnostics, true), new PrintWriter(diagnostics, true),
+                "--module-path", modules + System.getProperty("path.separator") + runtimeModulePath(),
+                "--add-modules", module,
+                "--patch-module", module + "=" + source.getParent(),
+                "-d", output.toString(),
+                source.toString());
+        assertEquals(0, result, diagnostics::toString);
     }
 
     private static void compileApplication(Path temporaryDirectory, Path modules) throws Exception {

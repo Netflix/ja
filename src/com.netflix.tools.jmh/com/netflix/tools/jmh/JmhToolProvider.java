@@ -166,8 +166,12 @@ public final class JmhToolProvider implements ToolProvider, OptionChecker {
             compiler.add(addModules(applicationModules, List.of(JmhToolProvider.class
                     .getModule()
                     .getName())));
-            compiler.add("--patch-module");
-            compiler.add(module + "=" + sources);
+            var compilerPatches = new LinkedHashMap<>(invocation.patches());
+            compilerPatches.put(module, distinct(List.of(sources), compilerPatches.getOrDefault(module, List.of())));
+            compilerPatches.forEach((patchedModule, paths) -> {
+                compiler.add("--patch-module");
+                compiler.add(patchedModule + "=" + joinPaths(paths));
+            });
             compiler.add("-proc:none");
             compiler.add("-d");
             compiler.add(classes.toString());
