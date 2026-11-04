@@ -56,7 +56,7 @@ class ToolCatalogTest {
         ToolDefinition jmh = catalog.definition("jmh");
         assertEquals(Optional.of("org.openjdk.jmh.core"), jmh.activation());
         assertEquals(Optional.of("com.netflix.tools.jmh"), jmh.module());
-        assertEquals(Optional.of("0.26.23"), jmh.version());
+        assertEquals(Optional.of("0.26.25"), jmh.version());
         ToolDefinition probe = catalog.definition("configured-probe");
         assertEquals(Optional.empty(), probe.module());
         assertEquals(Set.of("module-path", "module=list"), probe.options());
