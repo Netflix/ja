@@ -279,6 +279,40 @@ class CodeInsightTest {
     }
 
     @Test
+    void globalDeclarationSearchRendersBoundedSourceLocations(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var source = Files.createDirectories(directory.resolve("src/example")).resolve("Root.java");
+        Files.writeString(source, """
+                package example;
+                class Root {
+                    void run() {}
+                }
+                """);
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "declarations", "Root"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new GlobalJig(), new SourceRangeJist(source)),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals("src/example/Root.java:2-4 of 4: class example.Root\n", output.toString());
+    }
+
+    @Test
     void globalSearchesScanIdenticalExternalAndSystemInputsOnce(@TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
@@ -562,6 +596,28 @@ class CodeInsightTest {
             out.println("shared-classes");
             out.println("--system");
             out.println(arguments.get(project + 1) + "-system");
+            return 0;
+        }
+    }
+
+    private static final class SourceRangeJist implements ToolProvider, OptionChecker {
+        private final Path source;
+
+        SourceRangeJist(Path source) {
+            this.source = source;
+        }
+
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            out.print("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"class example.Root\","
+                    + "\"source\":{\"location\":\"" + source.toUri() + "\",\"lineCount\":4,"
+                    + "\"range\":{\"startLine\":2,\"endLine\":4}}}]}\n");
             return 0;
         }
     }

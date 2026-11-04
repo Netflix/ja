@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.lang.ModuleLayer.Controller;
 import java.lang.module.ModuleDescriptor;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -431,7 +432,7 @@ public final class CommandRunner {
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
                         || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()))
-                .map(row -> row.render(qualifySystems))
+                .map(row -> row.render(qualifySystems, declarationSearch ? commandLine.workingDirectory() : null))
                 .forEach(rows::add);
         rows.forEach(out::println);
         return OptionalInt.of(0);
@@ -500,7 +501,15 @@ public final class CommandRunner {
                                         origin.get("kind").asString(),
                                         origin.tryGet("system").map(value -> value.asString()).orElse(null),
                                         origin.tryGet("module").map(value -> value.asString()).orElse(null),
-                                        origin.tryGet("version").map(value -> value.asString()).orElse(null)))))
+                                        origin.tryGet("version").map(value -> value.asString()).orElse(null))),
+                                result.tryGet("source").map(source -> {
+                                    var range = source.get("range");
+                                    return new InsightSource(
+                                            source.get("location").asString(),
+                                            source.get("lineCount").asInt(),
+                                            range.get("startLine").asInt(),
+                                            range.get("endLine").asInt());
+                                })))
                         .toList();
                 return new InsightResult(target, 0, rows, errors.toString(StandardCharsets.UTF_8));
             } catch (JsonParseException | JsonValueException | IllegalArgumentException e) {
@@ -608,13 +617,51 @@ public final class CommandRunner {
         }
     }
 
-    private record InsightRow(String text, Optional<InsightOrigin> origin) {
-        String render(boolean qualifySystem) {
-            if (!qualifySystem || origin.isEmpty() || !origin.orElseThrow().isSystem()) {
-                return text;
+    private record InsightRow(String text, Optional<InsightOrigin> origin, Optional<InsightSource> source) {
+        String render(boolean qualifySystem, Path workingDirectory) {
+            var rendered = text;
+            if (qualifySystem && origin.isPresent() && origin.orElseThrow().isSystem()) {
+                var prefix = origin.orElseThrow().displayName();
+                if (prefix != null) {
+                    rendered = prefix + "/" + rendered;
+                }
             }
-            var prefix = origin.orElseThrow().displayName();
-            return prefix == null ? text : prefix + "/" + text;
+            if (workingDirectory != null) {
+                var location = source.flatMap(value -> value.render(workingDirectory));
+                if (location.isPresent()) {
+                    return location.orElseThrow() + ": " + rendered;
+                }
+            }
+            return rendered;
+        }
+    }
+
+    private record InsightSource(String location, int lineCount, int startLine, int endLine) {
+        Optional<String> render(Path workingDirectory) {
+            if (lineCount < 1 || startLine < 1 || endLine < startLine) {
+                return Optional.empty();
+            }
+            try {
+                var path = location.startsWith("file:") ? Path.of(URI.create(location)) : Path.of(location);
+                if (!path.isAbsolute()) {
+                    path = workingDirectory.resolve(path);
+                }
+                path = path.toAbsolutePath().normalize();
+                if (!Files.isRegularFile(path)) {
+                    return Optional.empty();
+                }
+                var base = workingDirectory.toAbsolutePath().normalize();
+                Path displayed;
+                try {
+                    displayed = base.relativize(path);
+                } catch (IllegalArgumentException _) {
+                    displayed = path;
+                }
+                var range = startLine == endLine ? Integer.toString(startLine) : startLine + "-" + endLine;
+                return Optional.of(displayed + ":" + range + " of " + lineCount);
+            } catch (IllegalArgumentException _) {
+                return Optional.empty();
+            }
         }
     }
 
