@@ -206,8 +206,19 @@ public final class JmhToolProvider implements ToolProvider, OptionChecker {
             }
         }
         runner.add("--module");
-        runner.add(CORE_MODULE + "/" + RUNNER_MAIN);
-        runner.addAll(invocation.nativeArguments());
+        var arguments = invocation.nativeArguments();
+        if (!arguments.isEmpty() && arguments.getFirst().equals("--ja-bench")) {
+            runner.add(PROVIDER_MODULE + "/" + BenchmarkRunner.class.getName());
+            runner.addAll(arguments.subList(1, arguments.size()));
+        } else {
+            runner.add(CORE_MODULE + "/" + RUNNER_MAIN);
+            if (arguments.stream().noneMatch(argument -> argument.equals("-foe") || argument.startsWith("-foe=")
+                    || argument.equals("--foe") || argument.startsWith("--foe="))) {
+                runner.add("-foe");
+                runner.add("true");
+            }
+            runner.addAll(arguments);
+        }
         return runJava(runner, out, err);
     }
 
