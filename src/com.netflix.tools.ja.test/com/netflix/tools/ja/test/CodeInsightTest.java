@@ -56,7 +56,7 @@ class CodeInsightTest {
     void describesExplicitSubjectKindsAndFindsExplicitRelationships() throws Exception {
         for (var command : List.of("describe", "find")) {
             var subjects = command.equals("describe") ? List.of("module", "type", "member", "file", "types", "origin")
-                    : List.of("usages", "callers", "callees", "impl", "supertypes");
+                    : List.of("declarations", "usages", "callers", "callees", "impl", "supertypes");
             for (var subject : subjects) {
                 var invocation = JaInvocation.parse(Path.of(""), new String[] {"-p", ":client", command, subject, "example.Store"});
                 assertEquals(command, invocation.command().commandName());
@@ -79,7 +79,7 @@ class CodeInsightTest {
     @Test
     void completesSubjectKindsAndQuestions() {
         assertEquals(List.of("file", "member", "module", "origin", "type", "types"), complete(List.of("describe"), ""));
-        assertEquals(List.of("callees", "callers", "impl", "supertypes", "usages"), complete(List.of("find"), ""));
+        assertEquals(List.of("callees", "callers", "declarations", "impl", "supertypes", "usages"), complete(List.of("find"), ""));
         assertEquals(List.of("impl"), complete(List.of("find"), "im"));
     }
 
@@ -137,6 +137,28 @@ class CodeInsightTest {
             expected.add(sourceFile ? directory.resolve("Example.java").toString() : query.getLast());
             assertEquals(expected, jist.arguments, query.toString());
         }
+    }
+
+    @Test
+    void findsDeclarationsByNameAndKind(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        var jist = new Probe("jist");
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        JaInvocation.parse(directory,
+                                new String[] {"find", "declarations", "--kind", "type", "Queue"}),
+                        InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals(List.of(
+                "--module-source-path", "example.app=" + directory,
+                "--module", "example.app",
+                "--exclude-application-classes", "--exclude-system-modules",
+                "-l", "--source", "none", "--visibility", "all",
+                "--kind", "type", "*Queue*"), jist.arguments);
     }
 
     @Test

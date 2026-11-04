@@ -75,6 +75,18 @@ final class JaOptions {
                 ToolOption.flag("--all", "Also search external code and system modules"));
     }
 
+    static Group declarationFindOptions() {
+        return group(
+                ToolOption.flag("--external", "Also search external code"),
+                ToolOption.flag("--all", "Also search external code and system modules"),
+                ToolOption.builder("--kind")
+                        .argument("KIND")
+                        .choices("module", "package", "type", "class", "interface", "enum", "record",
+                                "annotation", "method", "field")
+                        .description("Include declarations of this kind")
+                        .build());
+    }
+
     static Group testOptions() {
         return group(
                 ToolOption.flag("--all", "Run all discovered tests, including successful executions"),

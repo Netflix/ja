@@ -50,6 +50,7 @@ ja describe types <type-or-source-file>
 ja describe origin <symbol>
 ja source <symbol>
 ja doc <symbol>
+ja find declarations <name-query>
 ja find usages <type-or-member>
 ja find callers <type-or-method>
 ja find callees <type-or-method>
@@ -67,6 +68,7 @@ Choose the command according to the question:
 - `describe origin` shows the source, module, or dependency artifact from which a symbol resolves.
 - `source` prints the implementation source for a package, type, or member.
 - `doc` finds local API documentation; `doc --browse` opens the documentation browser.
+- `find declarations` searches named type and member declarations; use repeatable `--kind` options to restrict the result.
 - `find usages` finds semantic references to a type or member.
 - `find callers` finds calls to a method, or calls to executables declared by a type.
 - `find callees` finds calls made by a method, or by executables declared by a type.
@@ -75,9 +77,10 @@ Choose the command according to the question:
 
 Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
 
-`find` searches project source by default. Add `--external` to also search external application code, or `--all` to include external code and system modules:
+`find` searches every discovered project-source context by default. This is the complete project-source search, not a single source set. Do not add a wider option merely to confirm its results. Add `--external` only when dependency or other external application declarations are part of the question, or `--all` when JDK system-module declarations are also required:
 
 ```bash
+ja find declarations --kind type Queue
 ja find callers --external example.Library.run
 ja find callers --all java.lang.String.repeat
 ```
