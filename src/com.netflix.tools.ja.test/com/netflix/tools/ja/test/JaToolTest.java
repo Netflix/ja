@@ -245,7 +245,12 @@ class JaToolTest {
         var test = commandLine(described, "test");
         test.parse("-t", "fast", "--tag=unit", "--all");
         assertThrows(IllegalArgumentException.class, () -> test.parse("--include-tag", "fast"));
-        assertThrows(IllegalArgumentException.class, () -> commandLine(described, "bench").parse("-wi", "3"));
+        assertThrows(IllegalArgumentException.class,
+                () -> commandLine(described, "bench").parse("-wi", "3"));
+        var bench = commandLine(described, "bench");
+        assertThrows(IllegalArgumentException.class, () -> bench.parse("--quick"));
+        assertTrue(bench.parse("--check", "example.ExampleBenchmark")
+                        .contains(option(bench, "--check")));
         assertEquals(List.of("example.ExampleTest", "example.ExampleTest.works"),
                 commandLine(described, "test").parse("example.ExampleTest", "example.ExampleTest.works").operands());
         assertEquals(List.of("example.ExampleBenchmark", "example.ExampleBenchmark.works"),

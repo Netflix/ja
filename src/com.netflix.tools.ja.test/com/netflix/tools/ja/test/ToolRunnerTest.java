@@ -1220,7 +1220,7 @@ class ToolRunnerTest {
     }
 
     @Test
-    void explicitBenchmarkSelectorsFilterJmhDiscovery() throws Exception {
+    void forwardsBenchmarkSelectorsAndCheckModeToJmhDiscovery() throws Exception {
         var runWith = new ArrayList<String>();
         var tools = ToolRuntime.of(tool("jmh", runWith));
         var definition = new ToolDefinition(
@@ -1242,7 +1242,7 @@ class ToolRunnerTest {
                 Optional.empty(),
                 List.of("com.example.app"),
                 List.of(),
-                List.of("com.example.ExampleBenchmark", "com.example.ExampleBenchmark.example"));
+                List.of("--check", "com.example.ExampleBenchmark", "com.example.ExampleBenchmark.example"));
         var resolved = new ResolvedToolArguments(
                 List.of("--module-path", "modules", "--add-modules", "com.example.app"),
                 Set.of(ModuleDescriptor.newModule("com.example.app").build()),
@@ -1253,8 +1253,8 @@ class ToolRunnerTest {
 
         assertEquals(0, result);
         assertEquals(
-                List.of("--module-path", "modules", "--add-modules", "com.example.app", "--default", "^\\Qcom.example.ExampleBenchmark\\E(?:\\..+)?$",
-                        "^\\Qcom.example.ExampleBenchmark.example\\E(?:\\..+)?$"),
+                List.of("--module-path", "modules", "--add-modules", "com.example.app", "--default", "--ja-bench",
+                        "--check", "com.example.ExampleBenchmark", "com.example.ExampleBenchmark.example"),
                 runWith);
     }
 
@@ -1332,7 +1332,7 @@ class ToolRunnerTest {
                 runner.run(commandLine, List.of(), resolved, InputStream.nullInputStream(),
                         System.out, System.err));
 
-        assertEquals(List.of("--module-path", "modules", "--default", "-l"), runWith);
+        assertEquals(List.of("--module-path", "modules", "--default", "--ja-bench", "--ja-list-selectors"), runWith);
     }
 
     @Test

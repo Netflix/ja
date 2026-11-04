@@ -98,6 +98,10 @@ final class JaOptions {
                         .build());
     }
 
+    static ToolOption benchmarkCheck() {
+        return ToolOption.flag("--check", "Check benchmark execution, not performance (one fork, no warmup, one 100 ms iteration)");
+    }
+
     static Group installOptions() {
         return group(ToolOption.option("--name", "NAME", "Set the installed command name"), ToolOption.flag("--force", "Replace an existing command"), ToolOption.flag("--include-static", "Include static requirements"),
                 ToolOption.option("--output", "PATH", "Write the runtime image to PATH"));

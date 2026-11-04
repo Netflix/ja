@@ -447,7 +447,10 @@ public final class Ja {
                     commandLine.options(JaOptions.installOptions())
                                .operand("MODULE|PACKAGE-URL", "Module or package reference", Cardinality.ZERO_OR_ONE)
                                .build();
-            case BENCH -> commandLine.operand("CLASS[.METHOD]", "Select benchmark classes or methods", Cardinality.ZERO_OR_MORE).build();
+            case BENCH ->
+                    commandLine.option(JaOptions.benchmarkCheck())
+                               .operand("CLASS[.METHOD]", "Select benchmark classes or methods", Cardinality.ZERO_OR_MORE)
+                               .build();
             case ASSEMBLE ->
                     commandLine.options(JaOptions.assembleOptions())
                                .operand("DIRECTORY", "Artifact directory", Cardinality.EXACTLY_ONE)

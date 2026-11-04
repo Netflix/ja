@@ -129,6 +129,20 @@ When moving to source control move to a module source path layout, `src/com.exam
 
 While `com.example.hello` is fine for this example, for a module you intend to publish, choose a globally meaningful reverse-domain name following [Sonatype's namespace conventions](https://central.sonatype.org/register/namespace/), using a domain you own or a namespace you can verify, such as `io.github.owner.application`.
 
+## Benchmarks
+
+For modules requiring `org.openjdk.jmh.core`, `ja bench` discovers and runs JMH benchmarks. Run all benchmarks or select literal class/method names; shell completion offers discovered classes and methods. Fully qualified names and unambiguous short class names such as `ExampleBenchmark` or `ExampleBenchmark.answer` are accepted. Unknown or ambiguous selectors fail before benchmarks run.
+
+```sh
+ja bench
+ja bench com.example.ExampleBenchmark.answer
+ja bench --check ExampleBenchmark
+```
+
+Normal runs respect benchmark annotations and JMH defaults. `--check` checks benchmark execution, not performance: one fork, no warmup, and one 100 ms measurement iteration per benchmark configuration. Successful checks report the benchmark configurations that ran without timing scores. Failed checks retain diagnostics. Setup and execution failures produce a nonzero exit status.
+
+Use `ja tool jmh` for detailed measurement settings, regex selection, profilers, and other JMH options.
+
 ## Bundled Tools
 
 Several bundled tools underpin the command implementation:
