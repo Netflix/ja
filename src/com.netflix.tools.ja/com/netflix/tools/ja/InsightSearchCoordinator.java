@@ -34,10 +34,15 @@ final class InsightSearchCoordinator {
             "--system", "--module-path", "-p", "--upgrade-module-path", "--module-source-path", "--patch-module");
     private static final Set<String> SYSTEM_OPTIONS = Set.of(
             "--release", "--limit-modules", "--add-modules", "--module");
+    private static final Set<String> SEARCH_PATH_OPTIONS = Set.of(
+            "--class-path", "-classpath", "-cp", "--module-path", "-p", "--upgrade-module-path", "--patch-module",
+            "--source-path", "-sourcepath", "--module-source-path");
+    private static final Set<String> SOURCE_PATH_OPTIONS = Set.of("--source-path", "-sourcepath", "--module-source-path");
 
     private final FindRequest.Search search;
     private final Set<List<String>> applicationSearches = new HashSet<>();
     private final Set<List<String>> systemSearches = new HashSet<>();
+    private final Set<String> searchedPaths = new HashSet<>();
 
     InsightSearchCoordinator(FindRequest.Search search) {
         this.search = search;
@@ -54,6 +59,31 @@ final class InsightSearchCoordinator {
         }
         if (excludeSystem) {
             selected.add("--exclude-system-modules");
+        }
+        var paths = selectedOptions(resolutionArguments, workingDirectory, SEARCH_PATH_OPTIONS, Set.of());
+        var excluded = new ArrayList<String>();
+        var contextPaths = new HashSet<String>();
+        for (int index = 0; index < paths.size(); index += 2) {
+            var option = paths.get(index);
+            if (excludeApplication && !SOURCE_PATH_OPTIONS.contains(option)) {
+                continue;
+            }
+            var value = paths.get(index + 1);
+            if (option.equals("--patch-module") || option.equals("--module-source-path")) {
+                int separator = value.indexOf('=');
+                if (separator >= 0) {
+                    value = value.substring(separator + 1);
+                }
+            }
+            for (var path : value.split(Pattern.quote(File.pathSeparator), -1)) {
+                if (contextPaths.add(path) && !searchedPaths.add(path)) {
+                    excluded.add(path);
+                }
+            }
+        }
+        if (!excluded.isEmpty()) {
+            selected.add("--exclude-path");
+            selected.add(String.join(File.pathSeparator, excluded));
         }
         selected.addAll(arguments);
         return List.copyOf(selected);
