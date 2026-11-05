@@ -49,7 +49,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CodeInsightTest {
     @Test
@@ -346,6 +348,47 @@ class CodeInsightTest {
     }
 
     @Test
+    void globalSearchesScanOverlappingPathsOnce(@TempDir Path directory) throws Exception {
+        var first = Files.createDirectories(directory.resolve("first"));
+        var second = Files.createDirectories(directory.resolve("second"));
+        var context = new ProjectContext(
+                new ProjectCatalog(
+                        new ProjectAnchor(ProjectType.GRADLE, directory),
+                        List.of(
+                                new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
+                                new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var invocation = new JaInvocation(
+                parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
+                parsed.requestedProjects(), Optional.of(context));
+        var jist = new ConcurrentJist(2);
+        var errors = new ByteArrayOutputStream();
+
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new OverlappingResolutionJig(directory), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        invocation, InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                        new PrintStream(errors));
+
+        assertEquals(0, result, errors.toString());
+        assertEquals(2, jist.invocations.size());
+        var excluded = jist.invocations.stream()
+                .filter(arguments -> arguments.contains("--exclude-path"))
+                .map(arguments -> arguments.get(arguments.indexOf("--exclude-path") + 1))
+                .toList();
+        assertEquals(List.of(directory + java.io.File.pathSeparator
+                + directory.resolve("shared.jar") + java.io.File.pathSeparator
+                + directory.resolve("shared-sources.jar")), excluded);
+        for (var arguments : jist.invocations) {
+            var classPath = arguments.get(arguments.indexOf("--class-path") + 1);
+            assertTrue(classPath.contains("shared.jar"), classPath);
+            assertTrue(classPath.contains("unique.jar"), classPath);
+            assertFalse(arguments.contains("--exclude-application-classes"), arguments.toString());
+        }
+    }
+
+    @Test
     void globalSearchesRetainDistinctSystemImages(@TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
@@ -587,6 +630,25 @@ class CodeInsightTest {
         }
     }
 
+    private static final class OverlappingResolutionJig implements ToolProvider {
+        private final Path directory;
+
+        OverlappingResolutionJig(Path directory) {
+            this.directory = directory;
+        }
+
+        @Override public String name() { return "jig"; }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            var project = directory.resolve(arguments.get(arguments.indexOf("--project-path") + 1));
+            out.println("--class-path");
+            out.println(project.resolve("unique.jar") + java.io.File.pathSeparator + project.getParent().resolve("shared.jar"));
+            out.println("--source-path");
+            out.println(project.getParent().resolve("shared-sources.jar"));
+            return 0;
+        }
+    }
+
     private static final class DistinctSystemJig implements ToolProvider {
         @Override public String name() { return "jig"; }
         @Override public int run(PrintWriter out, PrintWriter err, String... args) {
@@ -680,7 +742,7 @@ class CodeInsightTest {
         @Override public String name() { return "jist"; }
         @Override public int isSupportedOption(String option) {
             return switch (option) {
-                case "--class-path", "--format", "--system" -> 1;
+                case "--class-path", "--source-path", "--format", "--system", "--exclude-path" -> 1;
                 default -> -1;
             };
         }
