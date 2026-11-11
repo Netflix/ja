@@ -31,7 +31,6 @@ import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
-import com.netflix.tools.ja.Command.Source;
 import com.netflix.tools.ja.Command.Tools;
 
 /** A stable, ergonomic command in ja's base surface. */
@@ -45,8 +44,6 @@ public enum BuiltinCommand {
             Category.DEVELOPMENT,
             "Find or browse Java APIs",
             workflow(requiresProvider("jist"), requiresProvider("jdocserver")),
-            sourceTool()),
-    SOURCE("source", Category.DEVELOPMENT, "Show Java source", workflow(requiresProvider("jist")),
             sourceTool()),
     DESCRIBE("describe", Category.DEVELOPMENT, "Describe Java modules, types, members, and files",
             workflow(requiresProvider("jist")), sourceTool()),
@@ -137,7 +134,6 @@ public enum BuiltinCommand {
             case Install _ -> Optional.of(INSTALL);
             case Run _ -> Optional.of(RUN);
             case Doc _ -> Optional.of(DOC);
-            case Source _ -> Optional.of(SOURCE);
             case Command.Describe _ -> Optional.of(DESCRIBE);
             case Command.Find _ -> Optional.of(FIND);
             case Command.Tool _ -> Optional.empty();

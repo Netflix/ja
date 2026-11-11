@@ -31,7 +31,6 @@ import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
-import com.netflix.tools.ja.Command.Source;
 import com.netflix.tools.ja.Command.Tool;
 import com.netflix.tools.ja.Command.Tools;
 import com.netflix.tools.ja.DocRequest.Browse;
@@ -217,8 +216,6 @@ public record JaInvocation(
             command = new Require(parseRequireRequest(arguments, commandArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.DOC))) {
             command = new Doc(parseDocRequest(arguments, commandArguments));
-        } else if (command.equals(new Builtin(BuiltinCommand.SOURCE))) {
-            command = new Source(parseSourceSymbol(arguments, commandArguments));
         } else if (command.equals(new Builtin(BuiltinCommand.DESCRIBE))) {
             command = new Command.Describe(DescribeRequest.parse(List.of(arguments).subList(commandArguments, arguments.length)));
         } else if (command.equals(new Builtin(BuiltinCommand.FIND))) {
@@ -351,24 +348,6 @@ public record JaInvocation(
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid release: " + value, e);
         }
-    }
-
-    private static String parseSourceSymbol(String[] arguments, int firstArgument) {
-        String symbol = null;
-        for (int i = firstArgument; i < arguments.length; i++) {
-            String argument = arguments[i];
-            if (argument.startsWith("-")) {
-                throw new IllegalArgumentException("Unknown source argument: " + argument);
-            }
-            if (symbol != null) {
-                throw new IllegalArgumentException("source accepts only one symbol");
-            }
-            symbol = argument;
-        }
-        if (symbol == null) {
-            throw new IllegalArgumentException("source requires a symbol");
-        }
-        return symbol;
     }
 
     private static DocRequest parseDocRequest(String[] arguments, int firstArgument) {

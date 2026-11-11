@@ -63,7 +63,6 @@ class JaHelpTest {
                   projects     Show discovered projects and source sets
                   fmt          Format source
                   doc          Find or browse Java APIs
-                  source       Show Java source
                   describe     Describe Java modules, types, members, and files
                   find         Find related Java code
                   tool         List or run tools

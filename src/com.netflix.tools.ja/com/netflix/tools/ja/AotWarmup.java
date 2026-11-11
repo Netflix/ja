@@ -92,8 +92,8 @@ final class AotWarmup {
                     return result;
                 }
             }
-            if (available(BuiltinCommand.SOURCE, tools, catalog)) {
-                result = invoke(work, out, err, "source", "java.lang.String.isEmpty");
+            if (available(BuiltinCommand.DESCRIBE, tools, catalog)) {
+                result = invoke(work, out, err, "describe", "member", "java.lang.String.isEmpty", "--source", "definition");
                 if (result != 0) {
                     return result;
                 }

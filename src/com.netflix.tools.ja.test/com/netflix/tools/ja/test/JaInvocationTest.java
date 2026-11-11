@@ -28,7 +28,9 @@ import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
-import com.netflix.tools.ja.Command.Source;
+import com.netflix.tools.ja.Command.Describe;
+import com.netflix.tools.ja.DescribeRequest;
+import com.netflix.tools.ja.DescribeRequest.Subject;
 import com.netflix.tools.ja.Command.Tool;
 import com.netflix.tools.ja.Command.Tools;
 import com.netflix.tools.ja.DocRequest.Browse;
@@ -143,22 +145,14 @@ class JaInvocationTest {
     }
 
     @Test
-    void parsesSourceRequest() throws IOException {
+    void parsesDescribeSourceScope() throws IOException {
         module(temporaryDirectory.resolve("src"), "com.example.app");
 
-        var commandLine = parseAndScope(temporaryDirectory, new String[] {"source", "java.lang.String.isEmpty"});
+        var commandLine = parseAndScope(temporaryDirectory,
+                new String[] {"describe", "member", "java.lang.String.isEmpty", "--source", "definition"});
 
-        assertEquals(new Source("java.lang.String.isEmpty"), commandLine.command());
+        assertEquals(new Describe(new DescribeRequest(Subject.MEMBER, "java.lang.String.isEmpty", Optional.of("definition"))), commandLine.command());
         assertEquals(List.of(), commandLine.toolArguments());
-    }
-
-    @Test
-    void sourceRequiresExactlyOneSymbol() {
-        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"source"}));
-        IllegalArgumentException extra = assertThrows(IllegalArgumentException.class, () -> parseAndScope(temporaryDirectory, new String[] {"source", "java.lang.String", "java.lang.Integer"}));
-
-        assertEquals("source requires a symbol", missing.getMessage());
-        assertEquals("source accepts only one symbol", extra.getMessage());
     }
 
     @Test

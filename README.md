@@ -72,6 +72,21 @@ $ cowsay 'Holy cow, Java modules!'
                 ||     ||
 ```
 
+## Explore Java code
+
+`ja describe` separates the symbol you select from how much source you read. Start with a member's signature and Javadoc, then keep that member selected while expanding to its implementation, enclosing type, or entire compilation unit:
+
+```sh
+ja describe member example.Store.save
+ja describe member example.Store.save --source definition
+ja describe member example.Store.save --source type
+ja describe member example.Store.save --source unit
+```
+
+This works for project code and attached dependency sources. `--source` (`-s`) is available on `describe module`, `type`, `member`, and `file`, with the same scopes as `jist`: `none`, `body`, `signature`, `doc`, `definition`, `symbol`, `type`, and `unit`. The defaults are `definition` for modules, `doc` for members, and `signature` for types and files. `definition` includes the selected declaration's Javadoc and implementation; `type` expands to the outermost enclosing type; `unit` includes imports and sibling top-level types.
+
+Use `ja find declarations <name>` to discover declarations, `ja describe types <type-or-file>` for referenced type identities, and `ja describe origin <symbol>` to locate resolved source or artifacts. Run `ja skill ja` for the complete navigation guide.
+
 ## Quick start
 
 Initialize the current directory as a module, declare its main class, and add a dependency by Java module name:

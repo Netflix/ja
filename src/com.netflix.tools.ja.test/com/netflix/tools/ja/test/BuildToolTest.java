@@ -214,8 +214,9 @@ class BuildToolTest {
         fixture.definition = new ToolDefinition("jist", Launch.PROVIDER, Optional.empty(), Optional.empty(), "jist",
                 Optional.empty(), Set.of("class-path", "source-path"), List.of());
         fixture.additionalTools = List.of(provider("jdocserver", (_, _) -> 0));
-        assertEquals(0, fixture.run("-p", "example:app/test", "source", "example.Example"));
-        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "symbol", "example.Example"),
+        assertEquals(0, fixture.run("-p", "example:app/test", "describe", "type", "example.Example", "--source", "unit"));
+        assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources",
+                "--kind", "type", "--kind", "method", "--kind", "field", "--source", "unit", "example.Example"),
                 fixture.received);
         assertEquals("test", value(fixture.resolution(), "--scope"));
         fixture.received.clear();
@@ -277,14 +278,16 @@ class BuildToolTest {
                     Optional.empty(), Set.of("class-path", "source-path"), List.of());
             fixture.additionalTools = List.of(provider("jdocserver", (_, _) -> 0));
 
-            assertEquals(0, fixture.run("--verbose", "-p", type.equals("maven") ? "example:app" : ":app", "source", "java.lang.String"));
+            assertEquals(0, fixture.run("--verbose", "-p", type.equals("maven") ? "example:app" : ":app",
+                    "describe", "member", "java.lang.String.isEmpty", "--source", "definition"));
 
             assertEquals(2, fixture.queries.size(), fixture.queries.toString());
             for (var query : fixture.queries) {
                 assertEquals(type, query.getFirst(), query.toString());
                 assertEquals("--verbose", query.get(1), query.toString());
             }
-            assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources", "--source", "symbol", "java.lang.String"),
+            assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources",
+                    "--kind", "method", "--kind", "field", "--source", "definition", "java.lang.String.isEmpty"),
                     fixture.received);
         }
     }

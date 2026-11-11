@@ -1035,10 +1035,11 @@ class CommandRunnerTest {
     }
 
     @Test
-    void rendersSourceWithJistSymbolScope() throws Exception {
+    void rendersDescribeSourceWithTheSelectedJistScope() throws Exception {
         Path source = Files.createDirectories(temporaryDirectory.resolve("src/com.example.app"));
         Files.writeString(source.resolve("module-info.java"), "module com.example.app {}\n");
-        var commandLine = JaInvocation.parse(temporaryDirectory, new String[] {"source", "java.lang.String.isEmpty"});
+        var commandLine = JaInvocation.parse(temporaryDirectory,
+                new String[] {"describe", "member", "java.lang.String.isEmpty", "--source", "definition"});
         var jistArguments = new ArrayList<String>();
         ToolRuntime tools = ToolRuntime.of(fakeJig(Set.of("compile"),
                         """
@@ -1076,8 +1077,8 @@ class CommandRunnerTest {
         assertEquals(0, result);
         assertEquals("String source\n", output.toString());
         assertEquals(
-                List.of("--module-source-path", "src", "--module", "com.example.app", "--source", "symbol",
-                        "java.lang.String.isEmpty"),
+                List.of("--module-source-path", "src", "--module", "com.example.app",
+                        "--kind", "method", "--kind", "field", "--source", "definition", "java.lang.String.isEmpty"),
                 jistArguments);
     }
 

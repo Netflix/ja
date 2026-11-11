@@ -205,7 +205,7 @@ class JaToolTest {
                 described.commandLine().complete(List.of("compile", "--r")).stream()
                         .map(completion -> completion.value())
                         .toList());
-        assertEquals(20,
+        assertEquals(19,
                 described.commandLine()
                          .commands()
                          .size());
@@ -303,14 +303,10 @@ class JaToolTest {
     }
 
     @Test
-    void delegatesSourceAndDocumentationValueCompletionToJist() {
+    void delegatesDocumentationValueCompletionToJist() {
         var jist = new CompletingJist();
         var tools = ToolRuntime.of(jist);
 
-        assertEquals(List.of("candidate"),
-                Ja.complete(new CompletionRequest(ToolInvocation.of("source"), "Str"), tools).stream()
-                        .map(Completion::value)
-                        .toList());
         assertEquals(List.of("candidate"),
                 Ja.complete(new CompletionRequest(ToolInvocation.of("doc"), "Str"), tools).stream()
                         .map(Completion::value)
@@ -320,21 +316,22 @@ class JaToolTest {
                         .map(Completion::value)
                         .toList());
         assertEquals(
-                List.of(List.of("__complete", "--source", "symbol", "Str"), List.of("__complete", "--source", "doc", "--break", "--no-line-number", "Str"), List.of("__complete", "Str")),
+                List.of(List.of("__complete", "--source", "doc", "--break", "--no-line-number", "Str"), List.of("__complete", "Str")),
                 jist.invocations);
     }
 
     @Test
-    void completesSourceAndDocumentationSymbolsWithJist() {
+    void completesSourceAndDocumentationSymbolsWithJist(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}\n");
         var tools = ToolRuntime.load(Ja.class
                 .getModule()
                 .getLayer());
 
-        for (String command : List.of("source", "doc")) {
-            assertTrue(Ja.complete(new CompletionRequest(ToolInvocation.of(command), "Str"), tools).stream()
+        for (var arguments : List.of(List.of("describe", "type"), List.of("describe", "type", "--source", "unit"), List.of("doc"))) {
+            assertTrue(Ja.complete(new CompletionRequest(new ToolInvocation(directory, arguments), "Str"), tools).stream()
                     .map(Completion::value)
                     .anyMatch("java.lang.String"::equals),
-                    command);
+                    arguments.toString());
         }
     }
 
@@ -485,6 +482,50 @@ class JaToolTest {
         var described = assertInstanceOf(JaTool.class, ja);
         assertEquals(commandLine(described, "maven").help("ja maven"), result.output());
         assertEquals("", result.error());
+    }
+
+    @Test
+    void describesAMemberAtProgressivelyWiderSourceScopes(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}\n");
+        var source = Files.createDirectories(directory.resolve("example")).resolve("Store.java");
+        Files.writeString(source, """
+                package example;
+                import java.util.List;
+                public class Store {
+                    private int marker;
+                    public static class Builder {
+                        /** Build the values. */
+                        public List<String> run() {
+                            return List.of("value");
+                        }
+                    }
+                }
+                class Other {}
+                """);
+
+        for (var scope : List.of("doc", "definition", "type", "unit")) {
+            var result = run("-C", directory.toString(), "describe", "member", "example.Store.Builder.run", "--source", scope);
+            assertEquals(0, result.exitCode(), result.error());
+            assertEquals("", result.error());
+            assertTrue(result.output().contains("Build the values."), result.output());
+            assertTrue(result.output().contains("public List<String> run()"), result.output());
+            assertEquals(!scope.equals("doc"), result.output().contains("return List.of(\"value\");"), result.output());
+            assertEquals(scope.equals("type") || scope.equals("unit"), result.output().contains("private int marker;"), result.output());
+            assertEquals(scope.equals("unit"), result.output().contains("import java.util.List;"), result.output());
+            assertEquals(scope.equals("unit"), result.output().contains("class Other {}"), result.output());
+        }
+    }
+
+    @Test
+    void describesSourceScopesInCommandHelp() {
+        for (var subject : List.of("module", "type", "member", "file")) {
+            var result = run("describe", subject, "--help");
+            assertEquals(0, result.exitCode(), result.error());
+            assertTrue(result.output().contains("--source"), result.output());
+            for (var scope : List.of("none", "body", "signature", "doc", "definition", "symbol", "type", "unit")) {
+                assertTrue(result.output().contains(scope), result.output());
+            }
+        }
     }
 
     @Test

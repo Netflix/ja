@@ -70,12 +70,4 @@ public sealed interface Command {
     record Describe(DescribeRequest request) implements Command {}
 
     record Find(FindRequest request) implements Command {}
-
-    record Source(String symbol) implements Command {
-        public Source {
-            if (symbol.isBlank()) {
-                throw new IllegalArgumentException("Source symbol must not be empty");
-            }
-        }
-    }
 }
