@@ -24,7 +24,9 @@ import com.netflix.tools.ja.BuiltinCommand;
 import com.netflix.tools.ja.Command;
 import com.netflix.tools.ja.Command.Builtin;
 import com.netflix.tools.ja.Command.Doc;
-import com.netflix.tools.ja.Command.Source;
+import com.netflix.tools.ja.Command.Describe;
+import com.netflix.tools.ja.DescribeRequest;
+import com.netflix.tools.ja.DescribeRequest.Subject;
 import com.netflix.tools.ja.CommandAvailability;
 import com.netflix.tools.ja.DocRequest.Terminal;
 import com.netflix.tools.ja.JaInvocation;
@@ -94,13 +96,13 @@ class CommandAvailabilityTest {
     }
 
     @Test
-    void reportsSourceWorkflowDependency() {
-        var commandLine = commandLine(new Source("java.lang.String"));
+    void reportsDescribeWorkflowDependency() {
+        var commandLine = commandLine(new Describe(new DescribeRequest(Subject.TYPE, "java.lang.String")));
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
-        assertEquals("source is unavailable; missing tool: jist", failure.getMessage());
+        assertEquals("describe is unavailable; missing tool: jist", failure.getMessage());
     }
 
     @Test

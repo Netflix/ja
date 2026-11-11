@@ -42,6 +42,16 @@ final class JaOptions {
         return ToolOption.flag("--browse", "Browse API documentation");
     }
 
+    static ToolOption describeSource(DescribeRequest.Subject subject) {
+        return ToolOption.builder("--source")
+                .alias("-s")
+                .argument("SCOPE")
+                .choices(DescribeRequest.SOURCE_SCOPES.toArray(String[]::new))
+                .description("Read source at scope: " + String.join(", ", DescribeRequest.SOURCE_SCOPES)
+                        + " (default: " + subject.defaultSourceScope() + ")")
+                .build();
+    }
+
     static Group initOptions() {
         return group(
                 ToolOption.option("--release", "RELEASE", "Compile for the specified Java release"),

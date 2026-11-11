@@ -48,7 +48,6 @@ ja describe type <type>
 ja describe member <member>
 ja describe types <type-or-source-file>
 ja describe origin <symbol>
-ja source <symbol>
 ja doc <symbol>
 ja find declarations <name-query>
 ja find usages <type-or-member>
@@ -63,10 +62,9 @@ Choose the command according to the question:
 - `describe module` shows a module declaration.
 - `describe file` lists declarations in one source or class file.
 - `describe type` shows a type and its API.
-- `describe member` shows a method or field.
-- `describe types` lists compiler-resolved type identities referenced by a type or source file.
-- `describe origin` shows the source, module, or dependency artifact from which a symbol resolves.
-- `source` prints the implementation source for a package, type, or member.
+- `describe member` shows a method or field's signature and Javadoc by default.
+- `describe types` lists compiler-resolved type identities referenced by a type or source file; use it to resolve names appearing in that code.
+- `describe origin` shows where a selected symbol resolves: its source, module, or dependency artifact.
 - `doc` finds local API documentation; `doc --browse` opens the documentation browser.
 - `find declarations` searches named type and member declarations. Use repeatable `--kind` options to restrict results to `module`, `package`, `type`, `class`, `interface`, `enum`, `record`, `annotation`, `method`, or `field`; `type` includes all type declarations.
 - `find usages` finds semantic references to a type or member.
@@ -75,9 +73,33 @@ Choose the command according to the question:
 - `find impl` finds subtypes of a type or overriding methods.
 - `find supertypes` finds parent types.
 
-Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
+Choose the narrowest symbol and source scope that answer the question. Selection and source scope are independent: keep the same subject and change `--source` (`-s`) when you need its implementation or surrounding code. This works for project and attached dependency sources alike:
 
-At the build root, `find` searches the project-source contexts reported by `ja projects`, not just one source set. From within a project or with `-p`, it searches the marked current or requested context. Do not add a wider option merely to confirm results within that coverage. Add `--external` only when dependency or other external application declarations are part of the question, or `--all` when JDK system-module declarations are also required:
+```bash
+ja describe member example.Store.save
+ja describe member example.Store.save --source definition
+ja describe member example.Store.save --source type
+ja describe member example.Store.save --source unit
+```
+
+`describe module`, `type`, `member`, and `file` accept these scopes:
+
+| Scope | Source shown |
+| --- | --- |
+| `none` | Symbols without source text |
+| `signature` | Declaration signatures |
+| `doc` | Javadoc and declaration signatures |
+| `body` | Method source lines identified by compiled line tables |
+| `definition` | Complete selected declarations, including Javadoc and implementation |
+| `symbol` | Natural scope: compilation unit for a top-level type, definition for a nested type or executable, signature for other symbols |
+| `type` | Outermost enclosing type, including Javadoc |
+| `unit` | Entire compilation unit, including imports and sibling top-level types |
+
+Defaults are `definition` for modules, `doc` for members, and `signature` for types and files. Describing a member already includes its Javadoc; select `--source definition` when the question is about implementation behavior.
+
+Named dependency and JDK symbols resolve through `describe` and `doc` using the selected context's inputs, without a widening flag. If you do not know a declaration's qualified name, use `find declarations` to discover it, then use the returned name in follow-up queries. Use a fully qualified type or member when a simple name is ambiguous. Command completion can supply symbols and project selectors when shell completions are installed.
+
+At the build root, `find` searches the project-source contexts reported by `ja projects`, not just one source set. From within a project or with `-p`, it searches the marked current or requested context. The `find` options `--external` and `--all` widen the code searched, not the symbols available for resolution: `--external` adds dependency and other external application code; `--all` also adds JDK system-module code:
 
 ```bash
 ja find declarations --kind type Queue
@@ -85,7 +107,9 @@ ja find callers --external example.Library.run
 ja find callers --all java.lang.String.repeat
 ```
 
-These queries use the resolved Java inputs for the applicable discovered contexts and are global at the build root. Add `-p <context>` when compile-time or runtime visibility in one context is the question. Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start with the reported range for a bounded read, expanding or reading the whole file only when the surrounding context and file size justify it. A successful semantic query is sufficient evidence for the declarations or relationships it reports within the selected contexts. Use ordinary text search for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and languages other than Java; do not repeat semantic queries with text search merely to reconstruct the same result.
+Each `find` invocation performs a fresh search; reuse its output when counting, filtering, or presenting multiple views of the same results.
+
+Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start file reads with the reported declaration range and use the total line count to judge how far to expand. Alternatively, select a source scope with `describe` to read the declaration or surrounding code. A successful semantic query provides evidence for the declarations or relationships it reports within the selected contexts. Ordinary text search and file reads complement this for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and other languages.
 
 ## Use packaged Java tools
 

@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CommandCategoryTest {
     @Test
     void everyBuiltinHasAnExplicitCategory() {
-        var development = Set.of(BuiltinCommand.PROJECTS, BuiltinCommand.FMT, BuiltinCommand.DOC, BuiltinCommand.SOURCE, BuiltinCommand.DESCRIBE, BuiltinCommand.FIND);
+        var development = Set.of(BuiltinCommand.PROJECTS, BuiltinCommand.FMT, BuiltinCommand.DOC, BuiltinCommand.DESCRIBE, BuiltinCommand.FIND);
         for (var builtin : BuiltinCommand.values()) {
             assertEquals(development.contains(builtin) ? Category.DEVELOPMENT : Category.MODULE,
                     new Command.Builtin(builtin).category(), builtin.name());
@@ -43,7 +43,7 @@ class CommandCategoryTest {
             assertEquals(Category.MODULE, command.category());
             assertEquals(arguments.getFirst(), command.commandName());
         }
-        for (var arguments : List.of(List.of("source", "example.App"), List.of("doc", "example.App"), List.of("doc", "--browse"))) {
+        for (var arguments : List.of(List.of("describe", "type", "example.App", "--source", "unit"), List.of("doc", "example.App"), List.of("doc", "--browse"))) {
             var command = JaInvocation.parse(Path.of(""), arguments.toArray(String[]::new)).command();
             assertEquals(Category.DEVELOPMENT, command.category());
             assertEquals(arguments.getFirst(), command.commandName());

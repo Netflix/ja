@@ -142,6 +142,139 @@ class CodeInsightTest {
     }
 
     @Test
+    void sourceScopesExpandTheSelectedSubjectInItsCompilationContext(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        for (var subject : List.of("module", "type", "member", "file")) {
+            String target = subject.equals("file") ? "Example.java" : "example.Store.run";
+            for (var scope : List.of("none", "body", "signature", "doc", "definition", "symbol", "type", "unit")) {
+                for (var options : List.of(List.of("--source", scope), List.of("--source=" + scope), List.of("-s", scope), List.of("-s=" + scope))) {
+                    for (boolean optionsFirst : List.of(true, false)) {
+                        var query = new ArrayList<>(List.of("describe", subject));
+                        if (!optionsFirst) query.add(target);
+                        query.addAll(options);
+                        if (optionsFirst) query.add(target);
+                        var jist = new Probe("jist");
+                        var errors = new ByteArrayOutputStream();
+
+                        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist),
+                                new ToolCatalog(List.of()), () -> null).run(
+                                        JaInvocation.parse(directory, query.toArray(String[]::new)),
+                                        InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                                        new PrintStream(errors));
+
+                        assertEquals(0, result, errors.toString());
+                        var expected = new ArrayList<>(List.of("--module-source-path", "example.app=" + directory,
+                                "--module", "example.app"));
+                        expected.addAll(switch (subject) {
+                            case "module" -> List.of("--kind", "module");
+                            case "member" -> List.of("--kind", "method", "--kind", "field");
+                            default -> List.of("--kind", "type", "--kind", "method", "--kind", "field");
+                        });
+                        expected.addAll(List.of("--source", scope,
+                                subject.equals("file") ? directory.resolve(target).toString() : target));
+                        assertEquals(expected, jist.arguments, query.toString());
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void readsAttachedDependencySourceAtTheSelectedScope(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}\n");
+        var sources = Files.createDirectories(directory.resolve("dependency-sources"));
+        var source = Files.createDirectories(sources.resolve("dependency")).resolve("Library.java");
+        Files.writeString(source, """
+                package dependency;
+                import java.util.List;
+                public class Library {
+                    /** Read the attached values. */
+                    public List<String> load() {
+                        return List.of("attached");
+                    }
+                }
+                class Companion {}
+                """);
+        var classes = Files.createDirectories(directory.resolve("dependency-classes"));
+        var errors = new ByteArrayOutputStream();
+        var diagnostics = new PrintWriter(errors, true);
+        assertEquals(0, ToolProvider.findFirst("javac").orElseThrow()
+                .run(diagnostics, diagnostics, "-d", classes.toString(), source.toString()), errors.toString());
+        var archive = directory.resolve("library.jar");
+        var sourceArchive = directory.resolve("library-sources.jar");
+        var jar = ToolProvider.findFirst("jar").orElseThrow();
+        assertEquals(0, jar.run(diagnostics, diagnostics, "--create", "--file", archive.toString(),
+                "-C", classes.toString(), "."), errors.toString());
+        assertEquals(0, jar.run(diagnostics, diagnostics, "--create", "--file", sourceArchive.toString(),
+                "-C", sources.toString(), "."), errors.toString());
+        var jig = new Probe("jig");
+        jig.resolvedArguments = List.of("--class-path", archive.toString(), "--source-path", sourceArchive.toString());
+        var tools = ToolRuntime.of(jig, ToolProvider.findFirst("jist").orElseThrow());
+
+        for (var scope : List.of("definition", "type", "unit")) {
+            var output = new ByteArrayOutputStream();
+            int result = new CommandRunner(ModuleLayer.boot(), tools, new ToolCatalog(List.of()), () -> null).run(
+                    JaInvocation.parse(directory, new String[] {"describe", "member", "dependency.Library.load", "--source", scope}),
+                    InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
+
+            assertEquals(0, result, errors.toString());
+            assertEquals("", errors.toString());
+            var text = output.toString();
+            assertTrue(text.contains("Read the attached values."), text);
+            assertTrue(text.contains("return List.of(\"attached\");"), text);
+            assertEquals(!scope.equals("definition"), text.contains("public class Library {"), text);
+            assertEquals(scope.equals("unit"), text.contains("import java.util.List;"), text);
+            assertEquals(scope.equals("unit"), text.contains("class Companion {}"), text);
+        }
+    }
+
+    @Test
+    void validatesSourceScopeSelection() {
+        for (var tail : List.of(
+                List.of("member", "--source", "unknown", "example.Store.run"),
+                List.of("member", "--source"),
+                List.of("member", "--source="),
+                List.of("member", "--source", "definition", "--source", "unit", "example.Store.run"),
+                List.of("types", "--source", "definition", "example.Store"),
+                List.of("origin", "--source", "definition", "example.Store"))) {
+            var arguments = new ArrayList<>(List.of("describe"));
+            arguments.addAll(tail);
+            assertThrows(IllegalArgumentException.class,
+                    () -> JaInvocation.parse(Path.of(""), arguments.toArray(String[]::new)), arguments.toString());
+        }
+    }
+
+    @Test
+    void completesSourceScopesAndSubjects(@TempDir Path directory) throws Exception {
+        var scopes = List.of("body", "definition", "doc", "none", "signature", "symbol", "type", "unit");
+        for (var subject : List.of("module", "type", "member", "file")) {
+            for (var option : List.of("--source", "-s")) {
+                assertEquals(scopes, complete(List.of("describe", subject, option), ""));
+                assertEquals(scopes, complete(List.of("describe", subject, "example.Store", option), ""));
+                assertEquals(List.of("definition", "doc"), complete(List.of("describe", subject, option), "d"));
+            }
+        }
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        var jist = new Probe("jist");
+        var tools = ToolRuntime.of(new Probe("jig"), jist);
+        Files.writeString(directory.resolve("Store.java"), "class Store {}");
+        for (var options : List.of(List.of("--source", "definition"), List.of("--source=type"), List.of("-s", "unit"), List.of("-s=definition"))) {
+            var arguments = new ArrayList<>(List.of("-p", "app", "describe", "member"));
+            arguments.addAll(options);
+            var request = new CompletionRequest(new ToolInvocation(directory, arguments), "java.lang.Str");
+            assertEquals(List.of("java.lang.String"), Ja.complete(request, tools).stream().map(Completion::value).toList());
+            assertEquals(List.of("__complete", "--module-source-path", "example.app=" + directory,
+                    "--module", "example.app", "-C", directory.toString(),
+                    "--kind", "method", "--kind", "field", "java.lang.Str"), jist.arguments);
+
+            arguments = new ArrayList<>(List.of("describe", "file"));
+            arguments.addAll(options);
+            request = new CompletionRequest(new ToolInvocation(directory, arguments), "Sto");
+            assertEquals(List.of("Store.java"), Ja.complete(request, ToolRuntime.of()).stream().map(Completion::value).toList());
+        }
+    }
+
+    @Test
     void findsDeclarationsByNameAndKind(@TempDir Path directory) throws Exception {
         Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
         var jist = new Probe("jist");
@@ -785,6 +918,7 @@ class CodeInsightTest {
         private final String name;
         private final List<List<String>> invocations = new ArrayList<>();
         private List<String> arguments;
+        private List<String> resolvedArguments;
         private String symbols = "interface java.lang.Runnable\n";
         private int lookupStatus;
 
@@ -801,8 +935,12 @@ class CodeInsightTest {
             arguments = List.of(args);
             invocations.add(arguments);
             if (name.equals("jig")) {
-                int source = arguments.indexOf("--module-source-path");
-                out.print("--module-source-path\n" + arguments.get(source + 1) + "\n--module\nexample.app\n");
+                if (resolvedArguments != null) {
+                    resolvedArguments.forEach(out::println);
+                } else {
+                    int source = arguments.indexOf("--module-source-path");
+                    out.print("--module-source-path\n" + arguments.get(source + 1) + "\n--module\nexample.app\n");
+                }
             } else if (!arguments.isEmpty() && arguments.getFirst().equals("__complete")) {
                 out.println("java.lang.String\tclass");
                 out.println(":0");

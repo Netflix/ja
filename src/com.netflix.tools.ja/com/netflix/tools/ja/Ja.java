@@ -297,9 +297,10 @@ public final class Ja {
                 return SelectorCompletion.complete(selectorCommand.orElseThrow(), prepared.workingDirectory(), request.current(),
                         arguments.subList(0, commandIndex));
             }
-            if (commandArguments.size() == 1 && command.equals("describe")) {
+            if (!commandArguments.isEmpty() && command.equals("describe")) {
                 for (var subject : DescribeRequest.Subject.values()) {
-                    if (subject.command().equals(commandArguments.getFirst())) {
+                    if (subject.command().equals(commandArguments.getFirst())
+                            && subject.completesTarget(commandArguments.subList(1, commandArguments.size()))) {
                         return subject == DescribeRequest.Subject.FILE
                                 ? CodeCompletion.paths(prepared.workingDirectory(), request.current())
                                 : CodeCompletion.symbols(tools, prepared.workingDirectory(), arguments.subList(0, commandIndex),
@@ -320,9 +321,7 @@ public final class Ja {
                 }
             }
             Optional<ToolInvocation> delegated = Optional.empty();
-            if (command.equals("source") && commandArguments.isEmpty()) {
-                delegated = Optional.of(new ToolInvocation(prepared.workingDirectory(), List.of("--source", "symbol")));
-            } else if (command.equals("doc") && commandArguments.isEmpty()) {
+            if (command.equals("doc") && commandArguments.isEmpty()) {
                 delegated = Optional.of(new ToolInvocation(prepared.workingDirectory(), List.of("--source", "doc", "--break", "--no-line-number")));
             } else if (command.equals("doc") && commandArguments.equals(List.of("--browse"))) {
                 delegated = Optional.of(new ToolInvocation(prepared.workingDirectory(), List.of()));
@@ -415,8 +414,12 @@ public final class Ja {
                                .build();
             case DESCRIBE -> {
                 for (var subject : DescribeRequest.Subject.values()) {
+                    var subjectLine = CommandLine.builder().option(JaOptions.help());
+                    if (subject.supportsSource()) {
+                        subjectLine.option(JaOptions.describeSource(subject));
+                    }
                     commandLine.command(subject.command(), subject.description(),
-                            CommandLine.builder().option(JaOptions.help()).operand("SUBJECT", subject.description(), Cardinality.EXACTLY_ONE).build());
+                            subjectLine.operand("SUBJECT", subject.description(), Cardinality.EXACTLY_ONE).build());
                 }
                 yield commandLine.build();
             }
@@ -442,7 +445,6 @@ public final class Ja {
                     commandLine.option(JaOptions.browse())
                                .operand("SYMBOL|TYPE", "Java source symbol or type", Cardinality.ZERO_OR_ONE)
                                .build();
-            case SOURCE -> commandLine.operand("SYMBOL", "Java package, type, member, or source symbol", Cardinality.EXACTLY_ONE).build();
             case INSTALL ->
                     commandLine.options(JaOptions.installOptions())
                                .operand("MODULE|PACKAGE-URL", "Module or package reference", Cardinality.ZERO_OR_ONE)

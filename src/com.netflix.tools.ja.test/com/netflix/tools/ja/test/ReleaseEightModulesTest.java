@@ -204,7 +204,7 @@ class ReleaseEightModulesTest {
     void sourceInspectionUsesBaseSources() throws Exception {
         Path app = application();
 
-        String output = run(app, "source", "app.Main");
+        String output = run(app, "describe", "type", "app.Main", "--source", "unit");
 
         assertTrue(output.contains("dep.Greeting.message()"), output);
         assertTrue(output.contains("Main.java:"), output);

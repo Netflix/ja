@@ -45,7 +45,6 @@ import com.netflix.tools.ja.Command.Init;
 import com.netflix.tools.ja.Command.Install;
 import com.netflix.tools.ja.Command.Require;
 import com.netflix.tools.ja.Command.Run;
-import com.netflix.tools.ja.Command.Source;
 import com.netflix.tools.ja.Command.Tool;
 import com.netflix.tools.ja.Command.Tools;
 import com.netflix.tools.ja.DocRequest.Browse;
@@ -528,7 +527,6 @@ public final class CommandRunner {
         }
         return switch (commandLine.command()) {
             case Doc(Terminal _) -> true;
-            case Source _ -> true;
             case Command.Describe _ -> true;
             case Command.Find _ -> true;
             default -> false;
@@ -598,7 +596,6 @@ public final class CommandRunner {
     private static List<String> insightArguments(JaInvocation commandLine) {
         return switch (commandLine.command()) {
             case Doc(Terminal(var symbol)) -> List.of("--source", "doc", "--break", "--no-line-number", symbol);
-            case Source(var symbol) -> List.of("--source", "symbol", symbol);
             case Command.Describe(var request) -> request.arguments(commandLine.workingDirectory());
             case Command.Find(var request) -> request.arguments();
             default -> throw new IllegalArgumentException("Command does not provide Java insight: " + commandLine.command());
@@ -682,7 +679,7 @@ public final class CommandRunner {
         if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
             return ResolutionOptions.RUNTIME_WITH_ACCESS;
         }
-        if (commandLine.command() instanceof Doc || commandLine.command() instanceof Source
+        if (commandLine.command() instanceof Doc
                 || commandLine.command() instanceof Command.Describe || commandLine.command() instanceof Command.Find) {
             var provider = commandLine.command() instanceof Doc(Browse _) ? "jdocserver" : "jist";
             return toolRunner.providerResolutionOptions(provider,
@@ -769,10 +766,6 @@ public final class CommandRunner {
             }
             var sourceArguments = InsightSearchCoordinator.arguments(request.search(), arguments);
             return toolRunner.run(toolInvocation(commandLine, "jist", sourceArguments), resolutionArguments,
-                    resolved, in, out, err);
-        }
-        if (commandLine.command() instanceof Source(var symbol)) {
-            return toolRunner.run(toolInvocation(commandLine, "jist", List.of("--source", "symbol", symbol)), resolutionArguments,
                     resolved, in, out, err);
         }
         if (commandLine.command().equals(new Builtin(BuiltinCommand.GENERATE))) {
@@ -989,7 +982,6 @@ public final class CommandRunner {
         return builtin != null
                 && (builtin.execution() instanceof ToolBacked
                         || builtin == BuiltinCommand.DOC
-                        || builtin == BuiltinCommand.SOURCE
                         || builtin == BuiltinCommand.DESCRIBE
                         || builtin == BuiltinCommand.FIND
                         || builtin == BuiltinCommand.INSTALL
@@ -1059,7 +1051,6 @@ public final class CommandRunner {
             case Install _ -> false;
             case Run _ -> false;
             case Doc _ -> false;
-            case Source _ -> false;
             case Command.Describe _ -> false;
             case Command.Find _ -> false;
         };

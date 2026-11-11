@@ -18,9 +18,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /** A subject whose declarations, API, or resolved types should be described in the selected context. */
-public record DescribeRequest(Subject subject, String target) {
+public record DescribeRequest(Subject subject, String target, Optional<String> sourceScope) {
+    static final List<String> SOURCE_SCOPES = List.of("none", "body", "signature", "doc", "definition", "symbol", "type", "unit");
+
     public enum Subject {
         MODULE("module", "Describe a Java module", List.of("--kind", "module")),
         TYPE("type", "Describe a Java type and its API", List.of("--kind", "type", "--kind", "method", "--kind", "field")),
@@ -51,23 +54,102 @@ public record DescribeRequest(Subject subject, String target) {
             return this == TYPE || this == TYPES ? List.of("--kind", "type") : kinds;
         }
 
+        boolean supportsSource() {
+            return this != TYPES && this != ORIGIN;
+        }
+
+        String defaultSourceScope() {
+            return switch (this) {
+                case MODULE -> "definition";
+                case MEMBER -> "doc";
+                case TYPE, FILE -> "signature";
+                case TYPES, ORIGIN -> throw new IllegalStateException(command + " does not support --source");
+            };
+        }
+
+        boolean completesTarget(List<String> arguments) {
+            if (arguments.isEmpty()) {
+                return true;
+            }
+            if (!supportsSource()) {
+                return false;
+            }
+            if (arguments.size() == 2) {
+                return isSourceOption(arguments.getFirst()) && SOURCE_SCOPES.contains(arguments.getLast());
+            }
+            if (arguments.size() != 1) {
+                return false;
+            }
+            String argument = arguments.getFirst();
+            int equals = argument.indexOf('=');
+            return equals > 0 && isSourceOption(argument.substring(0, equals))
+                    && SOURCE_SCOPES.contains(argument.substring(equals + 1));
+        }
+
         static Subject parse(String value) {
             return Arrays.stream(values()).filter(subject -> subject.command.equals(value)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unknown describe subject: " + value));
         }
     }
 
+    public DescribeRequest(Subject subject, String target) {
+        this(subject, target, Optional.empty());
+    }
+
     public DescribeRequest {
         if (target.isBlank() || target.startsWith("-")) {
             throw new IllegalArgumentException("describe requires a nonempty subject");
         }
+        if (sourceScope.isPresent()) {
+            if (!subject.supportsSource()) {
+                throw new IllegalArgumentException("describe " + subject.command + " does not support --source");
+            }
+            if (!SOURCE_SCOPES.contains(sourceScope.orElseThrow())) {
+                throw new IllegalArgumentException("--source expects one of: " + String.join(", ", SOURCE_SCOPES));
+            }
+        }
     }
 
     static DescribeRequest parse(List<String> arguments) {
-        if (arguments.size() != 2) {
-            throw new IllegalArgumentException("Usage: ja describe <module|type|member|file|types|origin> <subject>");
+        if (arguments.isEmpty()) {
+            throw usage();
         }
-        return new DescribeRequest(Subject.parse(arguments.getFirst()), arguments.getLast());
+        var subject = Subject.parse(arguments.getFirst());
+        String target = null;
+        String sourceScope = null;
+        for (int index = 1; index < arguments.size(); index++) {
+            String argument = arguments.get(index);
+            int equals = argument.indexOf('=');
+            if (isSourceOption(equals < 0 ? argument : argument.substring(0, equals))) {
+                if (sourceScope != null) {
+                    throw new IllegalArgumentException("--source accepts only one scope");
+                }
+                if (equals >= 0) {
+                    sourceScope = argument.substring(equals + 1);
+                } else {
+                    if (++index >= arguments.size()) {
+                        throw new IllegalArgumentException("--source requires a scope");
+                    }
+                    sourceScope = arguments.get(index);
+                }
+            } else if (argument.startsWith("-") || target != null) {
+                throw usage();
+            } else {
+                target = argument;
+            }
+        }
+        if (target == null) {
+            throw usage();
+        }
+        return new DescribeRequest(subject, target, Optional.ofNullable(sourceScope));
+    }
+
+    private static boolean isSourceOption(String argument) {
+        return argument.equals("--source") || argument.equals("-s");
+    }
+
+    private static IllegalArgumentException usage() {
+        return new IllegalArgumentException("Usage: ja describe <module|type|member|file|types|origin> [--source <scope>] <subject>");
     }
 
     List<String> arguments(Path workingDirectory) {
@@ -81,12 +163,7 @@ public record DescribeRequest(Subject subject, String target) {
             return List.of("-l", "--source", "none", "--show-origin", "--visibility", "all", resolvedTarget);
         }
         var arguments = new ArrayList<>(subject.kinds);
-        arguments.addAll(List.of("--source", switch (subject) {
-            case MODULE -> "definition";
-            case MEMBER -> "doc";
-            case TYPE, FILE, TYPES -> "signature";
-            case ORIGIN -> throw new AssertionError();
-        }));
+        arguments.addAll(List.of("--source", sourceScope.orElseGet(subject::defaultSourceScope)));
         arguments.add(resolvedTarget);
         return List.copyOf(arguments);
     }
