@@ -392,20 +392,13 @@ public final class CommandRunner {
 
         boolean declarationSearch = commandLine.command() instanceof Command.Find(var request)
                 && request.question() == FindRequest.Question.DECLARATIONS;
-        if (declarationSearch && results.stream().allMatch(result -> result.status() == 1)) {
-            return OptionalInt.of(0);
-        }
         boolean successful = results.stream().anyMatch(result -> result.status() == 0);
-        if (!successful) {
-            results.forEach(result -> printInsightError(result, err));
-            return OptionalInt.of(results.stream()
-                    .mapToInt(InsightResult::status)
-                    .filter(status -> status != 0)
-                    .findFirst()
-                    .orElse(2));
-        }
-        if (commandLine.verbose()) {
-            results.stream().filter(result -> result.status() != 0)
+        var failures = results.stream()
+                .filter(result -> result.status() != 0 && !result.notFound())
+                .toList();
+        failures.forEach(result -> printInsightError(result, err));
+        if (failures.isEmpty() && (!successful && !declarationSearch || commandLine.verbose())) {
+            results.stream().filter(InsightResult::notFound)
                     .forEach(result -> printInsightError(result, err));
         }
         var originTarget = commandLine.command() instanceof Command.Describe(var request)
@@ -415,7 +408,6 @@ public final class CommandRunner {
         boolean qualifySystems = commandLine.command() instanceof Command.Find(var request)
                 && request.search() == FindRequest.Search.ALL
                 && results.stream()
-                        .filter(result -> result.status() == 0)
                         .flatMap(result -> result.rows().stream())
                         .map(InsightRow::origin)
                         .filter(Optional::isPresent)
@@ -427,14 +419,15 @@ public final class CommandRunner {
                         .limit(2)
                         .count() > 1;
         var rows = new TreeSet<String>();
-        results.stream().filter(result -> result.status() == 0)
+        results.stream()
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
                         || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()))
                 .map(row -> row.render(qualifySystems, declarationSearch ? commandLine.workingDirectory() : null))
                 .forEach(rows::add);
         rows.forEach(out::println);
-        return OptionalInt.of(0);
+        return OptionalInt.of(!failures.isEmpty() ? failures.getFirst().status()
+                : successful || declarationSearch ? 0 : 1);
     }
 
     private InsightResult runInsightContext(
@@ -454,9 +447,11 @@ public final class CommandRunner {
                     && request.question() == FindRequest.Question.IMPL) {
                 var symbols = new ByteArrayOutputStream();
                 int lookup;
+                var lookupArguments = new ArrayList<>(List.of("--format", "json"));
+                lookupArguments.addAll(request.arguments());
                 try (var symbolOutput = new PrintStream(symbols, true, StandardCharsets.UTF_8)) {
                     lookup = run(
-                            toolInvocation(focused, "jist", request.arguments()),
+                            toolInvocation(focused, "jist", lookupArguments),
                             InputStream.nullInputStream(),
                             symbolOutput,
                             err,
@@ -465,10 +460,13 @@ public final class CommandRunner {
                             moduleHashesAlreadyVerified,
                             null);
                 }
-                if (lookup != 0) {
-                    return new InsightResult(target, lookup, List.of(), errors.toString(StandardCharsets.UTF_8));
+                var selection = insightResult(target, lookup, symbols.toString(StandardCharsets.UTF_8),
+                        errors.toString(StandardCharsets.UTF_8));
+                if (selection.status() != 0) {
+                    return new InsightResult(target, selection.status(), List.of(), selection.error(), selection.notFound());
                 }
-                arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
+                arguments = request.implementationArguments(selection.rows().stream().map(InsightRow::text)
+                        .collect(Collectors.joining("\n")));
             } else {
                 arguments = insightArguments(commandLine);
             }
@@ -485,39 +483,57 @@ public final class CommandRunner {
                     scopedTools,
                     moduleHashesAlreadyVerified,
                     insightSearch);
-            if (status != 0) {
-                return new InsightResult(target, status, List.of(), errors.toString(StandardCharsets.UTF_8));
-            }
-            try {
-                var document = Json.parse(output.toString(StandardCharsets.UTF_8));
-                if (!document.get("format").asString().equals("jist") || document.get("version").asInt() != 1) {
-                    throw new IllegalArgumentException("Unsupported jist JSON output");
-                }
-                var rows = document.get("results").asList().stream()
-                        .map(result -> new InsightRow(
-                                result.get("text").asString(),
-                                result.tryGet("origin").map(origin -> new InsightOrigin(
-                                        origin.get("kind").asString(),
-                                        origin.tryGet("system").map(value -> value.asString()).orElse(null),
-                                        origin.tryGet("module").map(value -> value.asString()).orElse(null),
-                                        origin.tryGet("version").map(value -> value.asString()).orElse(null))),
-                                result.tryGet("source").map(source -> {
-                                    var range = source.get("range");
-                                    return new InsightSource(
-                                            source.get("location").asString(),
-                                            source.get("lineCount").asInt(),
-                                            range.get("startLine").asInt(),
-                                            range.get("endLine").asInt());
-                                })))
-                        .toList();
-                return new InsightResult(target, 0, rows, errors.toString(StandardCharsets.UTF_8));
-            } catch (JsonParseException | JsonValueException | IllegalArgumentException e) {
-                return new InsightResult(target, 2, List.of(), "Invalid jist JSON output: " + e.getMessage());
-            }
+            return insightResult(target, status, output.toString(StandardCharsets.UTF_8),
+                    errors.toString(StandardCharsets.UTF_8));
         } catch (Exception e) {
             int status = e instanceof ToolExecutionException failure ? failure.exitCode() : 2;
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             return new InsightResult(target, status, List.of(), message);
+        }
+    }
+
+    private static InsightResult insightResult(ProjectTarget target, int status, String output, String errors) {
+        if (output.isBlank() && status != 0) {
+            return new InsightResult(target, status, List.of(), errors);
+        }
+        try {
+            var document = Json.parse(output);
+            if (!document.get("format").asString().equals("jist") || document.get("version").asInt() != 1) {
+                throw new IllegalArgumentException("Unsupported jist JSON output");
+            }
+            var rows = document.get("results").asList().stream()
+                    .map(result -> new InsightRow(
+                            result.get("text").asString(),
+                            result.tryGet("origin").map(origin -> new InsightOrigin(
+                                    origin.get("kind").asString(),
+                                    origin.tryGet("system").map(value -> value.asString()).orElse(null),
+                                    origin.tryGet("module").map(value -> value.asString()).orElse(null),
+                                    origin.tryGet("version").map(value -> value.asString()).orElse(null))),
+                            result.tryGet("source").map(source -> {
+                                var range = source.get("range");
+                                return new InsightSource(
+                                        source.get("location").asString(),
+                                        source.get("lineCount").asInt(),
+                                        range.get("startLine").asInt(),
+                                        range.get("endLine").asInt());
+                            })))
+                    .toList();
+            int reportedStatus = document.tryGet("exitCode").map(value -> value.asInt()).orElse(status);
+            if (reportedStatus != status) {
+                throw new IllegalArgumentException("jist exitCode does not match provider status");
+            }
+            var diagnostics = document.tryGet("diagnostics").map(value -> value.asList()).orElse(List.of());
+            boolean notFound = status != 0 && !diagnostics.isEmpty()
+                    && diagnostics.stream().allMatch(value -> value.get("kind").asString().equals("not_found"));
+            var diagnostic = errors;
+            if (diagnostic.isBlank()) {
+                diagnostic = diagnostics.stream().map(value -> value.get("message").asString())
+                        .collect(Collectors.joining("\n"));
+            }
+            return new InsightResult(target, status, rows, diagnostic, notFound);
+        } catch (JsonParseException | JsonValueException | IllegalArgumentException e) {
+            return new InsightResult(target, 2, List.of(), "Invalid jist JSON output: " + e.getMessage()
+                    + (errors.isBlank() ? "" : "\n" + errors.strip()));
         }
     }
 
@@ -608,7 +624,11 @@ public final class CommandRunner {
                 + (diagnostic.isEmpty() ? "query failed with status " + result.status() : diagnostic));
     }
 
-    private record InsightResult(ProjectTarget target, int status, List<InsightRow> rows, String error) {
+    private record InsightResult(ProjectTarget target, int status, List<InsightRow> rows, String error, boolean notFound) {
+        InsightResult(ProjectTarget target, int status, List<InsightRow> rows, String error) {
+            this(target, status, rows, error, false);
+        }
+
         InsightResult {
             rows = List.copyOf(rows);
         }

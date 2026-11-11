@@ -829,6 +829,8 @@ class CodeInsightTest {
         }
         @Override public int run(PrintWriter out, PrintWriter err, String... args) {
             invocations.add(List.of(args));
+            out.println("{\"format\":\"jist\",\"version\":1,\"results\":[],\"exitCode\":1,"
+                    + "\"diagnostics\":[{\"kind\":\"not_found\",\"message\":\"Symbol not found: *Missing*\"}]}");
             err.println("Symbol not found: *Missing*");
             return 1;
         }
@@ -848,7 +850,7 @@ class CodeInsightTest {
             var arguments = List.of(args);
             invocations.add(arguments);
             if (arguments.contains("-l")) {
-                out.println("class example.Root");
+                out.println("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"class example.Root\"}]}");
                 return 0;
             }
             int classPath = arguments.indexOf("--class-path");
