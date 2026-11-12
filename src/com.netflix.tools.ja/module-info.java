@@ -22,7 +22,7 @@ module com.netflix.tools.ja {
             com.netflix.tools.ja.test;
 
     requires com.netflix.tools.cli;
-    requires com.netflix.tools.jig; // @0.21.9
+    requires com.netflix.tools.jig; // @0.21.10
     requires com.netflix.tools.json;
     requires com.netflix.tools.launcher;
     requires java.compiler;
