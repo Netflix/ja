@@ -85,6 +85,21 @@ class BuildToolTest {
     }
 
     @Test
+    void gradleSourceToolsRequestLenientResolution() throws Exception {
+        for (var sourceOption : List.of("source-path", "module-source-path")) {
+            for (var classpath : List.of("compile", "runtime")) {
+                var fixture = fixture("gradle", Set.of("class-path", sourceOption));
+                assertEquals(0, fixture.run("-p", ":app/test/" + classpath, "tool", "capture"));
+                var query = fixture.resolution();
+                assertTrue(query.contains("--lenient"), query.toString());
+                assertEquals("test", value(query, "--source-set"));
+                assertEquals(classpath, value(query, "--classpath"));
+                assertEquals(List.of("--class-path", "dependencies", "--" + sourceOption, "sources"), fixture.received);
+            }
+        }
+    }
+
+    @Test
     void toolsWithoutProjectOptionsDoNotResolveOrPrepareProjectOutputs() throws Exception {
         var fixture = fixture("maven", Set.of());
         assertEquals(0, fixture.run("-p", "example:app/test", "tool", "capture", "user"));
@@ -254,7 +269,10 @@ class BuildToolTest {
                 assertEquals(List.of("--class-path", "dependencies", "--source-path", "sources"), received.subList(0, 4));
                 assertEquals(query.get(1).equals("file") ? directory.resolve("Example.java").toString() : query.getLast(), received.getLast());
                 assertEquals("test", value(fixture.resolution(), type.equals("maven") ? "--scope" : "--source-set"));
-                if (type.equals("gradle")) assertEquals("runtime", value(fixture.resolution(), "--classpath"));
+                if (type.equals("gradle")) {
+                    assertEquals("runtime", value(fixture.resolution(), "--classpath"));
+                    assertTrue(fixture.resolution().contains("--lenient"), query.toString());
+                }
                 if (query.getFirst().equals("find")) {
                     assertEquals(List.of("--exclude-application-classes", "--exclude-system-modules"), fixture.received.subList(4, 6));
                 }
@@ -360,8 +378,10 @@ class BuildToolTest {
                 if (options.contains("module-path") && modulePath != null) {
                     out.println("--module-path \"" + modulePath + "\"");
                 }
-                if (options.contains("source-path")) {
-                    out.println("--source-path sources");
+                for (var option : List.of("source-path", "module-source-path")) {
+                    if (options.contains(option)) {
+                        out.println("--" + option + " sources");
+                    }
                 }
                 for (var option : List.of(List.of("processor-path", "--processor-path", "processors"),
                         List.of("source", "-source", "17"), List.of("target", "-target", "17"),
