@@ -75,8 +75,13 @@ final class ProjectResolver {
             switch (target.scope().orElseThrow()) {
                 case ProjectScope.Maven(var scope) -> arguments.addAll(List.of("maven", "--project-base-dir", anchor.root().toString(),
                         "--project", target.project().selector(), "--scope", scope));
-                case ProjectScope.Gradle(var sourceSet, var classpath) -> arguments.addAll(List.of("gradle", "--root-project-dir", anchor.root().toString(),
-                        "--project-path", target.project().selector(), "--source-set", sourceSet, "--classpath", classpath));
+                case ProjectScope.Gradle(var sourceSet, var classpath) -> {
+                    arguments.addAll(List.of("gradle", "--root-project-dir", anchor.root().toString(),
+                            "--project-path", target.project().selector(), "--source-set", sourceSet, "--classpath", classpath));
+                    if (requested.contains("source-path") || requested.contains("module-source-path")) {
+                        arguments.add("--lenient");
+                    }
+                }
                 case ProjectScope.Module _ -> throw new IllegalArgumentException("Module context in an external build");
             }
             arguments.addAll(List.of("--resolve-options", options));
