@@ -356,9 +356,12 @@ public final class CommandRunner {
             err.flush();
         }
         var results = new ArrayList<InsightResult>();
-        var insightSearch = commandLine.command() instanceof Command.Find(var request)
-                ? new InsightSearchCoordinator(request.search())
-                : null;
+        var insightSearch = switch (commandLine.command()) {
+            case Command.Find(var request) -> new InsightSearchCoordinator(request.search());
+            case Command.Describe(var request) when request.subject() == DescribeRequest.Subject.ORIGIN ->
+                    new InsightSearchCoordinator(FindRequest.Search.ALL);
+            default -> null;
+        };
         int processors = Runtime.getRuntime().availableProcessors();
         int parallelism = Math.min(targets.size(), Math.max(2, Math.min(8, processors)));
         try (var executor = Executors.newFixedThreadPool(
