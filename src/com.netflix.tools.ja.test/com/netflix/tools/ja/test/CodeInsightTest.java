@@ -47,6 +47,8 @@ import com.netflix.tools.ja.project.ProjectSelection.BuildScope;
 import com.netflix.tools.ja.project.ProjectType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -447,8 +449,9 @@ class CodeInsightTest {
         assertEquals("src/example/Root.java:2-4 of 4: class example.Root\n", output.toString());
     }
 
-    @Test
-    void globalSearchesScanIdenticalExternalAndSystemInputsOnce(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void globalSearchesScanIdenticalExternalAndSystemInputsOnce(boolean origin, @TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -458,7 +461,9 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, origin
+                ? new String[] {"describe", "origin", "java.lang.String"}
+                : new String[] {"find", "callers", "--all", "example.Target.run"});
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -472,16 +477,18 @@ class CodeInsightTest {
                         invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals(
-                "java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)\n",
+        assertEquals(origin
+                ? "class java.base@25/java.lang.String(jrt:/java.base/java/lang/String.class)\n"
+                : "java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)\n",
                 output.toString());
         assertEquals(2, jist.invocations.size());
         assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
         assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
     }
 
-    @Test
-    void globalSearchesScanOverlappingPathsOnce(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void globalSearchesScanOverlappingPathsOnce(boolean origin, @TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -491,7 +498,9 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, origin
+                ? new String[] {"describe", "origin", "example.Root"}
+                : new String[] {"find", "callers", "--all", "example.Target.run"});
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -521,8 +530,9 @@ class CodeInsightTest {
         }
     }
 
-    @Test
-    void globalSearchesRetainDistinctSystemImages(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void globalSearchesRetainDistinctSystemImages(boolean origin, @TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -532,7 +542,9 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, origin
+                ? new String[] {"describe", "origin", "java.lang.String"}
+                : new String[] {"find", "callers", "--all", "example.Target.run"});
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -547,7 +559,10 @@ class CodeInsightTest {
                         new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals("""
+        assertEquals(origin ? """
+                class java.base@21/java.lang.String(jrt:/java.base/java/lang/String.class)
+                class java.base@25/java.lang.String(jrt:/java.base/java/lang/String.class)
+                """ : """
                 java.base@21/java.lang.String(String.java:3724): java.lang.String.indent(int) -> java.lang.String.repeat(int)
                 java.base@25/java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)
                 """, output.toString());
@@ -899,13 +914,21 @@ class CodeInsightTest {
                 var systemPath = arguments.get(system + 1);
                 var version = systemPath.endsWith("first-system") ? "21" : "25";
                 var line = version.equals("21") ? "3724" : "4034";
+                var text = arguments.contains("--show-origin")
+                        ? "class java.base@" + version + "/java.lang.String(jrt:/java.base/java/lang/String.class)"
+                        : "java.lang.String(String.java:" + line
+                                + "): java.lang.String.indent(int) -> java.lang.String.repeat(int)";
                 out.print("{\"format\":\"jist\",\"version\":1,\"results\":["
-                        + "{\"text\":\"java.lang.String(String.java:" + line
-                        + "): java.lang.String.indent(int) -> java.lang.String.repeat(int)\","
+                        + "{\"text\":\"" + text + "\","
                         + "\"origin\":{\"kind\":\"system\",\"location\":\"jrt:/java.base/java/lang/String.class\","
                         + "\"system\":\"" + systemPath + "\",\"module\":\"java.base\",\"version\":\""
                         + version + "\",\"resource\":\"java/lang/String.class\",\"source\":\"String.java\",\"line\":"
                         + line + "}}]}\n");
+                return 0;
+            }
+            if (arguments.contains("--show-origin")) {
+                out.println("{\"format\":\"jist\",\"version\":1,\"results\":["
+                        + "{\"text\":\"class example.Root(/classes/example/Root.class)\"}]}");
                 return 0;
             }
             int classPath = arguments.indexOf("--class-path");
