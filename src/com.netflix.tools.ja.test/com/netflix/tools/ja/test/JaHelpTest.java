@@ -124,6 +124,18 @@ class JaHelpTest {
         assertTrue(help.contains("  install is unavailable; missing tool: jlink\n"), help);
     }
 
+    @Test
+    void documentationIsAvailableWhenEitherModeIsSupported() {
+        for (var provider : List.of("jist", "jdocserver")) {
+            var bytes = new ByteArrayOutputStream();
+            try (var output = new PrintStream(bytes)) {
+                Ja.help(output, ToolRuntime.of(tool(provider)), new ToolCatalog(List.of()));
+            }
+            var available = bytes.toString().split("Unavailable commands:")[0];
+            assertTrue(available.contains("  doc          Find or browse Java APIs\n"), bytes.toString());
+        }
+    }
+
     private static ToolDefinition definition(String name) {
         return new ToolDefinition(
                 name,

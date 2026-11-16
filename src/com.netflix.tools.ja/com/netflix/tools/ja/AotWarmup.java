@@ -98,7 +98,7 @@ final class AotWarmup {
                     return result;
                 }
             }
-            if (available(BuiltinCommand.DOC, tools, catalog)) {
+            if (tools.contains("jist")) {
                 result = invoke(work, out, err, "doc", "java.lang.String.isEmpty");
                 if (result != 0) {
                     return result;
