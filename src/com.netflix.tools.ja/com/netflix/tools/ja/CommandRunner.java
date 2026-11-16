@@ -399,6 +399,8 @@ public final class CommandRunner {
         var failures = results.stream()
                 .filter(result -> result.status() != 0 && !result.notFound())
                 .toList();
+        results.stream().filter(result -> result.status() == 0 && !result.error().isBlank())
+                .forEach(result -> printInsightError(result, err));
         failures.forEach(result -> printInsightError(result, err));
         if (failures.isEmpty() && (!successful && !declarationSearch || commandLine.verbose())) {
             results.stream().filter(InsightResult::notFound)
@@ -771,9 +773,7 @@ public final class CommandRunner {
             var origins = new ByteArrayOutputStream();
             int result = toolRunner.run(invocation, resolutionArguments, resolved, in,
                     new PrintStream(origins, true, StandardCharsets.UTF_8), err);
-            if (result == 0) {
-                printExactOrigins(origins.toString(StandardCharsets.UTF_8), request.target(), out);
-            }
+            printExactOrigins(origins.toString(StandardCharsets.UTF_8), request.target(), out);
             return result;
         }
         if (commandLine.command() instanceof Command.Find(var request)) {
