@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.TreeSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -410,9 +409,7 @@ public final class CommandRunner {
                 && request.subject() == DescribeRequest.Subject.ORIGIN
                         ? Optional.of(request.target())
                         : Optional.<String>empty();
-        boolean qualifySystems = commandLine.command() instanceof Command.Find(var request)
-                && request.search() == FindRequest.Search.ALL
-                && results.stream()
+        boolean qualifySystems = originTarget.isEmpty() && results.stream()
                         .flatMap(result -> result.rows().stream())
                         .map(InsightRow::origin)
                         .filter(Optional::isPresent)
@@ -423,14 +420,21 @@ public final class CommandRunner {
                         .distinct()
                         .limit(2)
                         .count() > 1;
-        var rows = new TreeSet<String>();
-        results.stream()
+        boolean listing = commandLine.command() instanceof Command.Find
+                || commandLine.command() instanceof Command.Describe(var request)
+                        && (request.subject() == DescribeRequest.Subject.ORIGIN || request.subject() == DescribeRequest.Subject.TYPES);
+        var rows = results.stream()
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
-                        || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()))
-                .map(row -> row.render(qualifySystems, declarationSearch ? commandLine.workingDirectory() : null))
-                .forEach(rows::add);
-        rows.forEach(out::println);
+                        || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()));
+        if (!listing) {
+            rows = rows.distinct();
+        }
+        var rendered = rows.map(row -> row.render(qualifySystems, declarationSearch ? commandLine.workingDirectory() : null));
+        if (listing) {
+            rendered = rendered.distinct().sorted();
+        }
+        rendered.forEach(out::println);
         return OptionalInt.of(!failures.isEmpty() ? failures.getFirst().status()
                 : successful || declarationSearch ? 0 : 1);
     }
@@ -513,7 +517,9 @@ public final class CommandRunner {
                                     origin.get("kind").asString(),
                                     origin.tryGet("system").map(value -> value.asString()).orElse(null),
                                     origin.tryGet("module").map(value -> value.asString()).orElse(null),
-                                    origin.tryGet("version").map(value -> value.asString()).orElse(null))),
+                                    origin.tryGet("version").map(value -> value.asString()).orElse(null),
+                                    origin.tryGet("location").map(value -> value.asString()).orElse(null),
+                                    origin.tryGet("line").map(value -> value.asInt()).orElse(null))),
                             result.tryGet("source").map(source -> {
                                 var range = source.get("range");
                                 return new InsightSource(
@@ -687,7 +693,7 @@ public final class CommandRunner {
         }
     }
 
-    private record InsightOrigin(String kind, String system, String module, String version) {
+    private record InsightOrigin(String kind, String system, String module, String version, String location, Integer line) {
         boolean isSystem() {
             return kind.equals("system");
         }

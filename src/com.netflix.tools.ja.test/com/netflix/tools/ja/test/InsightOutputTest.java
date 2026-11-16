@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.spi.ToolProvider;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.tools.OptionChecker;
 
 import com.netflix.tools.ja.CommandRunner;
@@ -71,6 +73,46 @@ class InsightOutputTest {
                 + "ja: :second/main/compile: Error: query interrupted\n" : "Error: query interrupted\n", result.error());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"type", "file"})
+    void descriptionsPreserveSourceOrder(String subject, @TempDir Path directory) throws Exception {
+        var lines = IntStream.rangeClosed(1, 12).mapToObj(line -> "example.Root(Root.java:" + line + "): row " + line).toList();
+        var rows = IntStream.rangeClosed(1, 12).mapToObj(line -> "{\"text\":\"" + lines.get(line - 1)
+                + "\",\"origin\":{\"kind\":\"source\",\"location\":\"/source/Root.java\",\"line\":" + line + "}}")
+                .collect(Collectors.joining(","));
+        var result = run(directory, true, new ResultJist(rows, "", "", 0),
+                List.of("describe", subject, "--source", "unit", subject.equals("file") ? "Root.java" : "example.Root"));
+        assertEquals(0, result.status(), result.error());
+        assertEquals(String.join("\n", lines) + "\n", result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"doc", "describe"})
+    void documentationRetainsRepeatedSourceLines(String command, @TempDir Path directory) throws Exception {
+        var rows = IntStream.rangeClosed(1, 4).mapToObj(line -> "{\"text\":\"example.Root:  *\","
+                + "\"origin\":{\"kind\":\"source\",\"location\":\"/source/Root.java\",\"line\":" + line + "}}")
+                .collect(Collectors.joining(","));
+        var query = command.equals("doc") ? List.of("doc", "example.Root")
+                : List.of("describe", "member", "example.Root.run");
+        var result = run(directory, true, new ResultJist(rows, "", "", 0), query);
+        assertEquals(0, result.status(), result.error());
+        assertEquals("example.Root:  *\n".repeat(4), result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"doc", "describe"})
+    void systemDescriptionsRetainImageIdentityAndBlockOrder(String command, @TempDir Path directory) throws Exception {
+        var query = command.equals("doc") ? List.of("doc", "java.lang.String") : List.of("describe", "module", "java.base");
+        var result = run(directory, true, new SystemJist(), query);
+        assertEquals(0, result.status(), result.error());
+        assertEquals("""
+                java.base@21/module-info(module-info.java:1): module java.base {
+                java.base@21/module-info(module-info.java:2): }
+                java.base@25/module-info(module-info.java:1): module java.base {
+                java.base@25/module-info(module-info.java:2): }
+                """, result.output());
+    }
+
     private static Result run(Path directory, boolean global, ToolProvider jist, List<String> arguments) throws Exception {
         var first = new Project(":first", Files.createDirectories(directory.resolve("first")),
                 List.of(new ProjectScope.Gradle("main", "compile")));
@@ -109,10 +151,30 @@ class InsightOutputTest {
         }
     }
 
+    private static final class SystemJist implements ToolProvider, OptionChecker {
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            var version = arguments.get(arguments.indexOf("--class-path") + 1).equals(":first") ? "21" : "25";
+            var origin = "\"origin\":{\"kind\":\"system\",\"system\":\"jdk-" + version + "\",\"module\":\"java.base\",\"version\":\"" + version + "\"}";
+            out.println("{\"format\":\"jist\",\"version\":1,\"results\":["
+                    + "{\"text\":\"module-info(module-info.java:1): module java.base {\"," + origin + "},"
+                    + "{\"text\":\"module-info(module-info.java:2): }\"," + origin + "}]}");
+            return 0;
+        }
+    }
+
     private static final class ResolutionJig implements ToolProvider {
         @Override public String name() { return "jig"; }
         @Override public int run(PrintWriter out, PrintWriter err, String... args) {
-            out.println("--class-path\nshared-classes");
+            var arguments = List.of(args);
+            out.println("--class-path\n" + arguments.get(arguments.indexOf("--project-path") + 1));
             return 0;
         }
     }
