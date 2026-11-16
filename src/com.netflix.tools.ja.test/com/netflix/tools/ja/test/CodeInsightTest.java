@@ -630,7 +630,7 @@ class CodeInsightTest {
                         invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
 
         assertEquals(0, result, errors.toString());
-        assertEquals("result :first\nshared result\n", output.toString());
+        assertEquals("shared result\nresult :first\n", output.toString());
         assertEquals(1, jist.invocations.size());
     }
 
