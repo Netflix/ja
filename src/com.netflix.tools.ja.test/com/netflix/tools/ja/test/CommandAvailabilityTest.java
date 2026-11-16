@@ -15,6 +15,8 @@
 package com.netflix.tools.ja.test;
 
 import java.lang.module.ModuleFinder;
+import java.io.PrintWriter;
+import java.util.spi.ToolProvider;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -29,6 +31,7 @@ import com.netflix.tools.ja.DescribeRequest;
 import com.netflix.tools.ja.DescribeRequest.Subject;
 import com.netflix.tools.ja.CommandAvailability;
 import com.netflix.tools.ja.DocRequest.Terminal;
+import com.netflix.tools.ja.DocRequest.Browse;
 import com.netflix.tools.ja.JaInvocation;
 import com.netflix.tools.ja.ToolCatalog;
 import com.netflix.tools.ja.ToolDefinition;
@@ -92,7 +95,21 @@ class CommandAvailabilityTest {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> CommandAvailability.require(commandLine, ToolRuntime.of(), new ToolCatalog(List.of())));
 
-        assertEquals("doc is unavailable; missing tools: jdocserver, jist", failure.getMessage());
+        assertEquals("doc is unavailable; missing tool: jist", failure.getMessage());
+    }
+
+    @Test
+    void documentationRequiresOnlyTheSelectedProvider() {
+        for (var provider : List.of("jist", "jdocserver")) {
+            var tools = ToolRuntime.of(new ToolProvider() {
+                @Override public String name() { return provider; }
+                @Override public int run(PrintWriter out, PrintWriter err, String... args) { return 0; }
+            });
+            var request = provider.equals("jist") ? new Doc(new Terminal("java.lang.String"))
+                    : new Doc(new Browse(Optional.of("java.lang.String")));
+            CommandAvailability.require(commandLine(request), tools, new ToolCatalog(List.of()));
+            assertEquals(List.of(), CommandAvailability.missingTools(BuiltinCommand.DOC, tools, new ToolCatalog(List.of())));
+        }
     }
 
     @Test

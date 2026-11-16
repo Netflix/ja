@@ -72,10 +72,17 @@ public final class CommandAvailability {
     }
 
     public static List<String> missingTools(BuiltinCommand command, ToolRuntime tools, ToolCatalog catalog) {
+        if (command == BuiltinCommand.DOC && (tools.contains("jist") || tools.contains("jdocserver"))) {
+            return List.of();
+        }
         return missingTools(command.requiredTools(), tools, catalog);
     }
 
     private static List<String> missingTools(JaInvocation commandLine, ToolRuntime tools, ToolCatalog catalog) {
+        if (commandLine.command() instanceof Command.Doc(var request)) {
+            var provider = request instanceof DocRequest.Terminal ? "jist" : "jdocserver";
+            return missingTools(List.of(new Provider(provider)), tools, catalog);
+        }
         var command = BuiltinCommand.from(commandLine.command()).orElse(null);
         if (command == null) {
             return List.of();

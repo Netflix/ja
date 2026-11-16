@@ -125,7 +125,7 @@ class InsightOutputTest {
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(), parsed.requestedProjects(), Optional.of(context));
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
-        int status = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new ResolutionJig(), jist, new UnusedDocServer()),
+        int status = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new ResolutionJig(), jist),
                 new ToolCatalog(List.of()), () -> null).run(invocation, InputStream.nullInputStream(), new PrintStream(output), new PrintStream(errors));
         return new Result(status, output.toString(), errors.toString());
     }
@@ -176,13 +176,6 @@ class InsightOutputTest {
             var arguments = List.of(args);
             out.println("--class-path\n" + arguments.get(arguments.indexOf("--project-path") + 1));
             return 0;
-        }
-    }
-
-    private static final class UnusedDocServer implements ToolProvider {
-        @Override public String name() { return "jdocserver"; }
-        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
-            throw new AssertionError("Terminal documentation must use jist");
         }
     }
 }
