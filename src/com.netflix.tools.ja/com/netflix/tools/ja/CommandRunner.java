@@ -357,8 +357,9 @@ public final class CommandRunner {
         var results = new ArrayList<InsightResult>();
         var insightSearch = switch (commandLine.command()) {
             case Command.Find(var request) -> new InsightSearchCoordinator(request.search());
-            case Command.Describe(var request) when request.subject() == DescribeRequest.Subject.ORIGIN ->
+            case Command.Describe(var request) when request.subject() != DescribeRequest.Subject.TYPES ->
                     new InsightSearchCoordinator(FindRequest.Search.ALL);
+            case Doc(Terminal _) -> new InsightSearchCoordinator(FindRequest.Search.ALL);
             default -> null;
         };
         int processors = Runtime.getRuntime().availableProcessors();

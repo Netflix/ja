@@ -450,8 +450,9 @@ class CodeInsightTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void globalSearchesScanIdenticalExternalAndSystemInputsOnce(boolean origin, @TempDir Path directory) throws Exception {
+    @ValueSource(strings = {"find", "origin", "type", "member", "module", "file", "doc"})
+    void globalSearchesScanIdenticalExternalAndSystemInputsOnce(String command, @TempDir Path directory) throws Exception {
+        boolean origin = command.equals("origin");
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -461,9 +462,7 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, origin
-                ? new String[] {"describe", "origin", "java.lang.String"}
-                : new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, coordinatedQuery(command, "java.lang.String"));
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -487,8 +486,8 @@ class CodeInsightTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void globalSearchesScanOverlappingPathsOnce(boolean origin, @TempDir Path directory) throws Exception {
+    @ValueSource(strings = {"find", "origin", "type", "member", "module", "file", "doc"})
+    void globalSearchesScanOverlappingPathsOnce(String command, @TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -498,9 +497,7 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, origin
-                ? new String[] {"describe", "origin", "example.Root"}
-                : new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, coordinatedQuery(command, "example.Root"));
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -531,8 +528,9 @@ class CodeInsightTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void globalSearchesRetainDistinctSystemImages(boolean origin, @TempDir Path directory) throws Exception {
+    @ValueSource(strings = {"find", "origin", "type", "member", "module", "file", "doc"})
+    void globalSearchesRetainDistinctSystemImages(String command, @TempDir Path directory) throws Exception {
+        boolean origin = command.equals("origin");
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -542,9 +540,7 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, origin
-                ? new String[] {"describe", "origin", "java.lang.String"}
-                : new String[] {"find", "callers", "--all", "example.Target.run"});
+        var parsed = JaInvocation.parse(directory, coordinatedQuery(command, "java.lang.String"));
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -568,6 +564,30 @@ class CodeInsightTest {
                 """, output.toString());
         assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
         assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
+    }
+
+    @Test
+    void referencedTypesRetainIndependentContextResolution(@TempDir Path directory) throws Exception {
+        var first = new Project(":first", Files.createDirectories(directory.resolve("first")),
+                List.of(new ProjectScope.Gradle("main", "compile")));
+        var second = new Project(":second", Files.createDirectories(directory.resolve("second")),
+                List.of(new ProjectScope.Gradle("main", "compile")));
+        var context = new ProjectContext(new ProjectCatalog(new ProjectAnchor(ProjectType.GRADLE, directory), List.of(first, second)),
+                new BuildScope());
+        var parsed = JaInvocation.parse(directory, new String[] {"describe", "types", "example.Root"});
+        var invocation = new JaInvocation(parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
+                parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(), parsed.requestedProjects(), Optional.of(context));
+        var jist = new ConcurrentJist(2);
+        var errors = new ByteArrayOutputStream();
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new SharedResolutionJig(), jist),
+                new ToolCatalog(List.of()), () -> null).run(invocation, InputStream.nullInputStream(),
+                        new PrintStream(new ByteArrayOutputStream()), new PrintStream(errors));
+        assertEquals(0, result, errors.toString());
+        assertEquals(2, jist.invocations.size());
+        for (var arguments : jist.invocations) {
+            assertEquals(List.of("--class-path", "shared-classes", "--system", "shared-system",
+                    "--format", "json", "--referenced-types", "example.Root"), arguments);
+        }
     }
 
     @ParameterizedTest
@@ -770,6 +790,14 @@ class CodeInsightTest {
         assertEquals(1, jist.invocations.size());
         assertEquals("", output.toString());
         assertEquals("lookup failed\n", errors.toString());
+    }
+
+    private static String[] coordinatedQuery(String command, String target) {
+        return switch (command) {
+            case "find" -> new String[] {"find", "callers", "--all", "example.Target.run"};
+            case "doc" -> new String[] {"doc", target};
+            default -> new String[] {"describe", command, target};
+        };
     }
 
     private static final class GlobalJig implements ToolProvider {
