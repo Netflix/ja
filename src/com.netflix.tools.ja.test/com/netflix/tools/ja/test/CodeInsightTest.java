@@ -570,8 +570,9 @@ class CodeInsightTest {
         assertEquals(0, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-system-modules")).count());
     }
 
-    @Test
-    void globalImplementationSearchResolvesTheQuestionInEachContext(@TempDir Path directory) throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"Root", "example.Root"})
+    void globalImplementationSearchResolvesTheQuestionInEachContext(String target, @TempDir Path directory) throws Exception {
         var first = Files.createDirectories(directory.resolve("first"));
         var second = Files.createDirectories(directory.resolve("second"));
         var context = new ProjectContext(
@@ -581,7 +582,7 @@ class CodeInsightTest {
                                 new Project(":first", first, List.of(new ProjectScope.Gradle("main", "compile"))),
                                 new Project(":second", second, List.of(new ProjectScope.Gradle("main", "compile"))))),
                 new BuildScope());
-        var parsed = JaInvocation.parse(directory, new String[] {"find", "impl", "example.Root"});
+        var parsed = JaInvocation.parse(directory, new String[] {"find", "impl", target});
         var invocation = new JaInvocation(
                 parsed.workingDirectory(), parsed.verbose(), parsed.command(), parsed.moduleSourcePath(),
                 parsed.rootModules(), parsed.resolutionArguments(), parsed.toolArguments(),
@@ -655,6 +656,21 @@ class CodeInsightTest {
             assertEquals(1, jig.invocations.size());
             assertEquals("", output.toString());
         }
+    }
+
+    @Test
+    void implementationSearchUsesAllConcreteMatchesForASimpleTypeName(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        var jist = new Probe("jist");
+        jist.symbols = "class first.Root\ninterface second.Root\nclass first.Root.Nested\nclass first.Root\n";
+        var errors = new ByteArrayOutputStream();
+        int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist),
+                new ToolCatalog(List.of()), () -> null).run(
+                        JaInvocation.parse(directory, new String[] {"find", "impl", "Root"}), InputStream.nullInputStream(),
+                        new PrintStream(new ByteArrayOutputStream()), new PrintStream(errors));
+        assertEquals(0, result, errors.toString());
+        assertEquals(List.of("--subtypes", "first.Root", "--subtypes", "second.Root"),
+                jist.arguments.subList(jist.arguments.size() - 4, jist.arguments.size()));
     }
 
     @Test
