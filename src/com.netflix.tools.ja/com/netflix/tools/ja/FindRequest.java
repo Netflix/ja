@@ -146,10 +146,19 @@ public record FindRequest(Question question, String target, Search search, List<
     /** Leaves method validation, including inherited methods absent from declaration listings, to jist. */
     List<String> implementationArguments(String symbols) {
         var typeKinds = Set.of("class", "interface", "enum", "record", "annotation");
-        boolean type = symbols.lines().anyMatch(line -> {
+        var types = symbols.lines().filter(line -> {
             int separator = line.indexOf(' ');
-            return separator > 0 && typeKinds.contains(line.substring(0, separator)) && line.substring(separator + 1).equals(target);
-        });
-        return List.of(type ? "--subtypes" : "--overrides", target);
+            return separator > 0 && typeKinds.contains(line.substring(0, separator));
+        }).map(line -> line.substring(line.indexOf(' ') + 1))
+                .filter(name -> name.equals(target)
+                        || target.indexOf('.') < 0 && name.substring(name.lastIndexOf('.') + 1).equals(target))
+                .distinct()
+                .toList();
+        if (types.isEmpty()) {
+            return List.of("--overrides", target);
+        }
+        var arguments = new ArrayList<String>();
+        types.forEach(name -> arguments.addAll(List.of("--subtypes", name)));
+        return List.copyOf(arguments);
     }
 }
