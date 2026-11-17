@@ -452,6 +452,41 @@ public final class CommandRunner {
         try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
                 var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
             var focused = focus(commandLine, target);
+            var typeDescription = typeDescriptionRequest(commandLine);
+            if (typeDescription.isPresent()) {
+                var request = typeDescription.orElseThrow();
+                var selection = runInsightInvocation(target, typeLookupArguments(request),
+                        (arguments, selectedOut, selectedErr) -> run(
+                                toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
+                                selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, null));
+                if (selection.status() != 0) {
+                    if (commandLine.command() instanceof Doc && selection.notFound()) {
+                        return runInsightInvocation(target, insightArguments(commandLine),
+                                (arguments, selectedOut, selectedErr) -> run(
+                                        toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
+                                        selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, insightSearch));
+                    }
+                    return selection;
+                }
+                var rows = new ArrayList<InsightRow>();
+                var diagnostics = new StringBuilder(selection.error());
+                int status = 0;
+                boolean notFound = true;
+                for (var arguments : typeDescriptionArguments(commandLine, request, selection)) {
+                    var result = runInsightInvocation(target, arguments,
+                            (selected, selectedOut, selectedErr) -> run(
+                                    toolInvocation(focused, "jist", selected), InputStream.nullInputStream(),
+                                    selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, insightSearch));
+                    rows.addAll(result.rows());
+                    if (!result.error().isBlank()) {
+                        if (!diagnostics.isEmpty()) diagnostics.append('\n');
+                        diagnostics.append(result.error());
+                    }
+                    if (result.status() != 0 && status == 0) status = result.status();
+                    notFound &= result.notFound();
+                }
+                return new InsightResult(target, status, rows, diagnostics.toString(), notFound);
+            }
             List<String> arguments;
             if (commandLine.command() instanceof Command.Find(var request)
                     && request.question() == FindRequest.Question.IMPL) {
@@ -500,6 +535,53 @@ public final class CommandRunner {
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             return new InsightResult(target, status, List.of(), message);
         }
+    }
+
+    @FunctionalInterface
+    private interface InsightInvocation {
+        int run(List<String> arguments, PrintStream out, PrintStream err) throws IOException;
+    }
+
+    private static InsightResult runInsightInvocation(ProjectTarget target, List<String> arguments,
+            InsightInvocation invocation) throws IOException {
+        var output = new ByteArrayOutputStream();
+        var errors = new ByteArrayOutputStream();
+        var jsonArguments = new ArrayList<>(List.of("--format", "json"));
+        jsonArguments.addAll(arguments);
+        try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
+                var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
+            int status = invocation.run(jsonArguments, out, err);
+            return insightResult(target, status, output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static Optional<DescribeRequest> typeDescriptionRequest(JaInvocation commandLine) {
+        return switch (commandLine.command()) {
+            case Command.Describe(var request) when request.subject() == DescribeRequest.Subject.TYPE
+                    && request.target().indexOf('.') < 0 -> Optional.of(request);
+            case Doc(Terminal(var symbol)) when symbol.indexOf('.') < 0 ->
+                    Optional.of(new DescribeRequest(DescribeRequest.Subject.TYPE, symbol, Optional.of("doc")));
+            default -> Optional.empty();
+        };
+    }
+
+    private static List<String> typeLookupArguments(DescribeRequest request) {
+        return List.of("-l", "--source", "none", "--kind", "type", request.target());
+    }
+
+    private static List<List<String>> typeDescriptionArguments(JaInvocation commandLine, DescribeRequest request,
+            InsightResult selection) {
+        return selection.rows().stream()
+                .map(row -> originSymbol(row.text()))
+                .filter(symbol -> matchesOriginTarget(symbol, request.target()))
+                .distinct()
+                .map(symbol -> {
+                    var arguments = new ArrayList<>(new DescribeRequest(request.subject(), symbol, request.sourceScope())
+                            .arguments(commandLine.workingDirectory()));
+                    if (commandLine.command() instanceof Doc) arguments.addAll(List.of("--break", "--no-line-number"));
+                    return List.copyOf(arguments);
+                })
+                .toList();
     }
 
     private static InsightResult insightResult(ProjectTarget target, int status, String output, String errors) {
@@ -755,6 +837,25 @@ public final class CommandRunner {
             PrintStream out,
             PrintStream err)
             throws IOException {
+        var typeDescription = typeDescriptionRequest(commandLine);
+        if (typeDescription.isPresent()) {
+            var request = typeDescription.orElseThrow();
+            var selection = runInsightInvocation(null, typeLookupArguments(request),
+                    (arguments, selectedOut, selectedErr) -> toolRunner.run(
+                            toolInvocation(commandLine, "jist", arguments), resolutionArguments,
+                            resolved, in, selectedOut, selectedErr));
+            if (!(commandLine.command() instanceof Doc && selection.notFound())) {
+                if (!selection.error().isBlank()) err.println(selection.error().stripTrailing());
+                if (selection.status() != 0) return selection.status();
+                int status = 0;
+                for (var arguments : typeDescriptionArguments(commandLine, request, selection)) {
+                    int result = toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
+                            resolved, in, out, err);
+                    if (status == 0 && result != 0) status = result;
+                }
+                return status;
+            }
+        }
         if (commandLine.command() instanceof Doc(var request)) {
             String provider;
             var arguments = new ArrayList<String>();
@@ -821,11 +922,7 @@ public final class CommandRunner {
     }
 
     private static boolean matchesOriginTarget(String symbol, String target) {
-        if (target.indexOf('.') >= 0) {
-            return symbol.equals(target);
-        }
-        int separator = symbol.lastIndexOf('.');
-        return symbol.substring(separator + 1).equals(target);
+        return symbol.equals(target) || symbol.endsWith("." + target);
     }
 
     private static String originSymbol(String line) {
