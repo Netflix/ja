@@ -447,24 +447,21 @@ public final class CommandRunner {
             ScopedTools scopedTools,
             boolean moduleHashesAlreadyVerified,
             InsightSearchCoordinator insightSearch) {
-        var output = new ByteArrayOutputStream();
-        var errors = new ByteArrayOutputStream();
-        try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
-                var err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
+        try {
             var focused = focus(commandLine, target);
+            InsightInvocation lookup = (arguments, out, err) -> run(
+                    toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
+                    out, err, catalog, scopedTools, moduleHashesAlreadyVerified, null);
+            InsightInvocation search = (arguments, out, err) -> run(
+                    toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
+                    out, err, catalog, scopedTools, moduleHashesAlreadyVerified, insightSearch);
             var typeDescription = typeDescriptionRequest(commandLine);
             if (typeDescription.isPresent()) {
                 var request = typeDescription.orElseThrow();
-                var selection = runInsightInvocation(target, typeLookupArguments(request),
-                        (arguments, selectedOut, selectedErr) -> run(
-                                toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
-                                selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, null));
+                var selection = runInsightInvocation(target, typeLookupArguments(request), lookup);
                 if (selection.status() != 0) {
                     if (commandLine.command() instanceof Doc && selection.notFound()) {
-                        return runInsightInvocation(target, insightArguments(commandLine),
-                                (arguments, selectedOut, selectedErr) -> run(
-                                        toolInvocation(focused, "jist", arguments), InputStream.nullInputStream(),
-                                        selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, insightSearch));
+                        return runInsightInvocation(target, insightArguments(commandLine), search);
                     }
                     return selection;
                 }
@@ -473,10 +470,7 @@ public final class CommandRunner {
                 int status = 0;
                 boolean notFound = true;
                 for (var arguments : typeDescriptionArguments(commandLine, request, selection)) {
-                    var result = runInsightInvocation(target, arguments,
-                            (selected, selectedOut, selectedErr) -> run(
-                                    toolInvocation(focused, "jist", selected), InputStream.nullInputStream(),
-                                    selectedOut, selectedErr, catalog, scopedTools, moduleHashesAlreadyVerified, insightSearch));
+                    var result = runInsightInvocation(target, arguments, search);
                     rows.addAll(result.rows());
                     if (!result.error().isBlank()) {
                         if (!diagnostics.isEmpty()) diagnostics.append('\n');
@@ -488,48 +482,21 @@ public final class CommandRunner {
                 return new InsightResult(target, status, rows, diagnostics.toString(), notFound);
             }
             List<String> arguments;
+            String lookupDiagnostics = "";
             if (commandLine.command() instanceof Command.Find(var request)
                     && request.question() == FindRequest.Question.IMPL) {
-                var symbols = new ByteArrayOutputStream();
-                int lookup;
-                var lookupArguments = new ArrayList<>(List.of("--format", "json"));
-                lookupArguments.addAll(request.arguments());
-                try (var symbolOutput = new PrintStream(symbols, true, StandardCharsets.UTF_8)) {
-                    lookup = run(
-                            toolInvocation(focused, "jist", lookupArguments),
-                            InputStream.nullInputStream(),
-                            symbolOutput,
-                            err,
-                            catalog,
-                            scopedTools,
-                            moduleHashesAlreadyVerified,
-                            null);
-                }
-                var selection = insightResult(target, lookup, symbols.toString(StandardCharsets.UTF_8),
-                        errors.toString(StandardCharsets.UTF_8));
+                var selection = runInsightInvocation(target, request.arguments(), lookup);
                 if (selection.status() != 0) {
                     return new InsightResult(target, selection.status(), List.of(), selection.error(), selection.notFound());
                 }
+                lookupDiagnostics = selection.error();
                 arguments = request.implementationArguments(selection.rows().stream().map(InsightRow::text)
                         .collect(Collectors.joining("\n")));
             } else {
                 arguments = insightArguments(commandLine);
             }
-            var jsonArguments = new ArrayList<String>();
-            jsonArguments.add("--format");
-            jsonArguments.add("json");
-            jsonArguments.addAll(arguments);
-            int status = run(
-                    toolInvocation(focused, "jist", jsonArguments),
-                    InputStream.nullInputStream(),
-                    out,
-                    err,
-                    catalog,
-                    scopedTools,
-                    moduleHashesAlreadyVerified,
-                    insightSearch);
-            return insightResult(target, status, output.toString(StandardCharsets.UTF_8),
-                    errors.toString(StandardCharsets.UTF_8));
+            var result = runInsightInvocation(target, arguments, search);
+            return new InsightResult(target, result.status(), result.rows(), lookupDiagnostics + result.error(), result.notFound());
         } catch (Exception e) {
             int status = e instanceof ToolExecutionException failure ? failure.exitCode() : 2;
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
