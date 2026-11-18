@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import java.util.spi.ToolProvider;
 import java.util.stream.Stream;
 
@@ -49,12 +51,15 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InsightSemanticTest {
     private static final Path ROOT = Path.of("build/test-insight-semantics").toAbsolutePath();
     private static final Path MAIN = ROOT.resolve("main");
     private static final Path TEST = ROOT.resolve("test");
+    private static final Path DEPENDENCIES = ROOT.resolve("dependency-classes");
+    private static final Path DEPENDENCY_SOURCES = ROOT.resolve("dependency-sources.jar");
 
     @BeforeAll
     static void sources() throws Exception {
@@ -99,6 +104,31 @@ class InsightSemanticTest {
                     public void verify(SelectionSubject subject) { subject.perform(); }
                 }
                 """);
+        var dependency = ROOT.resolve("dependency-source/sample/dependency/DependencySource.java");
+        Files.createDirectories(dependency.getParent());
+        Files.createDirectories(DEPENDENCIES);
+        Files.writeString(dependency, """
+                package sample.dependency;
+                public class DependencySource {
+                    public DependencySource() {}
+                    public static class NestedSource {
+                        /** Read the nested value. */
+                        public String nestedValue() { return "nested"; }
+                    }
+                    private record ImplicitSource(String implicitValue) {}
+                    public record ExplicitSource(String explicitValue) {
+                        /** Read the explicit value. */
+                        public String explicitValue() { return explicitValue; }
+                    }
+                }
+                """);
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null,
+                "-g", "-parameters", "-d", DEPENDENCIES.toString(), dependency.toString()));
+        try (var jar = new JarOutputStream(Files.newOutputStream(DEPENDENCY_SOURCES))) {
+            jar.putNextEntry(new JarEntry("sample/dependency/DependencySource.java"));
+            Files.copy(dependency, jar);
+            jar.closeEntry();
+        }
         for (var namespace : List.of("alpha", "beta")) {
             Files.createDirectories(MAIN.resolve(namespace));
             Files.writeString(MAIN.resolve(namespace + "/AmbiguousSelection.java"),
@@ -213,6 +243,31 @@ class InsightSemanticTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    void attachedNestedMemberSourceSurvivesInsightComposition(boolean focused) throws Exception {
+        for (var member : List.of("NestedSource.nestedValue", "ExplicitSource.explicitValue")) {
+            var result = run(focused, List.of("describe", "member"),
+                    "sample.dependency.DependencySource." + member);
+            assertEquals(0, result.status(), result.error());
+            assertEquals("", result.error());
+            assertTrue(result.output().contains("(DependencySource.java:"), result.output());
+            assertTrue(result.output().contains("/** Read the "), result.output());
+            assertTrue(result.output().contains(member.substring(member.indexOf('.') + 1) + "()"), result.output());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void implicitRecordMemberFallbackIsQuietThroughInsightComposition(boolean focused) throws Exception {
+        var result = run(focused, List.of("describe", "member"),
+                "sample.dependency.DependencySource.ImplicitSource.implicitValue");
+        assertEquals(0, result.status(), result.error());
+        assertEquals("", result.error());
+        assertTrue(result.output().contains("implicitValue()"), result.output());
+        assertFalse(result.output().contains("(DependencySource.java:"), result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     void declarationFragmentsAreLiteralSimpleNames(boolean focused) throws Exception {
         var result = run(focused, List.of("find", "declarations"), "SelectionSubject.perform");
         assertEquals(0, result.status(), result.error());
@@ -264,8 +319,11 @@ class InsightSemanticTest {
         @Override public int run(PrintWriter out, PrintWriter err, String... args) {
             var arguments = List.of(args);
             boolean tests = arguments.get(arguments.indexOf("--source-set") + 1).equals("test");
+            out.println("--class-path");
+            out.println(DEPENDENCIES);
             out.println("--source-path");
-            out.println(tests ? TEST + File.pathSeparator + MAIN : MAIN);
+            out.println((tests ? TEST + File.pathSeparator + MAIN : MAIN.toString())
+                    + File.pathSeparator + DEPENDENCY_SOURCES);
             return 0;
         }
     }
