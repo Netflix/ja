@@ -140,13 +140,16 @@ class JaToolTest {
     }
 
     @Test
-    void declarationSearchHelpListsKinds() {
+    void declarationSearchHelpListsKindsAndMatchingOptions() {
         var result = run("find", "declarations", "--help");
 
         assertEquals(0, result.exitCode(), result.error());
         assertTrue(result.output().contains(
                 "module, package, type, class, interface, enum, record, annotation, method, or field"),
                 result.output());
+        assertTrue(result.output().contains("--regexp <EXPRESSION>"), result.output());
+        assertTrue(result.output().contains("--ignore-case"), result.output());
+        assertTrue(result.output().contains("Literal name fragment, or owner/namespace"), result.output());
     }
 
     @Test

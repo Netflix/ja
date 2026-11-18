@@ -66,12 +66,12 @@ Choose the command according to the question:
 - `describe types` lists compiler-resolved type identities referenced by a type or source file; use it to resolve names appearing in that code.
 - `describe origin` shows where a selected symbol resolves: its source, module, or dependency artifact.
 - `doc` finds local API documentation; `doc --browse` opens the documentation browser.
-- `find declarations` searches named type and member declarations. Use repeatable `--kind` options to restrict results to `module`, `package`, `type`, `class`, `interface`, `enum`, `record`, `annotation`, `method`, or `field`; `type` includes all type declarations.
+- `find declarations` searches declaration simple names for a literal fragment. Add `-i` (`--ignore-case`) for case-insensitive matching, or use repeatable `-e` (`--regexp`) options for Java regular expressions; expressions match anywhere unless anchored with `^` or `$` and form a union. With `-e`, an optional positional name constrains the owner or namespace. Matching preserves canonical names and distinct declarations, including overloads. Use repeatable `--kind` options to restrict results to `module`, `package`, `type`, `class`, `interface`, `enum`, `record`, `annotation`, `method`, or `field`; `type` includes all type declarations.
 - `find usages` finds semantic references to a type or member.
 - `find callers` finds calls to a method, or calls to executables declared by a type.
 - `find callees` finds calls made by a method, or by executables declared by a type.
 - `find impl` finds subtypes of a type or overriding methods.
-- `find supertypes` finds parent types.
+- `find supertypes` finds direct and indirect parent types.
 
 Choose the narrowest symbol and source scope that answer the question. Selection and source scope are independent: keep the same subject and change `--source` (`-s`) when you need its implementation or surrounding code. This works for project and attached dependency sources alike:
 
@@ -103,6 +103,8 @@ At the build root, `find` searches the project-source contexts reported by `ja p
 
 ```bash
 ja find declarations --kind type Queue
+ja find declarations -i queue
+ja find declarations -e '^get.*Count$' example.Store
 ja find callers --external example.Library.run
 ja find callers --all java.lang.String.repeat
 ```

@@ -18,9 +18,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /** A question about code related to a subject in the selected context. */
-public record FindRequest(Question question, String target, Search search, List<String> kinds) {
+public record FindRequest(Question question, String target, Search search, List<String> kinds,
+        List<String> expressions, boolean ignoreCase) {
     private static final List<String> DECLARATION_KINDS = List.of(
             "module", "package", "type", "class", "interface", "enum", "record", "annotation", "method", "field");
 
@@ -67,14 +69,19 @@ public record FindRequest(Question question, String target, Search search, List<
     }
 
     public FindRequest(Question question, String target) {
-        this(question, target, Search.SOURCE, List.of());
+        this(question, target, Search.SOURCE, List.of(), List.of(), false);
     }
 
     public FindRequest {
-        if (target.isBlank() || target.startsWith("-")) {
+        if (target == null && (question != Question.DECLARATIONS || expressions.isEmpty())
+                || target != null && (target.isBlank() || target.startsWith("-"))) {
             throw new IllegalArgumentException("find requires a nonempty subject");
         }
         kinds = List.copyOf(kinds);
+        expressions = List.copyOf(expressions);
+        if (question != Question.DECLARATIONS && (!expressions.isEmpty() || ignoreCase)) {
+            throw new IllegalArgumentException("--regexp and --ignore-case are supported only by find declarations");
+        }
         if (question != Question.DECLARATIONS && !kinds.isEmpty()) {
             throw new IllegalArgumentException("--kind is supported only by find declarations");
         }
@@ -87,6 +94,8 @@ public record FindRequest(Question question, String target, Search search, List<
         var question = Question.parse(arguments.getFirst());
         var search = Search.SOURCE;
         var kinds = new ArrayList<String>();
+        var expressions = new ArrayList<String>();
+        boolean ignoreCase = false;
         String target = null;
         for (int index = 1; index < arguments.size(); index++) {
             String argument = arguments.get(index);
@@ -106,16 +115,23 @@ public record FindRequest(Question question, String target, Search search, List<
                     throw usage();
                 }
                 kinds.add(parseKind(argument.substring("--kind=".length())));
+            } else if (question == Question.DECLARATIONS && (argument.equals("-i") || argument.equals("--ignore-case"))) {
+                ignoreCase = true;
+            } else if (question == Question.DECLARATIONS && (argument.equals("-e") || argument.equals("--regexp"))) {
+                if (++index >= arguments.size()) throw usage();
+                expressions.add(arguments.get(index));
+            } else if (question == Question.DECLARATIONS && (argument.startsWith("--regexp=") || argument.startsWith("-e="))) {
+                expressions.add(argument.substring(argument.indexOf('=') + 1));
             } else if (argument.startsWith("-") || target != null) {
                 throw usage();
             } else {
                 target = argument;
             }
         }
-        if (target == null) {
+        if (target == null && expressions.isEmpty()) {
             throw usage();
         }
-        return new FindRequest(question, target, search, kinds);
+        return new FindRequest(question, target, search, kinds, expressions, ignoreCase);
     }
 
     private static String parseKind(String kind) {
@@ -128,14 +144,20 @@ public record FindRequest(Question question, String target, Search search, List<
 
     private static IllegalArgumentException usage() {
         return new IllegalArgumentException(
-                "Usage: ja find <declarations|usages|callers|callees|impl|supertypes> [--external|--all] [--kind <kind>] <subject>");
+                "Usage: ja find <declarations|usages|callers|callees|impl|supertypes> [--external|--all] [--kind <kind>] [-i] [-e <expression>] [<subject>]");
     }
 
     List<String> arguments() {
         if (question == Question.DECLARATIONS) {
             var arguments = new ArrayList<>(List.of("-l", "--source", "none", "--visibility", "all"));
             kinds.forEach(kind -> arguments.addAll(List.of("--kind", kind)));
-            arguments.add("*" + target + "*");
+            if (ignoreCase) arguments.add("-i");
+            if (expressions.isEmpty()) {
+                arguments.addAll(List.of("-e", Pattern.quote(target)));
+            } else {
+                expressions.forEach(expression -> arguments.addAll(List.of("-e", expression)));
+                if (target != null) arguments.add(target);
+            }
             return List.copyOf(arguments);
         }
         return question == Question.IMPL

@@ -149,6 +149,40 @@ class InsightSemanticTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    void declarationNameDiscoverySupportsCaseAndExpressions(boolean focused) throws Exception {
+        var query = run(focused, List.of("find", "declarations", "-i"), "selectionsubject");
+        assertEquals(0, query.status(), query.error());
+        assertEquals(1, query.output().lines().count(), query.output());
+        assertTrue(query.output().contains("class sample.SelectionSubject"), query.output());
+
+        var regex = run(focused, List.of("find", "declarations", "-e", "^perform$"), "sample.SelectionSubject");
+        assertEquals(0, regex.status(), regex.error());
+        assertEquals(1, regex.output().lines().count(), regex.output());
+        assertTrue(regex.output().contains("method sample.SelectionSubject.perform()"), regex.output());
+
+        var unscoped = run(focused, List.of("find", "declarations", "-e"), "nestedWork");
+        assertEquals(0, unscoped.status(), unscoped.error());
+        assertEquals(1, unscoped.output().lines().count(), unscoped.output());
+        assertTrue(unscoped.output().contains("method sample.SelectionSubject.NestedSelection.nestedWork()"), unscoped.output());
+
+        var union = run(focused, List.of("find", "declarations", "-e", "^perform$", "-e", "^VALUE$"),
+                "sample.SelectionSubject");
+        assertEquals(0, union.status(), union.error());
+        assertEquals(2, union.output().lines().count(), union.output());
+        assertTrue(union.output().contains("field sample.SelectionSubject.VALUE"), union.output());
+        assertTrue(union.output().contains("method sample.SelectionSubject.perform()"), union.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void declarationFragmentsAreLiteralSimpleNames(boolean focused) throws Exception {
+        var result = run(focused, List.of("find", "declarations"), "SelectionSubject.perform");
+        assertEquals(0, result.status(), result.error());
+        assertEquals("", result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     void ambiguousTypeDescriptionsContainTheCompleteApiOfEachMatch(boolean focused) throws Exception {
         var expected = new TreeSet<String>();
         for (var namespace : List.of("alpha", "beta")) {
