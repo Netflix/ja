@@ -74,6 +74,13 @@ class InsightSemanticTest {
                     public static class NestedSelection { public void nestedWork() {} }
                 }
                 """);
+        Files.writeString(MAIN.resolve("sample/MessageEnvelope.java"), """
+                package sample;
+                public class MessageEnvelope {
+                    public record Payload(String value) {}
+                    public static class PayloadBuilder {}
+                }
+                """);
         Files.writeString(MAIN.resolve("sample/SelectionConsumer.java"), """
                 package sample;
                 public class SelectionConsumer {
@@ -171,6 +178,21 @@ class InsightSemanticTest {
         assertEquals(2, union.output().lines().count(), union.output());
         assertTrue(union.output().contains("field sample.SelectionSubject.VALUE"), union.output());
         assertTrue(union.output().contains("method sample.SelectionSubject.perform()"), union.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void declarationDiscoveryFindsNestedTypesWithoutTheirOwner(boolean focused) throws Exception {
+        var types = run(focused, List.of("find", "declarations", "--kind", "type"), "Payload");
+        assertEquals(0, types.status(), types.error());
+        assertEquals(2, types.output().lines().count(), types.output());
+        assertTrue(types.output().contains("record sample.MessageEnvelope.Payload"), types.output());
+        assertTrue(types.output().contains("class sample.MessageEnvelope.PayloadBuilder"), types.output());
+
+        var records = run(focused, List.of("find", "declarations", "--kind", "record"), "Payload");
+        assertEquals(0, records.status(), records.error());
+        assertEquals(1, records.output().lines().count(), records.output());
+        assertTrue(records.output().contains("record sample.MessageEnvelope.Payload"), records.output());
     }
 
     @ParameterizedTest
