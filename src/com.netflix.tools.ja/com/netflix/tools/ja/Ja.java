@@ -432,11 +432,12 @@ public final class Ja {
                             .option(JaOptions.help());
                     commandLine.command(question.command(), question.description(),
                             questionLine.operand(
-                                    question == FindRequest.Question.DECLARATIONS ? "QUERY" : "SUBJECT",
+                                    question == FindRequest.Question.DECLARATIONS ? "QUERY|OWNER" : "SUBJECT",
                                     question == FindRequest.Question.DECLARATIONS
-                                            ? "Declaration name query"
+                                            ? "Literal name fragment, or owner/namespace when using --regexp"
                                             : "Java type or member",
-                                    Cardinality.EXACTLY_ONE)
+                                    question == FindRequest.Question.DECLARATIONS
+                                            ? Cardinality.ZERO_OR_ONE : Cardinality.EXACTLY_ONE)
                                     .build());
                 }
                 yield commandLine.build();

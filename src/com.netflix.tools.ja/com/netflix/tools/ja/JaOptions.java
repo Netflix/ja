@@ -89,6 +89,8 @@ final class JaOptions {
         return group(
                 ToolOption.flag("--external", "Also search external code"),
                 ToolOption.flag("--all", "Also search external code and system modules"),
+                ToolOption.option("--regexp", "EXPRESSION", "Search declaration simple names by Java regular expression; repeatable", "-e"),
+                ToolOption.flag("--ignore-case", "Ignore case when matching declaration names", "-i"),
                 ToolOption.builder("--kind")
                         .argument("KIND")
                         .choices("module", "package", "type", "class", "interface", "enum", "record",

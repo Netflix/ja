@@ -295,7 +295,40 @@ class CodeInsightTest {
                 "--module", "example.app",
                 "--exclude-application-classes", "--exclude-system-modules",
                 "-l", "--source", "none", "--visibility", "all",
-                "--kind", "type", "*Queue*"), jist.arguments);
+                "--kind", "type", "-e", "\\QQueue\\E"), jist.arguments);
+    }
+
+    @Test
+    void declarationExpressionsComposeWithOwnersAndCaseOptions(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("module-info.java"), "module example.app {}");
+        for (var options : List.of(
+                List.of("-i", "-e", "^get.*Count$", "example.Counter"),
+                List.of("example.Counter", "--ignore-case", "--regexp", "^get.*Count$"),
+                List.of("--ignore-case", "--regexp=^get.*Count$", "example.Counter"))) {
+            var query = new ArrayList<>(List.of("find", "declarations"));
+            query.addAll(options);
+            var jist = new Probe("jist");
+            var errors = new ByteArrayOutputStream();
+            int result = new CommandRunner(ModuleLayer.boot(), ToolRuntime.of(new Probe("jig"), jist),
+                    new ToolCatalog(List.of()), () -> null).run(
+                            JaInvocation.parse(directory, query.toArray(String[]::new)),
+                            InputStream.nullInputStream(), new PrintStream(new ByteArrayOutputStream()),
+                            new PrintStream(errors));
+            assertEquals(0, result, errors.toString());
+            assertEquals(List.of("--module-source-path", "example.app=" + directory,
+                    "--module", "example.app", "--exclude-application-classes", "--exclude-system-modules",
+                    "-l", "--source", "none", "--visibility", "all", "-i", "-e", "^get.*Count$",
+                    "example.Counter"), jist.arguments);
+        }
+    }
+
+    @Test
+    void declarationExpressionOptionsAreCompleted() {
+        for (var prefix : List.of("--reg", "--ignore-")) {
+            var request = new CompletionRequest(new ToolInvocation(List.of("find", "declarations")), prefix);
+            assertEquals(List.of(prefix.equals("--reg") ? "--regexp" : "--ignore-case"),
+                    Ja.complete(request, ToolRuntime.of()).stream().map(Completion::value).toList());
+        }
     }
 
     @Test

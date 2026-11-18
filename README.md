@@ -85,7 +85,7 @@ ja describe member example.Store.save --source unit
 
 This works for project code and attached dependency sources. `--source` (`-s`) is available on `describe module`, `type`, `member`, and `file`, with the same scopes as `jist`: `none`, `body`, `signature`, `doc`, `definition`, `symbol`, `type`, and `unit`. The defaults are `definition` for modules, `doc` for members, and `signature` for types and files. `definition` includes the selected declaration's Javadoc and implementation; `type` expands to the outermost enclosing type; `unit` includes imports and sibling top-level types.
 
-Use `ja find declarations <name>` to discover declarations, `ja describe types <type-or-file>` for referenced type identities, and `ja describe origin <symbol>` to locate resolved source or artifacts. Run `ja skill ja` for the complete navigation guide.
+Use `ja find declarations <name>` to discover declarations by a literal simple-name fragment. Add `-i` for case-insensitive matching, or use `ja find declarations -e '<expression>' [<owner-or-namespace>]` for a Java regular expression. Expressions match anywhere unless anchored, and repeatable `-e` options form a union. Use `ja describe types <type-or-file>` for referenced type identities and `ja describe origin <symbol>` to locate resolved source or artifacts. Run `ja skill ja` for the complete navigation guide.
 
 ## Quick start
 
