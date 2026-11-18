@@ -74,6 +74,12 @@ class InsightSemanticTest {
                     public static class NestedSelection { public void nestedWork() {} }
                 }
                 """);
+        Files.writeString(MAIN.resolve("sample/HierarchyLeaf.java"), """
+                package sample;
+                public interface HierarchyLeaf extends HierarchyMiddle {}
+                interface HierarchyMiddle extends HierarchyRoot {}
+                interface HierarchyRoot {}
+                """);
         Files.writeString(MAIN.resolve("sample/MessageEnvelope.java"), """
                 package sample;
                 public class MessageEnvelope {
@@ -178,6 +184,16 @@ class InsightSemanticTest {
         assertEquals(2, union.output().lines().count(), union.output());
         assertTrue(union.output().contains("field sample.SelectionSubject.VALUE"), union.output());
         assertTrue(union.output().contains("method sample.SelectionSubject.perform()"), union.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void supertypeSearchIncludesDirectAndIndirectParents(boolean focused) throws Exception {
+        var result = run(focused, List.of("find", "supertypes"), "HierarchyLeaf");
+        assertEquals(0, result.status(), result.error());
+        assertEquals(2, result.output().lines().count(), result.output());
+        assertTrue(result.output().contains("interface HierarchyMiddle"), result.output());
+        assertTrue(result.output().contains("interface HierarchyRoot"), result.output());
     }
 
     @ParameterizedTest
