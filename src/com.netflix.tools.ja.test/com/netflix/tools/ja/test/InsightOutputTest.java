@@ -52,7 +52,7 @@ class InsightOutputTest {
     void successfulQueriesRetainDiagnostics(boolean global, @TempDir Path directory) throws Exception {
         for (var query : List.of(List.of("doc", "example.Root"), List.of("describe", "type", "example.Root"),
                 List.of("describe", "origin", "example.Root"), List.of("find", "callers", "example.Root.run"))) {
-            var jist = new ResultJist("{\"text\":\"class example.Root\"}", "class example.Root\n", "Warning: source unavailable", 0);
+            var jist = new ResultJist("{\"text\":\"class example.Root\",\"symbol\":\"example.Root\"}", "class example.Root\n", "Warning: source unavailable", 0);
             var result = run(directory, global, jist, query);
             assertEquals(0, result.status(), result.error());
             assertEquals("class example.Root\n", result.output());
@@ -64,7 +64,7 @@ class InsightOutputTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void originRetainsMatchingPartialResults(boolean global, @TempDir Path directory) throws Exception {
-        var jist = new ResultJist("{\"text\":\"class example.Root\"},{\"text\":\"class example.Root.Nested\"}",
+        var jist = new ResultJist("{\"text\":\"class example.Root\",\"symbol\":\"example.Root\"},{\"text\":\"class example.Root.Nested\",\"symbol\":\"example.Root.Nested\"}",
                 "class example.Root\nclass example.Root.Nested\n", "Error: query interrupted", 2);
         var result = run(directory, global, jist, List.of("describe", "origin", "example.Root"));
         assertEquals(2, result.status());
@@ -111,6 +111,69 @@ class InsightOutputTest {
                 java.base@25/module-info(module-info.java:1): module java.base {
                 java.base@25/module-info(module-info.java:2): }
                 """, result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void originSelectionUsesUndecoratedSymbolIdentity(boolean global, @TempDir Path directory) throws Exception {
+        var text = "class example.lib/example.Root(library.jar)";
+        var rows = "{\"text\":\"" + text + "\",\"symbol\":\"example.Root\"},"
+                + "{\"text\":\"class example.lib/example.Root.Nested(library.jar)\",\"symbol\":\"example.Root.Nested\"}";
+        var jist = new ResultJist(rows, text + "\nclass example.lib/example.Root.Nested(library.jar)\n", "", 0);
+
+        var result = run(directory, global, jist, List.of("describe", "origin", "example.Root"));
+
+        assertEquals(0, result.status(), result.error());
+        assertEquals(text + "\n", result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void originDeduplicationRetainsDistinctDefinitions(boolean global, @TempDir Path directory) throws Exception {
+        var text = "class example.Root(library.jar)";
+        var rows = List.of("first", "second", "first").stream()
+                .map(root -> "{\"text\":\"" + text + "\",\"symbol\":\"example.Root\",\"origin\":{\"kind\":\"archive\","
+                        + "\"location\":\"jar:file:///sources.jar!/example/Root.java\","
+                        + "\"classLocation\":\"jar:file:///" + root + "/library.jar!/example/Root.class\"}}")
+                .collect(Collectors.joining(","));
+        var result = run(directory, global, new ResultJist(rows, "", "", 0), List.of("describe", "origin", "example.Root"));
+
+        assertEquals(0, result.status(), result.error());
+        assertEquals((text + "\n").repeat(2), result.output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void implementationSelectionUsesUndecoratedSymbolIdentity(boolean global, @TempDir Path directory) throws Exception {
+        var result = run(directory, global, new SelectionJist(), List.of("find", "impl", "example.Root"));
+
+        assertEquals(0, result.status(), result.error());
+        assertEquals("class implementation/example.Child\n", result.output());
+    }
+
+    private static final class SelectionJist implements ToolProvider, OptionChecker {
+        @Override public String name() { return "jist"; }
+        @Override public int isSupportedOption(String option) {
+            return switch (option) {
+                case "--class-path", "--format" -> 1;
+                default -> -1;
+            };
+        }
+        @Override public int run(PrintWriter out, PrintWriter err, String... args) {
+            var arguments = List.of(args);
+            boolean selection = arguments.contains("-l");
+            if (!selection) {
+                assertEquals("example.Root", arguments.get(arguments.indexOf("--subtypes") + 1));
+            }
+            var text = selection ? "class example.lib@1.2.3/example.Root(library.jar)" : "class implementation/example.Child";
+            if (arguments.contains("--format")) {
+                out.println("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"" + text + "\",\"symbol\":\""
+                        + (selection ? "example.Root" : "example.Child") + "\"}],\"exitCode\":0}");
+            } else {
+                out.println(text);
+            }
+            return 0;
+        }
     }
 
     private static Result run(Path directory, boolean global, ToolProvider jist, List<String> arguments) throws Exception {
@@ -164,8 +227,8 @@ class InsightOutputTest {
             var version = arguments.get(arguments.indexOf("--class-path") + 1).equals(":first") ? "21" : "25";
             var origin = "\"origin\":{\"kind\":\"system\",\"system\":\"jdk-" + version + "\",\"module\":\"java.base\",\"version\":\"" + version + "\"}";
             out.println("{\"format\":\"jist\",\"version\":1,\"results\":["
-                    + "{\"text\":\"module-info(module-info.java:1): module java.base {\"," + origin + "},"
-                    + "{\"text\":\"module-info(module-info.java:2): }\"," + origin + "}]}");
+                    + "{\"text\":\"java.base@" + version + "/module-info(module-info.java:1): module java.base {\"," + origin + "},"
+                    + "{\"text\":\"java.base@" + version + "/module-info(module-info.java:2): }\"," + origin + "}]}");
             return 0;
         }
     }

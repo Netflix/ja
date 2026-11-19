@@ -111,6 +111,8 @@ ja find callers --all java.lang.String.repeat
 
 Each `find` invocation performs a fresh search; reuse its output when counting, filtering, or presenting multiple views of the same results.
 
+Results include compact stacktrace-style origins: named modules use `module@version/` qualification, and containing archive names identify binary dependencies. System-module versions come from the selected JDK image. Use the undecorated Java type or member name in follow-up queries, without the module prefix or parenthesized location. Use `describe origin` when you need the full resolution location.
+
 Declaration locations use `path:start-end of total` to report the declaration range and the source file's total line count. Start file reads with the reported declaration range and use the total line count to judge how far to expand. Alternatively, select a source scope with `describe` to read the declaration or surrounding code. A successful semantic query provides evidence for the declarations or relationships it reports within the selected contexts. Ordinary text search and file reads complement this for lexical questions, arbitrary line ranges, comments, strings, non-Java files, and other languages.
 
 ## Use packaged Java tools

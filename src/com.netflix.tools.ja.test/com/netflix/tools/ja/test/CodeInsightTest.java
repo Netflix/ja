@@ -122,7 +122,7 @@ class CodeInsightTest {
             var expected = new ArrayList<>(List.of("--module-source-path", "example.app=" + directory, "--module", "example.app"));
             if (query.getFirst().equals("describe")) {
                 if (query.get(1).equals("types")) expected.add("--referenced-types");
-                else if (query.get(1).equals("origin")) expected.addAll(List.of("-l", "--source", "none", "--show-origin", "--visibility", "all"));
+                else if (query.get(1).equals("origin")) expected.addAll(List.of("--format", "json", "-l", "--source", "none", "--show-origin", "--visibility", "all"));
                 else {
                     if (query.get(1).equals("module")) expected.addAll(List.of("--kind", "module"));
                     else if (query.get(1).equals("member")) expected.addAll(List.of("--kind", "method", "--kind", "field"));
@@ -511,7 +511,7 @@ class CodeInsightTest {
         assertEquals(0, result, errors.toString());
         assertEquals(origin
                 ? "class java.base@25/java.lang.String(jrt:/java.base/java/lang/String.class)\n"
-                : "java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)\n",
+                : "java.base@25/java.lang.String(String.java:4034): java.lang.String.indent(int) -> java.lang.String.repeat(int)\n",
                 output.toString());
         assertEquals(2, jist.invocations.size());
         assertEquals(1, jist.invocations.stream().filter(arguments -> arguments.contains("--exclude-application-classes")).count());
@@ -702,7 +702,7 @@ class CodeInsightTest {
             assertEquals(0, result, errors.toString());
             var context = List.of("--module-source-path", "example.app=" + directory, "--module", "example.app");
             var lookup = new ArrayList<>(context);
-            lookup.addAll(List.of("-l", "--kind", "type", "--source", "none", "--visibility", "all", "example.Root"));
+            lookup.addAll(List.of("--format", "json", "-l", "--kind", "type", "--source", "none", "--visibility", "all", "example.Root"));
             var query = new ArrayList<>(context);
             query.addAll(List.of("--exclude-application-classes", "--exclude-system-modules", "--subtypes", "example.Root"));
             assertEquals(List.of(lookup, query), jist.invocations, kind);
@@ -736,6 +736,7 @@ class CodeInsightTest {
                 method example.Root.run(int)(/classes/example/Root.class)
                 class example.Root.run.Nested(/classes/example/Root$run$Nested.class)
                 """;
+        jist.symbolNames = List.of("example.Root", "example.Root.run()", "example.Root.run(int)", "example.Root.run.Nested");
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
 
@@ -759,6 +760,7 @@ class CodeInsightTest {
                 class java.base@25/java.lang.String
                 field java.base@25/java.lang.String.value
                 """;
+        jist.symbolNames = List.of("java.lang.String.CaseInsensitiveComparator", "java.lang.String", "java.lang.String.value");
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
 
@@ -779,6 +781,7 @@ class CodeInsightTest {
                 class example.first.Root.Nested(/classes/example/first/Root$Nested.class)
                 class example.second.Root(/classes/example/second/Root.class)
                 """;
+        jist.symbolNames = List.of("example.first.Root", "example.first.Root.Nested", "example.second.Root");
         var output = new ByteArrayOutputStream();
         var errors = new ByteArrayOutputStream();
 
@@ -942,7 +945,7 @@ class CodeInsightTest {
             var arguments = List.of(args);
             invocations.add(arguments);
             if (arguments.contains("-l")) {
-                out.println("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"class example.Root\"}]}");
+                out.println("{\"format\":\"jist\",\"version\":1,\"results\":[{\"text\":\"class example.Root\",\"symbol\":\"example.Root\"}]}");
                 return 0;
             }
             int classPath = arguments.indexOf("--class-path");
@@ -993,10 +996,10 @@ class CodeInsightTest {
                 var line = version.equals("21") ? "3724" : "4034";
                 var text = arguments.contains("--show-origin")
                         ? "class java.base@" + version + "/java.lang.String(jrt:/java.base/java/lang/String.class)"
-                        : "java.lang.String(String.java:" + line
+                        : "java.base@" + version + "/java.lang.String(String.java:" + line
                                 + "): java.lang.String.indent(int) -> java.lang.String.repeat(int)";
                 out.print("{\"format\":\"jist\",\"version\":1,\"results\":["
-                        + "{\"text\":\"" + text + "\","
+                        + "{\"text\":\"" + text + "\",\"symbol\":\"java.lang.String\","
                         + "\"origin\":{\"kind\":\"system\",\"location\":\"jrt:/java.base/java/lang/String.class\","
                         + "\"system\":\"" + systemPath + "\",\"module\":\"java.base\",\"version\":\""
                         + version + "\",\"resource\":\"java/lang/String.class\",\"source\":\"String.java\",\"line\":"
@@ -1005,7 +1008,7 @@ class CodeInsightTest {
             }
             if (arguments.contains("--show-origin")) {
                 out.println("{\"format\":\"jist\",\"version\":1,\"results\":["
-                        + "{\"text\":\"class example.Root(/classes/example/Root.class)\"}]}");
+                        + "{\"text\":\"class example.Root(/classes/example/Root.class)\",\"symbol\":\"example.Root\"}]}");
                 return 0;
             }
             int classPath = arguments.indexOf("--class-path");
@@ -1022,6 +1025,7 @@ class CodeInsightTest {
         private List<String> arguments;
         private List<String> resolvedArguments;
         private String symbols = "interface java.lang.Runnable\n";
+        private List<String> symbolNames;
         private int lookupStatus;
 
         Probe(String name) { this.name = name; }
@@ -1047,7 +1051,19 @@ class CodeInsightTest {
                 out.println("java.lang.String\tclass");
                 out.println(":0");
             } else if (arguments.contains("-l")) {
-                out.print(symbols);
+                if (arguments.contains("--format")) {
+                    var lines = symbols.lines().toList();
+                    var names = symbolNames != null ? symbolNames
+                            : lines.stream().map(line -> line.substring(line.indexOf(' ') + 1)).toList();
+                    var rows = new ArrayList<String>();
+                    for (int index = 0; index < lines.size(); index++) {
+                        rows.add("{\"text\":\"" + lines.get(index) + "\",\"symbol\":\"" + names.get(index) + "\"}");
+                    }
+                    out.println("{\"format\":\"jist\",\"version\":1,\"results\":[" + String.join(",", rows)
+                            + "],\"exitCode\":" + lookupStatus + "}");
+                } else {
+                    out.print(symbols);
+                }
                 if (lookupStatus != 0) err.println("lookup failed");
                 return lookupStatus;
             }
