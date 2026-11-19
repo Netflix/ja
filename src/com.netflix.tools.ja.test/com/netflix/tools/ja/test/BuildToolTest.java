@@ -396,7 +396,11 @@ class BuildToolTest {
             providers.add(provider(definition.provider(), (out, args) -> {
                 toolQueries.add(args);
                 if (definition.provider().equals("jist") && args.contains("-l")) {
-                    out.println("class example.Example");
+                    out.println(args.contains("--format")
+                            ? """
+                                    {"format":"jist","version":1,"results":[{"text":"class example.Example","kind":"class","symbol":"example.Example"}],"exitCode":0,"diagnostics":[]}
+                                    """
+                            : "class example.Example");
                 } else {
                     received.addAll(args);
                 }

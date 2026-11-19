@@ -410,30 +410,17 @@ public final class CommandRunner {
                 && request.subject() == DescribeRequest.Subject.ORIGIN
                         ? Optional.of(request.target())
                         : Optional.<String>empty();
-        boolean qualifySystems = originTarget.isEmpty() && results.stream()
-                        .flatMap(result -> result.rows().stream())
-                        .map(InsightRow::origin)
-                        .filter(Optional::isPresent)
-                        .map(Optional::orElseThrow)
-                        .filter(InsightOrigin::isSystem)
-                        .map(InsightOrigin::system)
-                        .filter(system -> system != null)
-                        .distinct()
-                        .limit(2)
-                        .count() > 1;
         boolean listing = commandLine.command() instanceof Command.Find
                 || commandLine.command() instanceof Command.Describe(var request)
                         && (request.subject() == DescribeRequest.Subject.ORIGIN || request.subject() == DescribeRequest.Subject.TYPES);
         var rows = results.stream()
                 .flatMap(result -> result.rows().stream())
                 .filter(row -> originTarget.isEmpty()
-                        || matchesOriginTarget(originSymbol(row.text()), originTarget.orElseThrow()));
-        if (!listing) {
-            rows = rows.distinct();
-        }
-        var rendered = rows.map(row -> row.render(qualifySystems, declarationSearch ? commandLine.workingDirectory() : null));
+                        || matchesOriginTarget(row.symbolName(), originTarget.orElseThrow()))
+                .distinct();
+        var rendered = rows.map(row -> row.render(declarationSearch ? commandLine.workingDirectory() : null));
         if (listing) {
-            rendered = rendered.distinct().sorted();
+            rendered = rendered.sorted();
         }
         rendered.forEach(out::println);
         return OptionalInt.of(!failures.isEmpty() ? failures.getFirst().status()
@@ -490,8 +477,7 @@ public final class CommandRunner {
                     return new InsightResult(target, selection.status(), List.of(), selection.error(), selection.notFound());
                 }
                 lookupDiagnostics = selection.error();
-                arguments = request.implementationArguments(selection.rows().stream().map(InsightRow::text)
-                        .collect(Collectors.joining("\n")));
+                arguments = request.implementationArguments(selection.rows().stream().map(InsightRow::symbolName).toList());
             } else {
                 arguments = insightArguments(commandLine);
             }
@@ -539,7 +525,7 @@ public final class CommandRunner {
     private static List<List<String>> typeDescriptionArguments(JaInvocation commandLine, DescribeRequest request,
             InsightResult selection) {
         return selection.rows().stream()
-                .map(row -> originSymbol(row.text()))
+                .map(InsightRow::symbolName)
                 .filter(symbol -> matchesOriginTarget(symbol, request.target()))
                 .distinct()
                 .map(symbol -> {
@@ -563,12 +549,14 @@ public final class CommandRunner {
             var rows = document.get("results").asList().stream()
                     .map(result -> new InsightRow(
                             result.get("text").asString(),
+                            result.tryGet("symbol").map(value -> value.asString()),
                             result.tryGet("origin").map(origin -> new InsightOrigin(
                                     origin.get("kind").asString(),
                                     origin.tryGet("system").map(value -> value.asString()).orElse(null),
                                     origin.tryGet("module").map(value -> value.asString()).orElse(null),
                                     origin.tryGet("version").map(value -> value.asString()).orElse(null),
                                     origin.tryGet("location").map(value -> value.asString()).orElse(null),
+                                    origin.tryGet("classLocation").map(value -> value.asString()).orElse(null),
                                     origin.tryGet("line").map(value -> value.asInt()).orElse(null))),
                             result.tryGet("source").map(source -> {
                                 var range = source.get("range");
@@ -695,22 +683,19 @@ public final class CommandRunner {
         }
     }
 
-    private record InsightRow(String text, Optional<InsightOrigin> origin, Optional<InsightSource> source) {
-        String render(boolean qualifySystem, Path workingDirectory) {
-            var rendered = text;
-            if (qualifySystem && origin.isPresent() && origin.orElseThrow().isSystem()) {
-                var prefix = origin.orElseThrow().displayName();
-                if (prefix != null) {
-                    rendered = prefix + "/" + rendered;
-                }
-            }
+    private record InsightRow(String text, Optional<String> symbol, Optional<InsightOrigin> origin, Optional<InsightSource> source) {
+        String symbolName() {
+            return symbol.orElseThrow(() -> new IllegalArgumentException("Missing jist listing symbol"));
+        }
+
+        String render(Path workingDirectory) {
             if (workingDirectory != null) {
                 var location = source.flatMap(value -> value.render(workingDirectory));
                 if (location.isPresent()) {
-                    return location.orElseThrow() + ": " + rendered;
+                    return location.orElseThrow() + ": " + text;
                 }
             }
-            return rendered;
+            return text;
         }
     }
 
@@ -743,18 +728,8 @@ public final class CommandRunner {
         }
     }
 
-    private record InsightOrigin(String kind, String system, String module, String version, String location, Integer line) {
-        boolean isSystem() {
-            return kind.equals("system");
-        }
-
-        String displayName() {
-            if (module == null) {
-                return null;
-            }
-            return version == null ? module : module + "@" + version;
-        }
-    }
+    private record InsightOrigin(String kind, String system, String module, String version, String location,
+            String classLocation, Integer line) {}
 
     private static ResolutionOptions workflowResolutionOptions(JaInvocation commandLine, ToolRunner toolRunner) {
         if (commandLine.command() instanceof Run(var target) && target.filter(CommandRunner::hasExplicitMainClass).isPresent()) {
@@ -841,26 +816,29 @@ public final class CommandRunner {
                     resolved, in, out, err);
         }
         if (commandLine.command() instanceof Command.Describe(var request)) {
-            var invocation = toolInvocation(commandLine, "jist", request.arguments(commandLine.workingDirectory()));
+            var arguments = request.arguments(commandLine.workingDirectory());
             if (request.subject() != DescribeRequest.Subject.ORIGIN) {
-                return toolRunner.run(invocation, resolutionArguments, resolved, in, out, err);
+                return toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments, resolved, in, out, err);
             }
-            var origins = new ByteArrayOutputStream();
-            int result = toolRunner.run(invocation, resolutionArguments, resolved, in,
-                    new PrintStream(origins, true, StandardCharsets.UTF_8), err);
-            printExactOrigins(origins.toString(StandardCharsets.UTF_8), request.target(), out);
-            return result;
+            var result = runInsightInvocation(null, arguments,
+                    (selected, selectedOut, selectedErr) -> toolRunner.run(
+                            toolInvocation(commandLine, "jist", selected), resolutionArguments, resolved, in, selectedOut, selectedErr));
+            if (!result.error().isBlank()) err.println(result.error().stripTrailing());
+            result.rows().stream().filter(row -> matchesOriginTarget(row.symbolName(), request.target())).distinct()
+                    .map(InsightRow::text).sorted().forEach(out::println);
+            return result.status();
         }
         if (commandLine.command() instanceof Command.Find(var request)) {
             var arguments = request.arguments();
             if (request.question() == FindRequest.Question.IMPL) {
-                var symbols = new ByteArrayOutputStream();
-                int result = toolRunner.run(toolInvocation(commandLine, "jist", arguments), resolutionArguments,
-                        resolved, in, new PrintStream(symbols, true, StandardCharsets.UTF_8), err);
-                if (result != 0) {
-                    return result;
+                var selection = runInsightInvocation(null, arguments,
+                        (selected, selectedOut, selectedErr) -> toolRunner.run(
+                                toolInvocation(commandLine, "jist", selected), resolutionArguments, resolved, in, selectedOut, selectedErr));
+                if (!selection.error().isBlank()) err.println(selection.error().stripTrailing());
+                if (selection.status() != 0) {
+                    return selection.status();
                 }
-                arguments = request.implementationArguments(symbols.toString(StandardCharsets.UTF_8));
+                arguments = request.implementationArguments(selection.rows().stream().map(InsightRow::symbolName).toList());
             }
             var sourceArguments = InsightSearchCoordinator.arguments(request.search(), arguments);
             return toolRunner.run(toolInvocation(commandLine, "jist", sourceArguments), resolutionArguments,
@@ -884,29 +862,11 @@ public final class CommandRunner {
         throw new IllegalArgumentException("Command " + commandLine.command() + " is not implemented");
     }
 
-    private static void printExactOrigins(String origins, String target, PrintStream out) {
-        origins.lines().filter(line -> matchesOriginTarget(originSymbol(line), target)).forEach(out::println);
-    }
-
     private static boolean matchesOriginTarget(String symbol, String target) {
-        return symbol.equals(target) || symbol.endsWith("." + target);
-    }
-
-    private static String originSymbol(String line) {
-        int separator = line.indexOf(' ');
-        if (separator < 0) {
-            return "";
-        }
-        String symbol = line.substring(separator + 1);
-        int signature = symbol.indexOf('(');
-        if (signature >= 0) {
-            symbol = symbol.substring(0, signature);
-        }
-        int module = symbol.indexOf('/');
-        if (module >= 0 && symbol.substring(0, module).indexOf('@') >= 0) {
-            symbol = symbol.substring(module + 1);
-        }
-        return symbol;
+        if (symbol.equals(target) || symbol.endsWith("." + target)) return true;
+        int parameters = symbol.indexOf('(');
+        var name = parameters < 0 ? symbol : symbol.substring(0, parameters);
+        return name.equals(target) || name.endsWith("." + target);
     }
 
     private static JaInvocation toolInvocation(JaInvocation invocation, String tool, List<String> arguments) {

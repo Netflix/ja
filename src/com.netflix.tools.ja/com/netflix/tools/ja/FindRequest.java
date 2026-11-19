@@ -17,7 +17,6 @@ package com.netflix.tools.ja;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 /** A question about code related to a subject in the selected context. */
@@ -166,13 +165,8 @@ public record FindRequest(Question question, String target, Search search, List<
     }
 
     /** Leaves method validation, including inherited methods absent from declaration listings, to jist. */
-    List<String> implementationArguments(String symbols) {
-        var typeKinds = Set.of("class", "interface", "enum", "record", "annotation");
-        var types = symbols.lines().filter(line -> {
-            int separator = line.indexOf(' ');
-            return separator > 0 && typeKinds.contains(line.substring(0, separator));
-        }).map(line -> line.substring(line.indexOf(' ') + 1))
-                .filter(name -> name.equals(target)
+    List<String> implementationArguments(List<String> symbols) {
+        var types = symbols.stream().filter(name -> name.equals(target)
                         || target.indexOf('.') < 0 && name.substring(name.lastIndexOf('.') + 1).equals(target))
                 .distinct()
                 .toList();
